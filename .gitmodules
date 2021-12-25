@@ -1,0 +1,51 @@
+[submodule "submodules/spynet"]
+	path = submodules/spynet
+	url = https://github.com/sniklaus/pytorch-spynet.git
+[submodule "submodules/pwc"]
+	path = submodules/pwc
+	url = https://github.com/sniklaus/pytorch-pwc.git
+[submodule "submodules/unflow"]
+	path = submodules/unflow
+	url = https://github.com/sniklaus/pytorch-unflow.git
+[submodule "submodules/liteflownet"]
+	path = submodules/liteflownet
+	url = https://github.com/sniklaus/pytorch-liteflownet.git
+[submodule "submodules/CLIP"]
+	path = submodules/CLIP
+	url = https://github.com/openai/CLIP
+[submodule "submodules/VQGAN"]
+	path = submodules/VQGAN
+	url = https://github.com/CompVis/taming-transformers
+[submodule "submodules/FrozenInTime"]
+	path = submodules/FrozenInTime
+	url = https://github.com/m-bain/frozen-in-time.git
+[submodule "submodules/ranger"]
+	path = submodules/ranger
+	url = https://github.com/lessw2020/Ranger-Deep-Learning-Optimizer/
+[submodule "submodules/ic_gan"]
+	path = submodules/ic_gan
+	url = https://github.com/facebookresearch/ic_gan.git
+[submodule "submodules/guided_diffusion"]
+	path = submodules/guided_diffusion
+	url = https://github.com/crowsonkb/guided-diffusion
+[submodule "submodules/RealESRGAN"]
+	path = submodules/RealESRGAN
+	url = https://github.com/xinntao/Real-ESRGAN
+[submodule "submodules/BSRGAN"]
+	path = submodules/BSRGAN
+	url = https://github.com/cszn/BSRGAN
+[submodule "submodules/SwinIR"]
+	path = submodules/SwinIR
+	url = https://github.com/JingyunLiang/SwinIR
+[submodule "submodules/NIMA"]
+	path = submodules/NIMA
+	url = https://github.com/kentsyx/Neural-IMage-Assessment.git
+[submodule "submodules/ru_dalle"]
+	path = submodules/ru_dalle
+	url = https://github.com/neverix/ru-dalle
+[submodule "submodules/v_diffusion"]
+	path = submodules/v_diffusion
+	url = https://github.com/crowsonkb/v-diffusion-pytorch.git
+[submodule "submodules/latent_diffusion"]
+	path = submodules/latent_diffusion
+	url = https://github.com/CompVis/latent-diffusion.git

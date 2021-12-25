@@ -1,0 +1,7 @@
+output/*
+!output/.gitkeep
+modelzoo/*
+!modelzoo/.gitkeep
+**__pycache__
+**.pyc
+.vscode/
