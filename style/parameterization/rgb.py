@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from image_ops import resample
-from losses import clamp_with_grad
+from ops.image import resample
+from ops.loss import clamp_with_grad
 
 from . import EMA, Parameterization
 
@@ -14,17 +14,26 @@ def to_colorspace(tensor, colorspace):
 
 
 class RGB(Parameterization):
-    def __init__(self, width, height, scale=1, colorspace="rgb", ema=True):
-        (EMA if ema else Parameterization).__init__(width * scale, height * scale)
+    def __init__(self, height, width, tensor=None, scale=1, colorspace="rgb"):
+
+        if tensor is None:
+            tensor = torch.empty(1, 3, height, width).uniform_()
+
+        Parameterization.__init__(self, height * scale, width * scale, tensor)
+
         self.scale = scale
         self.colorspace = colorspace
-        self.tensor = nn.Parameter(torch.empty(1, height, width, 3).uniform_().to(memory_format=torch.channels_last))
 
-    def decode(self):
-        out = resample(self.tensor, (self.h * self.scale, self.w * self.scale))
+    def decode(self, tensor=None):
+        if tensor is None:
+            tensor = self.tensor
+        out = resample(tensor, (self.h * self.scale, self.w * self.scale))
         return clamp_with_grad(out, 0, 1)
 
     def encode(self, tensor):
         self.tensor.data.set_(
             to_colorspace(resample(tensor, (self.h // self.scale, self.w // self.scale)), self.colorspace).data
         )
+
+    def forward(self):
+        return self.decode()

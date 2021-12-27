@@ -90,12 +90,12 @@ def match_histogram(target_tensor, source_tensor, eps=1e-2, mode="avg"):
                 mu_s, _, Cs = get_histogram(source + 1e-3 * torch.randn(size=source.shape, device=frame.device), eps)
 
                 # PCA
-                eva_t, eve_t = torch.symeig(Ct, eigenvectors=True, upper=True)
+                eva_t, eve_t = torch.linalg.eigh(Ct, UPLO="U")
                 Et = torch.sqrt(torch.diagflat(eva_t))
                 Et[Et != Et] = 0  # Convert nan to 0
                 Qt = torch.mm(torch.mm(eve_t, Et), eve_t.T)
 
-                eva_s, eve_s = torch.symeig(Cs, eigenvectors=True, upper=True)
+                eva_s, eve_s = torch.linalg.eigh(Cs, UPLO="U")
                 Es = torch.sqrt(torch.diagflat(eva_s))
                 Es[Es != Es] = 0  # Convert nan to 0
                 Qs = torch.mm(torch.mm(eve_s, Es), eve_s.T)
@@ -154,7 +154,7 @@ def ramp(ratio, width):
 def resample(input, size, align_corners=True):
     n, c, h, w = input.shape
 
-    if len(size) == 1:
+    if isinstance(size, int):
         short, long = (w, h) if w <= h else (h, w)
         requested_new_short = size
         new_short, new_long = requested_new_short, int(requested_new_short * long / short)

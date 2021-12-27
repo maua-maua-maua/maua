@@ -1,22 +1,13 @@
-import numpy as np
-import PIL.Image
 import torch
 import torch.nn as nn
-from torchvision.transforms.functional import to_tensor
 
 
 class Parameterization(nn.Module):
-    def __init__(self, width, height):
+    def __init__(self, height, width, tensor):
         super().__init__()
-        self.image_shape = (width, height)
         self.w = width
         self.h = height
-
-    def encode_pil(self, pil_image: PIL.Image.Image) -> torch.Tensor:
-        return self.encode(to_tensor(pil_image).permute(1, 2, 0).unsqueeze(0))
-
-    def decode_pil(self) -> PIL.Image.Image:
-        raise PIL.Image.fromarray(self.decode().squeeze(0).mul(255).round().detach().cpu().numpy().astype(np.uint8))
+        self.tensor = nn.Parameter(tensor)
 
     def encode(self, tensor: torch.Tensor) -> None:
         raise NotImplementedError()
@@ -26,10 +17,9 @@ class Parameterization(nn.Module):
 
 
 class EMA(Parameterization):
-    def __init__(self, width, height, tensor, decay):
-        super().__init__(width, height)
+    def __init__(self, height, width, tensor, decay):
+        super().__init__(height, width, tensor)
         self.decay = decay
-        self.tensor = nn.Parameter(tensor)
         self.register_buffer("biased", torch.zeros_like(tensor))
         self.register_buffer("average", torch.zeros_like(tensor))
         self.register_buffer("accum", torch.tensor(1.0))
@@ -52,6 +42,3 @@ class EMA(Parameterization):
 
     def decode_average(self):
         return self.decode(self.average)
-
-    def decode_average_pil(self):
-        return self.decode_pil(self.average)
