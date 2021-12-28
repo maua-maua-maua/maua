@@ -1,9 +1,11 @@
 import gc
+import sys
 from pathlib import Path
 
 import torch
 from ops.image import match_histogram, resample
 from ops.tensor import img2tensor, tensor2img
+from PIL import Image
 
 from .transfer import transfer
 
@@ -66,22 +68,18 @@ def transfer_multires(
 
 
 if __name__ == "__main__":
-    import sys
-
-    from PIL import Image
-
     img = transfer_multires(
         content_img=img2tensor(Image.open(sys.argv[1])),
         style_imgs=[img2tensor(Image.open(path)) for path in sys.argv[2:]],
         init_img=None,
         init_type="content",
         match_hist="avg",
-        sizes=[256, 512, 724, 1024, 1448, 2048],
+        sizes=[512, 724, 1024, 1448, 2048],
         perceptor="pgg-vgg19",
         perceptor_kwargs={},
-        optimizer="lbfgs",
+        optimizer="LBFGS",
         optimizer_kwargs=dict(tolerance_grad=-1.0, tolerance_change=-1.0, history_size=100),
-        num_iters=[600, 500, 400, 300, 200, 100],
+        num_iters=[500, 400, 300, 200, 100],
         content_weight=1,
         content_layers=[26],
         style_weight=5000,

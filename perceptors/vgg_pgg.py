@@ -13,9 +13,22 @@ from perceptors import Perceptor
 
 
 class PGGPerceptor(Perceptor):
+    """VGG networks ported by ProGamerGov from Caffe for his amazing style transfer implementation neural-style-pt"""
+
     def __init__(
-        self, content_layers, style_layers, content_strength=1, style_strength=1, model_name="vgg19", pooling="max"
+        self,
+        content_layers=None,
+        style_layers=None,
+        content_strength=1,
+        style_strength=1,
+        model_name="vgg19",
+        pooling="max",
     ):
+        if content_layers is None:
+            content_layers = default_layers[model_name]["content"]
+        if style_layers is None:
+            style_layers = default_layers[model_name]["style"]
+
         super().__init__(content_layers, style_layers)
 
         net = select_model(model_name.lower(), pooling)
@@ -100,6 +113,15 @@ class PGGPerceptor(Perceptor):
         return self.loss
 
 
+default_layers = {
+    "prune": {"content": [22], "style": [3, 8, 15, 22, 29]},
+    "nyud": {"content": [22], "style": [3, 8, 15, 22, 29]},
+    "fcn32s": {"content": [22], "style": [3, 8, 15, 22, 29]},
+    "sod": {"content": [22], "style": [3, 8, 15, 22, 29]},
+    "vgg16": {"content": [22], "style": [3, 8, 15, 22, 29]},
+    "vgg19": {"content": [26], "style": [3, 8, 17, 26, 35]},
+    "nin": {"content": [19], "style": [5, 12, 19, 27]},
+}
 channel_list = {
     "VGG-16p": [24, 22, "P", 41, 51, "P", 108, 89, 111, "P", 184, 276, 228, "P", 512, 512, 512, "P"],
     "VGG-16": [64, 64, "P", 128, 128, "P", 256, 256, 256, "P", 512, 512, 512, "P", 512, 512, 512, "P"],
