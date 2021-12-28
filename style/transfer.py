@@ -1,4 +1,5 @@
 import gc
+from pathlib import Path
 
 import torch
 from ops.image import match_histogram, resample
@@ -20,8 +21,7 @@ def transfer(
     init_img,
     init_type,
     match_hist,
-    height,
-    width,
+    size,
     perceptor,
     perceptor_kwargs,
     optimizer,
@@ -34,17 +34,17 @@ def transfer(
     style_scale,
     device,
 ):
-    content_img = resample(img2tensor(content_img).to(device), (height, width))
-    style_imgs = [resample(img2tensor(im).to(device), min(height, width) * style_scale) for im in style_imgs]
+    content_img = resample(content_img.to(device), size)
+    style_imgs = [resample(im.to(device), size * style_scale) for im in style_imgs]
     content_img = match_histogram(content_img, style_imgs, mode=match_hist)
 
     if init_img is not None:
-        init_tensor = img2tensor(init_img)
+        init_tensor = init_img
     elif init_type == "content":
         init_tensor = content_img
     elif init_type == "random":
         init_tensor = None
-    pastiche = RGB(height, width, tensor=init_tensor).to(device)
+    pastiche = RGB(content_img.shape[2], content_img.shape[3], tensor=init_tensor).to(device)
 
     perceptor = load_perceptor(perceptor)(
         content_layers,
@@ -59,9 +59,9 @@ def transfer(
     gc.collect()
     torch.cuda.empty_cache()
 
-    optimizer = load_optimizer(optimizer)(pastiche.parameters(), **optimizer_kwargs)
+    with torch.enable_grad(), tqdm(total=num_iters, desc=f"Optimizing @ {size}px") as pbar:
 
-    with torch.enable_grad(), tqdm(total=num_iters) as pbar:
+        optimizer, num_iters = load_optimizer(optimizer, optimizer_kwargs, num_iters, pastiche.parameters())
 
         def closure(
             pastiche: Parameterization = pastiche,
@@ -75,9 +75,10 @@ def transfer(
             pbar.update()
             return loss
 
-        optimizer.step(closure)
+        for _ in range(num_iters):
+            optimizer.step(closure)
 
-    return pastiche().cpu()
+    return pastiche()
 
 
 if __name__ == "__main__":
@@ -86,28 +87,22 @@ if __name__ == "__main__":
     from PIL import Image
 
     img = transfer(
-        content_img=Image.open(sys.argv[1]),
-        style_imgs=[Image.open(path) for path in sys.argv[2:]],
+        content_img=img2tensor(Image.open(sys.argv[1])),
+        style_imgs=[img2tensor(Image.open(path)) for path in sys.argv[2:]],
         init_img=None,
         init_type="content",
         match_hist="avg",
-        height=512,
-        width=512,
+        size=512,
         perceptor="pgg-vgg19",
         perceptor_kwargs={},
-        optimizer="lbfgs",
-        optimizer_kwargs=dict(
-            max_iter=1000,
-            tolerance_change=float(-1),
-            tolerance_grad=float(-1),
-            history_size=100,
-        ),
-        num_iters=1000,
+        optimizer="lbfgs20",
+        optimizer_kwargs={},
+        num_iters=500,
         content_weight=1,
         content_layers=[26],
-        style_weight=1000,
+        style_weight=10000,
         style_layers=[3, 8, 17, 26, 35],
         style_scale=1,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     )
-    tensor2img(img).save("output/test.png")
+    tensor2img(img).save(f"output/{'_'.join([Path(arg).stem for arg in sys.argv[1:]])}.png")

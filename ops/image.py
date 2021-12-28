@@ -51,15 +51,15 @@ def wrapping_slice(tensor, start, length, return_indices=False):
     return tensor[indices]
 
 
-def get_histogram(tensor, eps):
+def get_histogram(tensor):
     mu_h = tensor.mean(list(range(len(tensor.shape) - 1)))
     h = tensor - mu_h
     h = h.permute(0, 3, 1, 2).reshape(tensor.size(3), -1)
-    Ch = torch.mm(h, h.T) / h.shape[1] + eps * torch.eye(h.shape[0], device=tensor.device)
+    Ch = torch.mm(h, h.T) / h.shape[1] + torch.finfo(tensor.dtype).eps * torch.eye(h.shape[0], device=tensor.device)
     return mu_h, h, Ch
 
 
-def match_histogram(target_tensor, source_tensor, eps=1e-2, mode="avg"):
+def match_histogram(target_tensor, source_tensor, mode="avg"):
     if not mode:
         return target_tensor
     backup = target_tensor.clone()
@@ -86,8 +86,10 @@ def match_histogram(target_tensor, source_tensor, eps=1e-2, mode="avg"):
             matched_tensor = torch.zeros_like(target)
             for idx in range(target.shape[0] if elementwise else 1):
                 frame = target[idx].unsqueeze(0) if elementwise else target
-                _, t, Ct = get_histogram(frame + 1e-3 * torch.randn(size=frame.shape, device=frame.device), eps)
-                mu_s, _, Cs = get_histogram(source + 1e-3 * torch.randn(size=source.shape, device=frame.device), eps)
+                _, t, Ct = get_histogram(frame + 1e-3 * torch.randn(size=frame.shape, device=frame.device))
+                mu_s, _, Cs = get_histogram(
+                    source.to(frame.device) + 1e-3 * torch.randn(size=source.shape, device=frame.device)
+                )
 
                 # PCA
                 eva_t, eve_t = torch.linalg.eigh(Ct, UPLO="U")
