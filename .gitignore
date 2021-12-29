@@ -3,11 +3,20 @@ output/*
 modelzoo/*
 !modelzoo/.gitkeep
 workspace/*
+workspace/audio_cache/*
+audiovisual/patches/*
+!audiovisual/patches/examples/
+!audiovisual/patches/base/
 !workspace/.gitkeep
+!workspace/Wavefunk - Dwelling in the Kelp.mp3
+!workspace/Wavefunk - Tau Ceti Alpha.mp3
+!workspace/Wavefunk - Temper.mp3
+!workspace/audio_cache/
+!workspace/audio_cache/.gitkeep
+
 **__pycache__
 **.pyc
 .vscode/
-
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
