@@ -49,3 +49,6 @@
 [submodule "submodules/latent_diffusion"]
 	path = submodules/latent_diffusion
 	url = https://github.com/CompVis/latent-diffusion.git
+[submodule "audio"]
+	path = audio
+	url = https://github.com/maua-maua-maua/audio
