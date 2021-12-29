@@ -14,6 +14,8 @@ import scipy.signal as signal
 import sklearn.cluster
 import torch
 import torch.nn.functional as F
+from openunmix.predict import separate
+from torchaudio.functional import resample
 
 SMF = 24 / 30  # this is set by generate_audiovisual.py based on rendering fps
 
@@ -28,6 +30,52 @@ def set_SMF(smf):
 # ====================================================================================
 
 
+def hash(tensor_array_int_obj):
+    if isinstance(tensor_array_int_obj, (np.ndarray, torch.Tensor)):
+        if isinstance(tensor_array_int_obj, torch.Tensor):
+            array = tensor_array_int_obj.detach().cpu().numpy()
+        else:
+            array = tensor_array_int_obj
+        byte_tensor = (normalize(array) * 255).ravel().astype(np.uint8)
+        hash = 0
+        for ch in byte_tensor[:1024:4]:
+            hash = (hash * 281 ^ ch * 997) & 0xFFFFFFFF
+        return str(hex(hash)[2:].upper().zfill(8))
+    if isinstance(tensor_array_int_obj, (float, int, str, bool)):
+        return str(tensor_array_int_obj)
+    return ""
+
+
+def cache_to_workspace(name):
+    def decorator(function):
+        def wrapper(*args, **kwargs):
+            arghash = "_".join([hash(a) for a in [*args, *kwargs.values()]])
+            cache_file = f"workspace/audio_cache/{name}_{arghash}.npy"
+            if not os.path.exists(cache_file):
+                result = function(*args, **kwargs)
+                joblib.dump(result, cache_file)
+            else:
+                result = joblib.load(cache_file)
+            return result
+
+        return wrapper
+
+    return decorator
+
+
+@cache_to_workspace("unmixed")
+def separate_sources(audio, sr, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+    vocals, drums, bass, other = separate(resample(audio, sr, 44100), rate=44100, niter=1, device=device).values()
+
+    vocals = vocals.squeeze().mean(0).cpu().numpy()
+    drums = drums.squeeze().mean(0).cpu().numpy()
+    bass = bass.squeeze().mean(0).cpu().numpy()
+    other = other.squeeze().mean(0).cpu().numpy()
+
+    return vocals, drums, bass, other
+
+
+@cache_to_workspace("onsets")
 def onsets(audio, sr, n_frames, margin=8, fmin=20, fmax=8000, smooth=1, clip=100, power=1, type="mm"):
     """Creates onset envelope from audio
 
@@ -73,7 +121,8 @@ def onsets(audio, sr, n_frames, margin=8, fmin=20, fmax=8000, smooth=1, clip=100
     return onset
 
 
-def rms(y, sr, n_frames, fmin=20, fmax=8000, smooth=180, clip=50, power=6):
+@cache_to_workspace("rms")
+def rms(audio, sr, n_frames, fmin=20, fmax=8000, smooth=180, clip=50, power=6):
     """Creates RMS envelope from audio
 
     Args:
@@ -89,8 +138,8 @@ def rms(y, sr, n_frames, fmin=20, fmax=8000, smooth=180, clip=50, power=6):
     Returns:
         torch.tensor, shape=(n_frames,): RMS envelope
     """
-    y_filt = signal.sosfilt(signal.butter(12, [fmin, fmax], "bp", fs=sr, output="sos"), y)
-    rms = rosa.feature.rms(S=np.abs(rosa.stft(y=y_filt, hop_length=512)))[0]
+    audio_filt = signal.sosfilt(signal.butter(12, [fmin, fmax], "bp", fs=sr, output="sos"), audio)
+    rms = rosa.feature.rms(S=np.abs(rosa.stft(y=audio_filt, hop_length=512)))[0]
     rms = np.clip(signal.resample(rms, n_frames), rms.min(), rms.max())
     rms = torch.from_numpy(rms).float()
     rms = gaussian_filter(rms, smooth, causal=0.05, mode="replicate")
@@ -133,6 +182,7 @@ def raw_chroma(audio, sr, type="cens", nearest_neighbor=True):
     return ch
 
 
+@cache_to_workspace("chroma")
 def chroma(audio, sr, n_frames, margin=16, type="cens", notes=12):
     """Creates chromagram for the harmonic component of the audio
 
@@ -156,12 +206,13 @@ def chroma(audio, sr, n_frames, margin=16, type="cens", notes=12):
     return chroma
 
 
-def laplacian_segmentation(signal, sr, k=5, plot=False):
+@cache_to_workspace("segmentation")
+def laplacian_segmentation(audio, sr, k=5, plot=False):
     """Segments the audio with pattern recurrence analysis
     From https://librosa.org/doc/latest/auto_examples/plot_segmentation.html#sphx-glr-auto-examples-plot-segmentation-py%22
 
     Args:
-        signal (np.array): Audio signal
+        audio (np.array): Audio signal
         sr (int): Sampling rate of the audio
         k (int, optional): Number of labels to use during segmentation. Defaults to 5.
         plot (bool, optional): Whether to show plot of found segmentation. Defaults to False.
@@ -172,12 +223,12 @@ def laplacian_segmentation(signal, sr, k=5, plot=False):
     BINS_PER_OCTAVE = 12 * 3
     N_OCTAVES = 7
     C = librosa.amplitude_to_db(
-        np.abs(librosa.cqt(y=signal, sr=sr, bins_per_octave=BINS_PER_OCTAVE, n_bins=N_OCTAVES * BINS_PER_OCTAVE)),
+        np.abs(librosa.cqt(y=audio, sr=sr, bins_per_octave=BINS_PER_OCTAVE, n_bins=N_OCTAVES * BINS_PER_OCTAVE)),
         ref=np.max,
     )
 
     # make CQT beat-synchronous to reduce dimensionality
-    tempo, beats = librosa.beat.beat_track(y=signal, sr=sr, trim=False)
+    tempo, beats = librosa.beat.beat_track(y=audio, sr=sr, trim=False)
     Csync = librosa.util.sync(C, beats, aggregate=np.median)
 
     # build a weighted recurrence matrix using beat-synchronous CQT
@@ -187,7 +238,7 @@ def laplacian_segmentation(signal, sr, k=5, plot=False):
     Rf = df(R, size=(1, 7))
 
     # build the sequence matrix using mfcc-similarity
-    mfcc = librosa.feature.mfcc(y=signal, sr=sr)
+    mfcc = librosa.feature.mfcc(y=audio, sr=sr)
     Msync = librosa.util.sync(mfcc, beats)
     path_distance = np.sum(np.diff(Msync, axis=1) ** 2, axis=0)
     sigma = np.median(path_distance)

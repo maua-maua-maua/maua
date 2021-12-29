@@ -1,21 +1,14 @@
-import audioreactive as ar
-from openunmix.predict import separate
-from patches.base.stylegan3 import StyleGAN3Patch
+from ... import audioreactive as ar
+from ...patches.base.stylegan3 import StyleGAN3Patch
 
 
 class ExampleSG3Patch(StyleGAN3Patch):
     def process_audio(self):
-        vocals, drums, bass, other = separate(self.audio, rate=self.sr, niter=3, device=self.device).values()
-        vocals, drums, bass, other = (
-            vocals.squeeze().mean(0).cpu().numpy(),
-            drums.squeeze().mean(0).cpu().numpy(),
-            bass.squeeze().mean(0).cpu().numpy(),
-            other.squeeze().mean(0).cpu().numpy(),
-        )
+        vocals, drums, bass, other = ar.separate_sources(self.audio, self.sr)
 
-        self.drum_onsets = ar.onsets(drums, self.sr, self.n_frames, margin=2, clip=95)
-        self.bass_rms = ar.rms(bass, self.sr, self.n_frames, smooth=20, clip=95, power=1)
-        self.vocal_rms = ar.rms(vocals, self.sr, self.n_frames, smooth=5, clip=95, power=1)
+        self.drum_onsets = ar.onsets(drums, self.sr, self.n_frames, margin=2, clip=95, smooth=2).reshape(-1, 1, 1)
+        self.bass_rms = ar.rms(bass, self.sr, self.n_frames, smooth=20, clip=95, power=1).reshape(-1, 1, 1)
+        self.vocal_rms = ar.rms(vocals, self.sr, self.n_frames, smooth=5, clip=95, power=1).reshape(-1, 1, 1)
         self.vocal_chroma = ar.chroma(vocals, self.sr, self.n_frames, margin=2)
         self.other_chroma = ar.chroma(other, self.sr, self.n_frames, margin=2)
 
@@ -34,7 +27,7 @@ class ExampleSG3Patch(StyleGAN3Patch):
 
         latent_w_plus = ar.spline_loops(latent_w[44:], self.n_frames, n_loops=1)
         latent_w_plus = (1 - self.vocal_rms) * latent_w_plus + self.vocal_rms * vocal_chroma_latents
-        latent_w_plus[:, 14:] = other_chroma_latents[:, 14:]
+        latent_w_plus[:, 10:] = other_chroma_latents[:, 10:]
         latent_w_plus = (1 - self.drum_onsets) * latent_w_plus + self.drum_onsets * drum_latents
         latent_w_plus = (1 - self.bass_rms) * latent_w_plus + self.bass_rms * bass_latents
 

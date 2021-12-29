@@ -1,6 +1,5 @@
 import torch
-from torch.nn.modules import module
-import audioreactive as ar
+from ... import audioreactive as ar
 
 
 class MauaPatch:
@@ -17,7 +16,8 @@ class MauaPatch:
 
 
 def get_patch_from_file(filepath):
-    import importlib, inspect
+    import importlib
+    import inspect
 
     module_name = filepath.replace(".py", "").replace("/", ".")
 

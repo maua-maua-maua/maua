@@ -7,8 +7,8 @@ class Renderer:
 
 
 def get_output_class(renderer):
-    if renderer == "pytorch":
-        from pytorch import PyTorch
+    if renderer == "memmap":
+        from .memmap import MemMap
 
-        return PyTorch
+        return MemMap()
     raise NotImplementedError

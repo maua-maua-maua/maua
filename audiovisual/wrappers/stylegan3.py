@@ -8,9 +8,9 @@ from torch.nn.functional import interpolate, pad
 
 from . import MauaMapper, MauaSynthesizer
 
-sys.path.append("models/stylegan3")
-from models.stylegan3 import dnnlib, legacy
-from models.stylegan3.training.networks_stylegan3 import MappingNetwork, SynthesisNetwork
+sys.path.append("GAN")
+from GAN import dnnlib, legacy
+from GAN.training.networks_stylegan3 import MappingNetwork, SynthesisNetwork
 
 layer_multipliers = {
     1024: {0: 64, 1: 64, 2: 64, 3: 32, 4: 32, 5: 16, 6: 8, 7: 8, 8: 4, 9: 4, 10: 2, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1},
@@ -32,7 +32,9 @@ class StyleGAN3:
             ],
             [],
         )
-        latent_z = torch.cat([np.random.RandomState(seed).randn(1, self.mapper.z_dim) for seed in seeds])
+        latent_z = torch.cat(
+            [torch.from_numpy(np.random.RandomState(seed).randn(1, self.mapper.z_dim)) for seed in seeds]
+        )
         return latent_z
 
     def get_w_latents(self, seeds, truncation=1):

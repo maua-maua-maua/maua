@@ -7,7 +7,6 @@ import ffmpeg
 from . import Renderer
 
 
-
 class FFMPEG(Renderer):
     def __init__(self) -> None:
         super().__init__()

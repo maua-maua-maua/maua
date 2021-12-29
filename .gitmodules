@@ -52,3 +52,6 @@
 [submodule "audio"]
 	path = audio
 	url = https://github.com/maua-maua-maua/audio
+[submodule "GAN"]
+	path = GAN
+	url = https://github.com/maua-maua-maua/GAN

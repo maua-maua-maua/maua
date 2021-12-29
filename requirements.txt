@@ -1,2 +1,15 @@
+av
 gdown
 git+https://github.com/pytorch/nestedtensor
+torch==1.10.1
+torchvision
+requests
+scipy
+librosa
+madmom
+ffmpeg-python
+openunmix
+joblib
+matplotlib
+scikit-learn
+npy-append-array
