@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ops.image import resample
+from ops.image import luminance, resample
 
 # remove shape asserts from optical flow files
 for file in [
@@ -21,7 +21,7 @@ for file in [
 
 
 def preprocess(im, h, w):
-    im = im.permute(1, 2, 0).unsqueeze(0)
+    im = im.permute(2, 0, 1).unsqueeze(0)
     if h is not None and w is not None:
         im = resample(im, (h, w))
     im = im[:, [2, 1, 0]]  # RGB -> BGR
@@ -94,6 +94,24 @@ def get_flow_model(which: List[str] = ["pwc", "spynet", "liteflownet"], use_trai
             size = (None, None)
 
         pred_fns.append(lambda im1, im2: predict(liteflownet, im1, im2, *size))
+
+    if "farneback" in which:
+        import cv2
+
+        pred_fns.append(
+            lambda im1, im2: cv2.calcOpticalFlowFarneback(
+                luminance(im1).numpy(),
+                luminance(im2).numpy(),
+                flow=None,
+                pyr_scale=0.5,
+                levels=10,
+                winsize=5,
+                iterations=15,
+                poly_n=7,
+                poly_sigma=1.5,
+                flags=10,
+            )
+        )
 
     if "deepflow2" in which:
         raise Exception("deepflow2 not working quite yet...")

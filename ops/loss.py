@@ -22,29 +22,24 @@ normalize_gradients = NormalizeGradients.apply
 
 def normalize_weights(tensor, strategy: str):
     if strategy == "elements":
-        tensor /= tensor.numel()
+        return tensor.numel()
     elif strategy == "channels":
-        tensor /= tensor.size(1)
+        return tensor.size(1)
     elif strategy == "area":
-        tensor /= tensor.size(2) * tensor.size(3)
-    return tensor
+        return tensor.size(2) * tensor.size(3)
+    return 1
 
 
 def feature_loss(
-    input: List[torch.Tensor],
-    target: List[torch.Tensor],
+    input_features: torch.Tensor,
+    target_features: torch.Tensor,
     norm_weights: Optional[str] = "elements",
     norm_grads: bool = True,
 ):
-    loss = 0
-    for input_features, target_features in zip(input, target):
-        layer_loss = mse_loss(input_features, target_features)
-        layer_loss = normalize_weights(layer_loss, norm_weights)
-        loss += layer_loss
-
+    loss = mse_loss(input_features, target_features)
+    loss /= normalize_weights(input_features, norm_weights)
     if norm_grads:
         loss = normalize_gradients(loss)
-
     return loss
 
 
@@ -84,7 +79,7 @@ def tv_loss(input):
     input = F.pad(input, (0, 1, 0, 1), "replicate")
     x_diff = input[..., :-1, 1:] - input[..., :-1, :-1]
     y_diff = input[..., 1:, :-1] - input[..., :-1, :-1]
-    return (x_diff ** 2 + y_diff ** 2).mean([1, 2, 3])
+    return (x_diff ** 2 + y_diff ** 2).mean([1, 2, 3]).squeeze()
 
 
 def range_loss(input):

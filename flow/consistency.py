@@ -2,7 +2,7 @@ import numpy as np
 import scipy
 
 
-def check_consistency(flow1, flow2):
+def check_consistency(flow1, flow2, edges_unreliable=False):
     flow1 = np.flip(flow1, axis=2)
     flow2 = np.flip(flow2, axis=2)
     h, w, _ = flow1.shape
@@ -39,18 +39,19 @@ def check_consistency(flow1, flow2):
     reliable_flow = np.where(squared_diff >= threshold, -1, 1)
 
     # areas mapping outside of the frame are also occluded (don't need extra region around these though, so set 0)
-    reliable_flow = np.where(
-        np.logical_or.reduce(
-            (
-                warp_coord[..., 0] < 0,
-                warp_coord[..., 1] < 0,
-                warp_coord[..., 0] >= h - 1,
-                warp_coord[..., 1] >= w - 1
-            )
-        ),
-        0,
-        reliable_flow,
-    )
+    if edges_unreliable:
+        reliable_flow = np.where(
+            np.logical_or.reduce(
+                (
+                    warp_coord[..., 0] < 0,
+                    warp_coord[..., 1] < 0,
+                    warp_coord[..., 0] >= h - 1,
+                    warp_coord[..., 1] >= w - 1,
+                )
+            ),
+            0,
+            reliable_flow,
+        )
 
     # get derivative of flow, large changes in derivative => edge of moving object
     dx = np.diff(flow1, axis=1, append=0)
@@ -62,4 +63,5 @@ def check_consistency(flow1, flow2):
     # blur and clip values between 0 and 1
     reliable_flow = scipy.ndimage.gaussian_filter(reliable_flow, [5, 5])
     reliable_flow = reliable_flow.clip(0, 1)
+    reliable_flow = scipy.ndimage.gaussian_filter(reliable_flow, [3, 3])
     return reliable_flow

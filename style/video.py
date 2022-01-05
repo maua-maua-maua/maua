@@ -8,8 +8,9 @@ import torch
 from decord import VideoReader, cpu
 from flow import check_consistency, get_flow_model, resample_flow
 from npy_append_array import NpyAppendArray as NpyFile
+from flow.utils import flow_to_image
 from ops.image import match_histogram, resample
-from ops.loss import tv_loss
+from ops.loss import feature_loss, tv_loss
 from ops.tensor import load_images, write_video
 from optimizers import load_optimizer, optimizer_choices
 from perceptors import load_perceptor
@@ -36,14 +37,15 @@ def flow_warp_map(raw_flow: np.ndarray, size: int) -> torch.Tensor:
 
     flow = gaussian_filter(raw_flow, [5, 5, 0])
     flow = resample_flow(flow, (h, w))
-    flow = torch.from_numpy(flow.copy())[None]
-    flow[:, 0] /= w
-    flow[:, 1] /= h
+    flow = torch.from_numpy(flow.copy())
+    flow[..., 0] /= w
+    flow[..., 1] /= h
 
-    I = torch.stack(torch.meshgrid(torch.linspace(-1, 1, w), torch.linspace(-1, 1, h), indexing="ij"), axis=2)[None]
-    warp_map = I + flow
+    neutral = torch.stack(torch.meshgrid(torch.linspace(-1, 1, w), torch.linspace(-1, 1, h), indexing="ij"), axis=2)
 
-    return warp_map
+    warp_map = neutral + flow
+
+    return warp_map[..., [1, 0]].unsqueeze(0)
 
 
 @torch.inference_mode()
@@ -81,6 +83,12 @@ def preprocess_optical_flow(video_file, flow_model, no_check_occlusion=False):
     return frames, forward, backward, reliable
 
 
+def log(x):
+    if x < 0:
+        return -torch.log(-x)
+    return torch.log(x)
+
+
 @torch.no_grad()
 def transfer(
     content_video: Union[str, Path],
@@ -88,19 +96,19 @@ def transfer(
     init_video=None,
     init_type="content",
     match_hist="avg",
-    size=256,
+    size=512,
     perceptor="pgg-vgg19",
     perceptor_kwargs={},
     optimizer="LBFGS",
     optimizer_kwargs={},
-    flow_models=["spynet"],
+    flow_models=["farneback"],
     n_iters=512,
-    n_passes=15,
-    temporal_loss_after=8,
-    blend_factor=0.5,
+    n_passes=16,
+    temporal_loss_after=2,
+    blend_factor=1,
     content_weight=1,
-    style_weight=5000,
-    tv_weight=0,
+    style_weight=10000,
+    tv_weight=1,
     temporal_weight=1000,
     style_scale=1,
     content_layers: List[int] = None,
@@ -109,25 +117,25 @@ def transfer(
     save_intermediate=False,
     fps=24,
 ):
-    """Perform style transfer on a video. Uses optical flow to ensure temporal consistency following Ruder et al.'s "Artistic style transfer for videos".
+    """Perform style transfer on a video. Uses optical flow to ensure temporal consistency following Ruder et al."s "Artistic style transfer for videos".
 
     Args:
         content_video (Union[str, Path]): Path to video file to apply style transfer to.
         style_imgs (List[Union[Tensor, Image.Image, str]]): Images whose style will be apparent in output
         init_video (Tensor, np.ndarray, optional): Video to intialize optimization with.
-        init_type (str, optional): How to initialize the image for optimization. Choices ['content', 'random', 'prev_warped', 'init_video'].
-        match_hist (str, optional): How to match color histogram of intermediate images. Choices ['avg', False].
+        init_type (str, optional): How to initialize the image for optimization. Choices ["content", "random", "prev_warped", "init_video"].
+        match_hist (str, optional): How to match color histogram of intermediate images. Choices ["avg", False].
         size (int, optional): Size of output image.
-        perceptor (str, optional): Which perceptor to optimize with. Choices ['pgg-vgg19', 'pgg-vgg16', 'pgg-prune', 'pgg-nyud', 'pgg-fcn32s', 'pgg-sod', 'pgg-nin'].
+        perceptor (str, optional): Which perceptor to optimize with. Choices ["pgg-vgg19", "pgg-vgg16", "pgg-prune", "pgg-nyud", "pgg-fcn32s", "pgg-sod", "pgg-nin"].
         perceptor_kwargs (dict, optional): Key word arguments for the Perceptor class.
         optimizer (str, optional): Optimizer to use. For choices see optimizers.py
         optimizer_kwargs (dict, optional): Key word arguments for the optimizer.
-        flow_models (list, optional): A list of models to use calculate optical flow. Choices ['spynet', 'pwc', 'liteflownet', 'unflow']
+        flow_models (list, optional): A list of models to use calculate optical flow. Choices ["spynet", "pwc", "liteflownet", "unflow", "farneback"]
         n_iters (int, optional): Number of iterations to optimize for.
         n_passes (int, optional): Number of passes to make over video.
         temporal_loss_after (int, optional): Pass after which to start enforcing temporal consistency.
         blend_factor (float, optional): Factor with which previous frame is blended into intialization of next frame.
-        content_weight (int, optional): Strength of content preserving loss. Higher values will lead to outputs which better preserve the content's structure and texture.
+        content_weight (int, optional): Strength of content preserving loss. Higher values will lead to outputs which better preserve the content"s structure and texture.
         style_weight (int, optional): Strength of style loss. Higher values will lead to outputs which look more like the style images.
         tv_weight (int, optional): Strength of total variation loss. Higher values lead to smoother outputs.
         temporal_weight (int, optional): Strength of temporal loss. Higher values lead to more consistency between frames.
@@ -187,7 +195,7 @@ def transfer(
                     if using_blending or using_temporal_loss or init_type == "prev_warped":
                         flow_map = flow_warp_map((forward if d == 1 else backward)[f_n], size).to(device)
                         flow_mask = resample(torch.from_numpy(reliable[None, [f_n]].copy()).to(device), size)
-                        prev_warped = grid_sample(prev_frame, flow_map, padding_mode="reflection", align_corners=False)
+                        prev_warped = grid_sample(prev_frame, flow_map, padding_mode="border", align_corners=False)
 
                     init_tensor = None
                     if init_type == "prev_warped":
@@ -222,11 +230,13 @@ def transfer(
                             img = pastiche()
 
                             loss = perceptor.get_loss(img, target_embeddings)
+
                             if tv_weight > 0:
                                 loss += tv_weight * tv_loss(img)
+
                             if using_temporal_loss:
                                 img.register_hook(lambda grad: grad * flow_mask)
-                                loss += temporal_weight * mse_loss(img, prev_warped)
+                                loss += temporal_weight * feature_loss(img, prev_warped)
 
                             loss.backward()
                             pbar.update()
@@ -235,7 +245,8 @@ def transfer(
                         for _ in range(niter):
                             opt.step(closure)
 
-                    styled.append(match_histogram(pastiche(), style_imgs, match_hist).detach().cpu().numpy())
+                    result = match_histogram(pastiche(), style_imgs, match_hist).detach().cpu().numpy()
+                    styled.append(result)
 
             if save_intermediate:
                 write_video(np.load(next_frame_file, mmap_mode="r"), save_intermediate, fps=fps)
@@ -252,27 +263,27 @@ def argument_parser():
     parser = argparse.ArgumentParser(description=transfer.__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)    
     parser.add_argument("--content")
     parser.add_argument("--styles", nargs="+")
-    parser.add_argument("--init_type", default="content", choices=['content', 'random', 'prev_warped'])
-    parser.add_argument("--match_hist", default="avg", choices=['avg', False])
+    parser.add_argument("--init_type", default="content", choices=["content", "random", "prev_warped"])
+    parser.add_argument("--match_hist", default="avg", choices=["avg", False])
     parser.add_argument("--size", type=int, default=512)
     parser.add_argument("--perceptor", default="pgg-vgg19", choices=["pgg-vgg19", "pgg-vgg16", "pgg-prune", "pgg-nyud", "pgg-fcn32s", "pgg-sod", "pgg-nin"])
     parser.add_argument("--perceptor_kwargs", default={})
-    parser.add_argument("--optimizer", default="LBFGS", choices=['LBFGS','LBFGS-20'] + list(optimizer_choices.keys()))
+    parser.add_argument("--optimizer", default="LBFGS", choices=["LBFGS","LBFGS-20"] + list(optimizer_choices.keys()))
     parser.add_argument("--optimizer_kwargs", default={})
-    parser.add_argument("--flow_models", nargs="+", default=['spynet'], choices=['spynet', 'pwc', 'liteflownet', 'unflow'])
-    parser.add_argument("--n_iters", type=int, default=1024)
-    parser.add_argument("--n_passes", type=int, default=15)
-    parser.add_argument("--temporal_loss_after", type=int, default=8)
-    parser.add_argument("--blend_factor", type=float, default=0.5)
+    parser.add_argument("--flow_models", nargs="+", default=["farneback"], choices=["farneback", "spynet", "pwc", "liteflownet", "unflow"])
+    parser.add_argument("--n_iters", type=int, default=512)
+    parser.add_argument("--n_passes", type=int, default=16)
+    parser.add_argument("--temporal_loss_after", type=int, default=0)
+    parser.add_argument("--blend_factor", type=float, default=1)
     parser.add_argument("--content_weight", type=float, default=1)
-    parser.add_argument("--style_weight", type=float, default=5000)
-    parser.add_argument("--tv_weight", type=float, default=0)
-    parser.add_argument("--temporal_weight", type=float, default=1000)
+    parser.add_argument("--style_weight", type=float, default=10000)
+    parser.add_argument("--tv_weight", type=float, default=1)
+    parser.add_argument("--temporal_weight", type=float, default=7500)
     parser.add_argument("--style_scale", type=float, default=1)
     parser.add_argument("--content_layers", default=None)
     parser.add_argument("--style_layers", default=None)
     parser.add_argument("--device", default=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-    parser.add_argument("--save_intermediate", action='store_true')
+    parser.add_argument("--save_intermediate", action="store_true")
     parser.add_argument("--fps", type=float, default=24)
     # fmt: on
 
