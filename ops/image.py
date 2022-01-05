@@ -5,6 +5,16 @@ import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
+from PIL import Image
+
+
+def original_colors(content, generated):
+    # Combine the Y channel of the generated image and the UV/CbCr channels of the
+    # content image to perform color-independent style transfer.
+    content_channels = list(content.resize(generated.size).convert("YCbCr").split())
+    generated_channels = list(generated.convert("YCbCr").split())
+    content_channels[0] = generated_channels[0]
+    return Image.merge("YCbCr", content_channels).convert("RGB")
 
 
 def random_cutouts(input, cut_size=224, cutn=32, cut_pow=1.0):
@@ -119,6 +129,10 @@ def match_histogram(target_tensor, source_tensor, mode="avg"):
     return output_tensor.clamp(min([s.min() for s in source_tensor]), max([s.max() for s in source_tensor]))
 
 
+def luminance(tensor):
+    return 0.2126 * tensor[:, :, 0] + 0.7152 * tensor[:, :, 1] + 0.0722 * tensor[:, :, 2]
+
+
 def color_balance(img, percent):
     """From https://gist.github.com/DavidYKay/9dad6c4ab0d8d7dbf3dc"""
     out_channels = []
@@ -156,10 +170,10 @@ def ramp(ratio, width):
 def resample(input, size, align_corners=True):
     n, c, h, w = input.shape
 
-    if isinstance(size, int):
+    if isinstance(size, (int, float)):
         short, long = (w, h) if w <= h else (h, w)
         requested_new_short = size
-        new_short, new_long = requested_new_short, int(requested_new_short * long / short)
+        new_short, new_long = round(requested_new_short), round(requested_new_short * long / short)
         dw, dh = (new_short, new_long) if w <= h else (new_long, new_short)
     else:
         dh, dw = size
@@ -179,7 +193,7 @@ def resample(input, size, align_corners=True):
         input = F.conv2d(input, kernel_w[None, None, None, :])
 
     input = input.view([n, c, h, w])
-    return F.interpolate(input, size, mode="bicubic", align_corners=align_corners)
+    return F.interpolate(input, (dh, dw), mode="bicubic", align_corners=align_corners)
 
 
 def unsharp_mask(img, ks=(7, 7), sigma=1.0, amount=1, thresh=0.25):

@@ -1,4 +1,5 @@
 av
+decord
 gdown
 git+https://github.com/pytorch/nestedtensor
 torch==1.10.1

@@ -7,7 +7,6 @@ import torchvision as tv
 
 from .patches.base import get_patch_from_file
 from .render import get_output_class
-from .util import write_video
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

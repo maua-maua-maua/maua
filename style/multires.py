@@ -22,7 +22,7 @@ def transfer_multires(
     perceptor_kwargs,
     optimizer,
     optimizer_kwargs,
-    num_iters,
+    n_iters,
     content_weight,
     content_layers,
     style_weight,
@@ -30,8 +30,8 @@ def transfer_multires(
     style_scale,
     device,
 ):
-    if isinstance(num_iters, int):
-        num_iters = [num_iters] * len(sizes)
+    if isinstance(n_iters, int):
+        n_iters = [n_iters] * len(sizes)
 
     if init_img is not None:
         img = init_img
@@ -40,7 +40,7 @@ def transfer_multires(
     elif init_type == "random":
         img = torch.empty((1, 3, sizes[0], sizes[0]), device=device).uniform_()
 
-    for size, iters in zip(sizes, num_iters):
+    for size, iters in zip(sizes, n_iters):
         img = resample(img, size)
         img = transfer(
             content_img=content_img,
@@ -53,7 +53,7 @@ def transfer_multires(
             perceptor_kwargs=perceptor_kwargs,
             optimizer=optimizer,
             optimizer_kwargs=optimizer_kwargs,
-            num_iters=iters,
+            n_iters=iters,
             content_weight=content_weight,
             content_layers=content_layers,
             style_weight=style_weight,
@@ -79,7 +79,7 @@ if __name__ == "__main__":
         perceptor_kwargs={},
         optimizer="LBFGS",
         optimizer_kwargs=dict(tolerance_grad=-1.0, tolerance_change=-1.0, history_size=100),
-        num_iters=[500, 400, 300, 200, 100],
+        n_iters=[500, 400, 300, 200, 100],
         content_weight=1,
         content_layers=[26],
         style_weight=5000,

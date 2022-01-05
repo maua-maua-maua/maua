@@ -96,6 +96,10 @@ class PGGPerceptor(Perceptor):
                 else:
                     style_embeddings += style_weight * self.forward(style)[len(self.content_layers) :]
 
+        if content_embeddings is None:
+            return style_embeddings
+        if style_embeddings is None:
+            return content_embeddings
         return torch.cat((content_embeddings, style_embeddings))
 
     def forward(self, x):

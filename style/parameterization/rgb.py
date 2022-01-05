@@ -30,8 +30,9 @@ class RGB(Parameterization):
         out = resample(tensor, (self.h * self.scale, self.w * self.scale))
         return clamp_with_grad(out, 0, 1)
 
+    @torch.no_grad()
     def encode(self, tensor):
-        self.tensor.data.set_(
+        self.tensor.set_(
             to_colorspace(resample(tensor, (self.h // self.scale, self.w // self.scale)), self.colorspace).data
         )
 

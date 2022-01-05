@@ -33,7 +33,7 @@ def transfer(
     perceptor_kwargs={},
     optimizer="LBFGS",
     optimizer_kwargs={},
-    num_iters=500,
+    n_iters=500,
     content_weight=1,
     style_weight=5000,
     tv_weight=0,
@@ -55,7 +55,7 @@ def transfer(
         perceptor_kwargs (dict, optional): Key word arguments for the Perceptor class.
         optimizer (str, optional): Optimizer to use. For choices see optimizers.py
         optimizer_kwargs (dict, optional): Key word arguments for the optimizer.
-        num_iters (int, optional): Number of iterations to optimize for.
+        n_iters (int, optional): Number of iterations to optimize for.
         content_weight (int, optional): Strength of content preserving loss. Higher values will lead to outputs which better preserve the content's structure and texture.
         style_weight (int, optional): Strength of style loss. Higher values will lead to outputs which look more like the style images.
         tv_weight (int, optional): Strength of total variation loss. Higher values lead to smoother outputs.
@@ -94,9 +94,9 @@ def transfer(
     gc.collect()
     torch.cuda.empty_cache()
 
-    with torch.enable_grad(), tqdm(total=num_iters, desc=f"Optimizing @ {size}px") as pbar:
+    with torch.enable_grad(), tqdm(total=n_iters, desc=f"Optimizing @ {size}px") as pbar:
 
-        optimizer, num_iters = load_optimizer(optimizer, optimizer_kwargs, num_iters, pastiche.parameters())
+        optimizer, n_iters = load_optimizer(optimizer, optimizer_kwargs, n_iters, pastiche.parameters())
 
         def closure(
             pastiche: Parameterization = pastiche,
@@ -115,7 +115,7 @@ def transfer(
             pbar.update()
             return loss
 
-        for _ in range(num_iters):
+        for _ in range(n_iters):
             optimizer.step(closure)
 
     return pastiche()
@@ -136,7 +136,7 @@ def argument_parser():
     parser.add_argument("--perceptor_kwargs", default={})
     parser.add_argument("--optimizer", default="LBFGS", choices=['LBFGS','LBFGS-20'] + list(optimizer_choices.keys()))
     parser.add_argument("--optimizer_kwargs", default={})
-    parser.add_argument("--num_iters", default=500)
+    parser.add_argument("--n_iters", default=500)
     parser.add_argument("--content_weight", default=1)
     parser.add_argument("--style_weight", default=5000)
     parser.add_argument("--tv_weight", default=0)
@@ -162,7 +162,7 @@ if __name__ == "__main__":
         perceptor_kwargs=args.perceptor_kwargs,
         optimizer=args.optimizer,
         optimizer_kwargs=args.optimizer_kwargs,
-        num_iters=args.num_iters,
+        n_iters=args.n_iters,
         content_weight=args.content_weight,
         style_weight=args.style_weight,
         tv_weight=args.tv_weight,

@@ -6,4 +6,5 @@ conda create -n maua python=3.8 pytorch torchvision torchaudio cudatoolkit=11.3 
 conda activate maua
 pip install -r requirements.txt
 pip install -r audio/requirements.txt
+pip install cupy-cuda113==9.6
 ```
