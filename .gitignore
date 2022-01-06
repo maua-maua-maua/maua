@@ -4,9 +4,9 @@ modelzoo/*
 !modelzoo/.gitkeep
 workspace/*
 workspace/audio_cache/*
-audiovisual/patches/*
-!audiovisual/patches/examples/
-!audiovisual/patches/base/
+maua/audiovisual/patches/*
+!maua/audiovisual/patches/examples/
+!maua/audiovisual/patches/base/
 !workspace/.gitkeep
 !workspace/Wavefunk - Dwelling in the Kelp.mp3
 !workspace/Wavefunk - Tau Ceti Alpha.mp3
