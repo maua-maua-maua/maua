@@ -37,8 +37,9 @@ def load_optimizer(name, kwargs, n_iters, params):
             kwargs = dict(tolerance_grad=-1, tolerance_change=-1)
         return optim.LBFGS(params, max_iter=n_iters, **kwargs), 1
 
-    if name == "LBFGS-20":
-        return optim.LBFGS(params, max_iter=20, **kwargs), n_iters // 20
+    if "LBFGS-" in name:
+        max_iter = int(name.split("-")[1])
+        return optim.LBFGS(params, max_iter=max_iter, **kwargs), n_iters // max_iter
 
     if name in optimizer_choices:
         return optimizer_choices[name](params, **kwargs), n_iters

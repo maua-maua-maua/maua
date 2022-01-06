@@ -6,7 +6,7 @@ from typing import List, Union
 import numpy as np
 import torch
 from decord import VideoReader, cpu
-from flow import check_consistency, get_flow_model, resample_flow
+from flow import check_consistency, motion_edge, get_flow_model, resample_flow
 from npy_append_array import NpyAppendArray as NpyFile
 from flow.utils import flow_to_image
 from ops.image import match_histogram, resample
@@ -17,7 +17,7 @@ from perceptors import load_perceptor
 from PIL import Image
 from scipy.ndimage import gaussian_filter
 from torch import Tensor
-from torch.nn.functional import grid_sample, mse_loss
+from torch.nn.functional import grid_sample
 from tqdm import tqdm
 
 from .parameterization.rgb import RGB
@@ -41,22 +41,21 @@ def flow_warp_map(raw_flow: np.ndarray, size: int) -> torch.Tensor:
     flow[..., 0] /= w
     flow[..., 1] /= h
 
-    neutral = torch.stack(torch.meshgrid(torch.linspace(-1, 1, w), torch.linspace(-1, 1, h), indexing="ij"), axis=2)
+    neutral = torch.stack(torch.meshgrid(torch.linspace(-1, 1, h), torch.linspace(-1, 1, w), indexing="ij"), axis=2)
+    warp_map = neutral + flow[..., [1, 0]]
 
-    warp_map = neutral + flow
-
-    return warp_map[..., [1, 0]].unsqueeze(0)
+    return warp_map.unsqueeze(0)
 
 
 @torch.inference_mode()
-def preprocess_optical_flow(video_file, flow_model, no_check_occlusion=False):
+def preprocess_optical_flow(video_file, flow_model, smooth=1.5, consistency="magnitude", debug_optical_flow=False):
     frf = f"workspace/{Path(video_file).stem}_content.npy"
     fwf = f"workspace/{Path(video_file).stem}_forward_flow.npy"
     bkf = f"workspace/{Path(video_file).stem}_backward_flow.npy"
     rlf = f"workspace/{Path(video_file).stem}_reliable_flow.npy"
 
-    if not os.path.exists(rlf):
-        with NpyFile(frf) as frames, NpyFile(fwf) as forward, NpyFile(bkf) as backward, NpyFile(rlf) as reliable:
+    if not (os.path.exists(frf) and os.path.exists(fwf) and os.path.exists(bkf)):
+        with NpyFile(frf) as frames, NpyFile(fwf) as forward, NpyFile(bkf) as backward:
 
             vr = VideoReader(video_file, ctx=cpu())
             for i in tqdm(range(len(vr)), desc="Estimating optical flow..."):
@@ -65,20 +64,65 @@ def preprocess_optical_flow(video_file, flow_model, no_check_occlusion=False):
 
                 forward_flow = flow_model(frame1, frame2)
                 backward_flow = flow_model(frame2, frame1)
-                if no_check_occlusion:  # weight temporal loss by flow magnitude instead
-                    reliable_flow = torch.sqrt(forward_flow[..., 0] ** 2 + forward_flow[..., 1] ** 2)
-                else:
-                    reliable_flow = check_consistency(forward_flow, backward_flow)
 
                 frames.append(np.ascontiguousarray(frame1[None].permute(0, 3, 1, 2).numpy()))
                 forward.append(np.ascontiguousarray(forward_flow[None].astype(np.float32)))
                 backward.append(np.ascontiguousarray(backward_flow[None].astype(np.float32)))
-                reliable.append(np.ascontiguousarray(reliable_flow[None].astype(np.float32)))
 
-    frames = np.load(frf, mmap_mode="r")
     forward = np.load(fwf, mmap_mode="r")
     backward = np.load(bkf, mmap_mode="r")
+    frames = np.load(frf, mmap_mode="r")
+
+    if smooth != 0:
+        forward = gaussian_filter(forward, [smooth, 0, 0, 0])
+        backward = gaussian_filter(backward, [smooth, 0, 0, 0])
+
+    if not os.path.exists(rlf):
+        with NpyFile(rlf) as reliable:
+            for forward_flow, backward_flow in zip(forward, backward):
+                if consistency == "magnitude":
+                    reliable_flow = np.sqrt(forward_flow[..., 0] ** 2 + forward_flow[..., 1] ** 2)
+                elif consistency == "motion":
+                    reliable_flow = (
+                        motion_edge(
+                            torch.from_numpy(forward_flow.copy()).permute(2, 1, 0).unsqueeze(0),
+                            torch.from_numpy(backward_flow.copy()).permute(2, 1, 0).unsqueeze(0),
+                        )
+                        .numpy()
+                        .squeeze()
+                    )
+                elif consistency == "full":
+                    reliable_flow = check_consistency(forward_flow, backward_flow)
+                else:
+                    reliable_flow = torch.ones((forward_flow.shape[0], forward_flow.shape[1]))
+
+                reliable.append(np.ascontiguousarray(reliable_flow[None].astype(np.float32)))
+
     reliable = np.load(rlf, mmap_mode="r")
+
+    if consistency == "magnitude":
+        reliable = 1 - (reliable / reliable.max())
+
+    if smooth != 0:
+        reliable = gaussian_filter(reliable, [smooth, smooth, smooth])
+
+    if debug_optical_flow:
+        print("                  ", "min     ", "mean     ", "max     ", "shape")
+        print("forward flow (px):", forward.min(), forward.mean(), forward.max(), forward.shape)
+        write_video(
+            torch.stack([torch.from_numpy(flow_to_image(f)) for f in forward.copy()]).permute(0, 3, 1, 2).div(255),
+            f"output/{Path(video_file).stem}_forward_flow.mp4",
+        )
+        print("backward flow (px):", backward.min(), backward.mean(), backward.max(), backward.shape)
+        write_video(
+            torch.stack([torch.from_numpy(flow_to_image(f)) for f in backward.copy()]).permute(0, 3, 1, 2).div(255),
+            f"output/{Path(video_file).stem}_backward_flow.mp4",
+        )
+        print("reliable flow (0,1):", reliable.min(), reliable.mean(), reliable.max(), reliable.shape)
+        write_video(
+            torch.from_numpy(reliable.copy()).unsqueeze(1).tile(1, 3, 1, 1),
+            f"output/{Path(video_file).stem}_reliable_flow.mp4",
+        )
 
     return frames, forward, backward, reliable
 
@@ -170,6 +214,8 @@ def transfer(
     prev_frame_file = f"workspace/{Path(content_video).stem}_frames_prev.npy"
     next_frame_file = f"workspace/{Path(content_video).stem}_frames_next.npy"
 
+    # from contextlib import nullcontext
+    # with nullcontext:
     with tqdm(total=n_iters * len(content)) as pbar:
         for p_n in range(n_passes):
             pbar.set_description(f"Optimizing @ {size}px pass {p_n + 1} of {n_passes}")
@@ -195,7 +241,7 @@ def transfer(
                     if using_blending or using_temporal_loss or init_type == "prev_warped":
                         flow_map = flow_warp_map((forward if d == 1 else backward)[f_n], size).to(device)
                         flow_mask = resample(torch.from_numpy(reliable[None, [f_n]].copy()).to(device), size)
-                        prev_warped = grid_sample(prev_frame, flow_map, padding_mode="border", align_corners=False)
+                        prev_warped = grid_sample(prev_frame, flow_map, padding_mode="reflection", align_corners=False)
 
                     init_tensor = None
                     if init_type == "prev_warped":
@@ -222,7 +268,7 @@ def transfer(
 
                     with torch.enable_grad():
                         opt, niter = load_optimizer(
-                            optimizer, optimizer_kwargs, n_iters / n_passes, pastiche.parameters()
+                            optimizer, optimizer_kwargs, n_iters // n_passes, pastiche.parameters()
                         )
 
                         def closure():
@@ -239,12 +285,23 @@ def transfer(
                                 loss += temporal_weight * feature_loss(img, prev_warped)
 
                             loss.backward()
+                            grads = next(pastiche.parameters()).grad
+                            # print(
+                            #     f_n,
+                            #     img.min().item(),
+                            #     img.mean().item(),
+                            #     img.max().item(),
+                            #     log(grads.min()).item(),
+                            #     log(grads.mean()).item(),
+                            #     log(grads.max()).item(),
+                            # )
                             pbar.update()
                             return loss
 
                         for _ in range(niter):
                             opt.step(closure)
 
+                    # print()
                     result = match_histogram(pastiche(), style_imgs, match_hist).detach().cpu().numpy()
                     styled.append(result)
 

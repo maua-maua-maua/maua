@@ -11,7 +11,7 @@ def to_colorspace(tensor, colorspace):
 
 
 class RGB(Parameterization):
-    def __init__(self, height, width, tensor=None, scale=1, colorspace="rgb"):
+    def __init__(self, height, width, tensor=None, colorspace="rgb"):
         if tensor is None:
             tensor = torch.empty(1, 3, height, width).uniform_()
         Parameterization.__init__(self, height, width, tensor)

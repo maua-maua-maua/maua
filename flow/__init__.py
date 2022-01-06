@@ -100,12 +100,12 @@ def get_flow_model(which: List[str] = ["pwc", "spynet", "liteflownet"], use_trai
 
         pred_fns.append(
             lambda im1, im2: cv2.calcOpticalFlowFarneback(
-                luminance(im1).numpy(),
-                luminance(im2).numpy(),
+                luminance(im1).mul(255).numpy().astype(np.uint8),
+                luminance(im2).mul(255).numpy().astype(np.uint8),
                 flow=None,
-                pyr_scale=0.5,
-                levels=10,
-                winsize=5,
+                pyr_scale=0.8,
+                levels=15,
+                winsize=15,
                 iterations=15,
                 poly_n=7,
                 poly_sigma=1.5,
@@ -123,5 +123,5 @@ def get_flow_model(which: List[str] = ["pwc", "spynet", "liteflownet"], use_trai
     return lambda im1, im2: np.sum(pred(im1, im2) for pred in pred_fns) / len(pred_fns)
 
 
-from .consistency import check_consistency
+from .consistency import check_consistency, motion_edge
 from .utils import resample_flow, read_flow, write_flow, flow_to_image
