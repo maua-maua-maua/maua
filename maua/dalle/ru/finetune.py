@@ -16,8 +16,8 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import AdamW, AutoModelForSeq2SeqLM, MarianTokenizer
 
-sys.path.append("submodules/ru-dalle")
-sys.path.append("submodules/VQGAN")
+sys.path.append("maua/submodules/ru_dalle")
+sys.path.append("maua/submodules/VQGAN")
 from rudalle import get_rudalle_model, get_tokenizer, get_vae
 from rudalle.dalle.fp16 import FP16Module
 from rudalle.dalle.model import DalleModel
@@ -386,17 +386,13 @@ def argument_parser():
     return parser
 
 
-if __name__ == "__main__":
-    args = argument_parser().parse_args()
-
+def main(args):
     assert len(args.captions) == 0 or len(args.input_imgs) == len(
         args.captions
     ), "When specifying captions, the number of input_imgs must match exactly."
     assert (
         len(args.input_imgs) > 0 or args.input_dir is not None
     ), "You must specify either a list of input_imgs or an input_dir to train with."
-
-    device = torch.device(args.device)
 
     images = args.input_imgs
     if len(images) == 0:
@@ -417,7 +413,7 @@ if __name__ == "__main__":
         height=height,
         width=width,
         stretch=args.stretch,
-        device=args.device,
+        device=torch.device(args.device),
         low_memory=args.low_memory,
         checkpoint=args.checkpoint,
         save_dir=args.save_dir,
@@ -442,3 +438,7 @@ if __name__ == "__main__":
     )
     for id, im in enumerate(outputs):
         im.save(f"{args.output_dir}/{model_name}_{id}.png")
+
+
+if __name__ == "__main__":
+    main(argument_parser().parse_args())

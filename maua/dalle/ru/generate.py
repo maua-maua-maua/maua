@@ -12,8 +12,8 @@ from PIL import Image
 from tqdm import tqdm
 from transformers import AutoModelForSeq2SeqLM, MarianTokenizer
 
-sys.path.append("submodules/ru-dalle")
-sys.path.append("submodules/VQGAN")
+sys.path.append("maua/submodules/ru-dalle")
+sys.path.append("maua/submodules/VQGAN")
 from rudalle import get_realesrgan, get_rudalle_model, get_tokenizer, get_vae, utils
 from rudalle.dalle.fp16 import FP16Module
 from rudalle.dalle.model import DalleModel
@@ -341,9 +341,7 @@ def argument_parser():
     return parser
 
 
-if __name__ == "__main__":
-    args = argument_parser().parse_args()
-
+def main(args):
     device = torch.device(args.device)
 
     width, height = [int(v) for v in args.size.split(",")]
@@ -384,3 +382,7 @@ if __name__ == "__main__":
     )
     for id, im in enumerate(outputs):
         im.save(f"{args.output_dir}/{output_name}_{id}.png")
+
+
+if __name__ == "__main__":
+    main(argument_parser().parse_args())

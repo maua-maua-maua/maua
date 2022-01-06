@@ -18,4 +18,5 @@ more_itertools
 transformers
 ftfy
 omegaconf
+youtokentome
 -e submodules/CLIP

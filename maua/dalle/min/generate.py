@@ -1,13 +1,13 @@
 import sys
 
+import clip
 import numpy as np
 import torch
 from PIL import Image
-from submodules.CLIP import clip
 
-sys.path.append("submodules/minDALLE")
-from submodules.minDALLE.dalle.models import Dalle
-from submodules.minDALLE.dalle.utils.utils import clip_score
+sys.path.append("maua/submodules/minDALLE")
+from maua.submodules.minDALLE.dalle.models import Dalle
+from maua.submodules.minDALLE.dalle.utils.utils import clip_score
 
 
 def generate(prompt, num_candidates, top_k, top_p, device):
@@ -42,7 +42,7 @@ def argument_parser():
 
     # fmt: off
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input_text", type=str, default="", help="Input text to sample images.")
+    parser.add_argument("prompt", type=str, help="Input text to sample images.")
     parser.add_argument("--num_candidates", type=int, default=32, help="Number of images to generate in total")
     parser.add_argument("--num_outputs", type=int, default=8, help="Number of images to output based on best CLIP scores")
     parser.add_argument("--top_k", type=float, default=256, help="Should probably be set no higher than 256.")
@@ -53,17 +53,19 @@ def argument_parser():
     return parser
 
 
-if __name__ == "__main__":
-    args = argument_parser().parse_args()
-
+def main(args):
     images = generate(
-        prompt=args.input_text,
+        prompt=args.prompt,
         num_candidates=args.num_candidates,
         top_k=args.top_k,
         top_p=args.top_p,
         device=torch.device(args.device),
     )
 
-    output_name = args.input_text.replace(" ", "_")
+    output_name = args.prompt.replace(" ", "_")
     for id, im in enumerate((images[: args.num_outputs] * 255).astype(np.uint8)):
         Image.fromarray(im).save(f"{args.output_dir}/{output_name}_{id}.png")
+
+
+if __name__ == "__main__":
+    main(argument_parser().parse_args())
