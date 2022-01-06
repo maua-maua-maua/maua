@@ -1,19 +1,15 @@
-import argparse
 import gc
 import os
 import random
 import sys
-from functools import partial
 from glob import glob
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
-import more_itertools
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torchvision.transforms as T
-import transformers
 from einops import rearrange
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
@@ -22,11 +18,10 @@ from transformers import AdamW, AutoModelForSeq2SeqLM, MarianTokenizer
 
 sys.path.append("submodules/ru-dalle")
 sys.path.append("submodules/VQGAN")
-from rudalle import get_realesrgan, get_rudalle_model, get_tokenizer, get_vae, utils
+from rudalle import get_rudalle_model, get_tokenizer, get_vae
 from rudalle.dalle.fp16 import FP16Module
 from rudalle.dalle.model import DalleModel
 from rudalle.dalle.utils import exists, is_empty
-from rudalle.pipelines import super_resolution
 
 
 def infiniter(dataloader):
@@ -275,235 +270,6 @@ def forward(self, input_ids, attention_mask, return_loss=False, use_cache=False,
     return loss, {"text": loss_text.data.detach().float(), "image": loss_img}
 
 
-def oversample_decode(self, img_seq, h):
-    one_hot_indices = torch.nn.functional.one_hot(img_seq, num_classes=self.num_tokens).float()
-    z = one_hot_indices @ self.model.quantize.embed.weight
-    z = rearrange(z, "b (h w) c -> b c h w", h=h)
-    img = self.model.decode(z)
-    img = (img.clamp(-1.0, 1.0) + 1) * 0.5
-    return img
-
-
-def oversample_generate_images(
-    text,
-    tokenizer,
-    dalle,
-    vae,
-    top_k,
-    top_p,
-    num_images,
-    image_prompts=None,
-    temperature=1.0,
-    bs=8,
-    seed=None,
-    w=32,
-    h=32,
-    stretched_size=None,
-    model_name="rudalle",
-    output_dir="output/",
-    save_intermediate=False,
-):
-    if seed is not None:
-        utils.seed_everything(seed)
-    vocab_size = dalle.get_param("vocab_size")
-    text_seq_length = dalle.get_param("text_seq_length")
-    total_seq_length = dalle.get_param("total_seq_length")
-    device = dalle.get_param("device")
-    real = 32
-
-    text = text.lower().strip()
-    input_ids = tokenizer.encode_text(text, text_seq_length=text_seq_length)
-    pil_images = []
-    cache = None
-    past_cache = None
-    im_id = 0
-    try:
-        for chunk in more_itertools.chunked(range(num_images), bs):
-            chunk_bs = len(chunk)
-            with torch.no_grad():
-                attention_mask = torch.tril(
-                    torch.ones((chunk_bs, 1, total_seq_length, total_seq_length), device=device)
-                )
-                out = input_ids.unsqueeze(0).repeat(chunk_bs, 1).to(device)
-                grid = torch.zeros((h, w)).long().cuda()
-                sample_scores = []
-                if image_prompts is not None:
-                    prompts_idx, prompts = image_prompts.image_prompts_idx, image_prompts.image_prompts
-                    prompts = prompts.repeat(chunk_bs, 1)
-                for idx in tqdm(range(out.shape[1], total_seq_length - real * real + w * h)):
-                    idx -= text_seq_length
-                    if image_prompts is not None and idx in prompts_idx:
-                        out = torch.cat((out, prompts[:, idx].unsqueeze(1)), dim=-1)
-                    else:
-                        y = idx // w
-                        x = idx % w
-                        x_from = max(0, min(w - real, x - real // 2))
-                        y_from = max(0, y - real // 2)
-                        outs = []
-                        xs = []
-                        for row in range(y_from, y):
-                            for col in range(x_from, x_from + real):
-                                outs.append(grid[row, col].item())
-                                xs.append((row, col))
-                        for col in range(x_from, x):
-                            outs.append(grid[y, col].item())
-                            xs.append((y, col))
-                        if past_cache is not None:
-                            cache = list(map(list, cache.values()))
-                            for i, e in enumerate(cache):
-                                for j, _ in enumerate(e):
-                                    t = cache[i][j]
-                                    t = t[..., :text_seq_length, :]
-                                    cache[i][j] = t
-                            cache = dict(zip(range(len(cache)), cache))
-                        past_cache = xs
-                        logits, cache = dalle(
-                            torch.cat(
-                                (input_ids.to(device).ravel(), torch.from_numpy(np.asarray(outs)).long().to(device)),
-                                dim=0,
-                            ).unsqueeze(0),
-                            attention_mask,
-                            cache=cache,
-                            use_cache=True,
-                            return_loss=False,
-                        )
-                        logits = logits[:, :, vocab_size:].view((-1, logits.shape[-1] - vocab_size))
-                        logits /= temperature
-                        filtered_logits = transformers.top_k_top_p_filtering(logits, top_k=top_k, top_p=top_p)
-                        probs = torch.nn.functional.softmax(filtered_logits, dim=-1)
-                        sample = torch.multinomial(probs, 1)
-                        sample_scores.append(probs[torch.arange(probs.size(0)), sample.transpose(0, 1)])
-                        sample, xs = sample[-1:], xs[-1:]
-                        grid[y, x] = sample.item()
-                codebooks = grid.reshape((1, -1))
-                pil_images += utils.torch_tensors_to_pil_list(oversample_decode(vae, codebooks, h))
-                if save_intermediate:
-                    for pi in range(-len(chunk), 0):
-                        if stretched_size:
-                            pil_images[pi] = pil_images[pi].resize(stretched_size)
-                        pil_images[pi].save(f"{output_dir}/{model_name}_{im_id}.png")
-                        im_id += 1
-
-    except Exception as e:
-        print(e)
-        pass
-    except KeyboardInterrupt:
-        pass
-    return pil_images
-
-
-def generate_images(
-    text,
-    tokenizer,
-    dalle,
-    vae,
-    top_k,
-    top_p,
-    num_images,
-    image_prompts=None,
-    temperature=1.0,
-    bs=8,
-    seed=None,
-    use_cache=True,
-    stretched_size=None,
-    model_name="rudalle",
-    output_dir="output/",
-    save_intermediate=False,
-):
-    if seed is not None:
-        utils.seed_everything(seed)
-    vocab_size = dalle.get_param("vocab_size")
-    text_seq_length = dalle.get_param("text_seq_length")
-    image_seq_length = dalle.get_param("image_seq_length")
-    total_seq_length = dalle.get_param("total_seq_length")
-    device = dalle.get_param("device")
-
-    text = text.lower().strip()
-    input_ids = tokenizer.encode_text(text, text_seq_length=text_seq_length)
-    pil_images = []
-    im_id = 0
-    for chunk in more_itertools.chunked(range(num_images), bs):
-        chunk_bs = len(chunk)
-        with torch.no_grad():
-            attention_mask = torch.tril(torch.ones((chunk_bs, 1, total_seq_length, total_seq_length), device=device))
-            out = input_ids.unsqueeze(0).repeat(chunk_bs, 1).to(device)
-            cache = None
-            if image_prompts is not None:
-                prompts_idx, prompts = image_prompts.image_prompts_idx, image_prompts.image_prompts
-                prompts = prompts.repeat(chunk_bs, 1)
-            for idx in tqdm(range(out.shape[1], total_seq_length)):
-                idx -= text_seq_length
-                if image_prompts is not None and idx in prompts_idx:
-                    out = torch.cat((out, prompts[:, idx].unsqueeze(1)), dim=-1)
-                else:
-                    logits, cache = dalle(out, attention_mask, use_cache=use_cache, cache=cache, return_loss=False)
-                    logits = logits[:, -1, vocab_size:]
-                    logits /= temperature
-                    filtered_logits = transformers.top_k_top_p_filtering(logits, top_k=top_k, top_p=top_p)
-                    probs = torch.nn.functional.softmax(filtered_logits, dim=-1)
-                    sample = torch.multinomial(probs, 1)
-                    out = torch.cat((out, sample), dim=-1)
-            codebooks = out[:, -image_seq_length:]
-            pil_images += utils.torch_tensors_to_pil_list(vae.decode(codebooks))
-            if save_intermediate:
-                for pi in range(-len(chunk), 0):
-                    if stretched_size:
-                        pil_images[pi] = pil_images[pi].resize(stretched_size)
-                    pil_images[pi].save(f"{output_dir}/{model_name}_{im_id}.png")
-                    im_id += 1
-    return pil_images
-
-
-def sample_images(
-    model,
-    vae,
-    tokenizer,
-    input_text,
-    batch_size,
-    num_images,
-    height=256,
-    width=256,
-    stretched_size=None,
-    top_p=0.999,
-    top_k=2048,
-    model_name="rudalle",
-    output_dir="output/",
-    save_intermediate=False,
-):
-    if width != 256 or height != 256:
-        return oversample_generate_images(
-            input_text,
-            tokenizer,
-            model,
-            vae,
-            top_k=top_k,
-            bs=batch_size,
-            num_images=num_images,
-            top_p=top_p,
-            w=round(width / 8),
-            h=round(height / 8),
-            stretched_size=stretched_size,
-            model_name=model_name,
-            output_dir=output_dir,
-            save_intermediate=save_intermediate,
-        )
-    else:
-        return generate_images(
-            input_text,
-            tokenizer,
-            model,
-            vae,
-            top_k=top_k,
-            bs=batch_size,
-            num_images=num_images,
-            top_p=top_p,
-            stretched_size=stretched_size,
-            model_name=model_name,
-            output_dir=output_dir,
-            save_intermediate=save_intermediate,
-        )
-
-
 def finetune(
     images: List[Union[str, Path, Image.Image]],
     captions: List[str] = [],
@@ -591,78 +357,9 @@ def finetune(
     return model, stretched_size
 
 
-@torch.inference_mode()
-def generate(
-    model: Union[FP16Module, DalleModel],
-    model_name="rudalle",
-    input_text="",
-    num_outputs=8,
-    batch_size=4,
-    height=256,
-    width=256,
-    stretched_size: Optional[Tuple[int, int]] = None,
-    upscale=1,
-    top_p=0.999,
-    device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-    output_dir="output/",
-    save_intermediate=False,
-) -> List[Image.Image]:
-    """Generate images by sampling from the RuDALL-E model.
+def argument_parser():
+    import argparse
 
-    Args:
-        model (Union[FP16Module, DalleModel]): RuDALL-E model to generate images with.
-        model_name (str, optional): Name which images will be saved with. Defaults to "rudalle".
-        input_text (str, optional): Text to generate image with (English). Defaults to "".
-        num_outputs (int, optional): Number of images to generate. Defaults to 8.
-        batch_size (int, optional): Number of images to sample at once. Higher batch size requires more memory, but will be faster per sample overall. Defaults to 4.
-        height (int, optional): Height for output images. If set to more than 256, generation will be significantly slower and the model will sample more tokens than it is trained for. This can lead to unexpected results. Defaults to 256.
-        width (int, optional): Width for output images. If set to more than 256, generation will be significantly slower and the model will sample more tokens than it is trained for. This can lead to unexpected results. Defaults to 256.
-        stretched_size (Optional[Tuple[int, int]], optional): If RuDALL-E model is trained on stretched images, specify the size to re-stretch sampled images to. Defaults to None.
-        upscale (int, optional): Factor for RealESRGAN to upscale outputs to. Defaults to 1.
-        top_p (float, optional): Effects how closely sampled images match training data. Lower values might give higher quality images at the cost of variation. A good range is between 0.9 and 0.999. Defaults to 0.999.
-        device (torch.device, optional): Device to sample on. Defaults to 'cuda:0' if CUDA is available, otherwise 'cpu'.
-        output_dir (str, optional): Directory to save output images in. Defaults to "output/".
-        save_intermediate (bool, optional): Whether to save intermediate results immediately on completing samples. Defaults to False.
-
-    Returns:
-        List[PIL.Image]: num_ouputs PIL.Images sampled from the model
-    """
-    mname = "Helsinki-NLP/opus-mt-en-ru"
-    translate_tokenizer = MarianTokenizer.from_pretrained(mname)
-    translator = AutoModelForSeq2SeqLM.from_pretrained(mname)
-
-    input_ids = translate_tokenizer.encode(input_text, return_tensors="pt")
-    outputs = translator.generate(input_ids)
-    text = translate_tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-    vae = get_vae(cache_dir="modelzoo/").to(device)
-
-    if width != 256 or height != 256:
-        vae.oversample_decode = partial(oversample_decode, vae)
-
-    pil_images = sample_images(
-        model=model,
-        vae=vae,
-        tokenizer=get_tokenizer(),
-        input_text=text,
-        num_images=num_outputs,
-        batch_size=batch_size,
-        height=height,
-        width=width,
-        stretched_size=stretched_size,
-        top_p=top_p,
-        model_name=model_name,
-        output_dir=output_dir,
-        save_intermediate=save_intermediate,
-    )
-    if upscale > 1:
-        pil_images = super_resolution(
-            pil_images, get_realesrgan(f"x{upscale}", device=device, fp16=True, cache_dir="modelzoo/"), batch_size=1
-        )
-    return pil_images
-
-
-if __name__ == "__main__":
     # fmt: off
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_dir", type=str, default=None, help="Directory with images to train on")
@@ -681,13 +378,16 @@ if __name__ == "__main__":
     parser.add_argument("--top_p", type=float, default=0.999, help="Effects how closely sampled images match training data. Lower values might give higher quality images at the cost of variation. A good range is between 0.9 and 0.999.")
     parser.add_argument("--device", type=str, default="cuda:0", help="The device to train on, using 'cpu' will take a long time!")
     parser.add_argument("--low_memory", action="store_true", help="Enable if you have less than 16 GB of (V)RAM to use gradient checkpointing (slower but more memory efficient)")
-    parser.add_argument("--sample_only", action="store_true", help="Skip finetuning and just sample images from a pre-trained model.")
     parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint to resume from. Defaults to official Malevich checkpoint.")
     parser.add_argument("--save_dir", type=str, default="modelzoo/", help="Directory to save finetuned checkpoints in.")
     parser.add_argument("--model_name", type=str, default=None, help="Name for finetuned checkpoints. Will default to the name of input_dir or the first input_img.")
     parser.add_argument("--output_dir", type=str, default="output/", help="Directory to save output images in.")
-    args = parser.parse_args()
     # fmt: on
+    return parser
+
+
+if __name__ == "__main__":
+    args = argument_parser().parse_args()
 
     assert len(args.captions) == 0 or len(args.input_imgs) == len(
         args.captions
@@ -707,38 +407,23 @@ if __name__ == "__main__":
     model_name = f"rudalle_finetuned_{Path(args.input_dir).stem if args.input_dir is not None else Path(args.input_imgs[0]).stem}"
     width, height = [int(v) for v in args.size.split(",")]
 
-    if not args.sample_only:
-        model, stretched_size = finetune(
-            images,
-            captions=args.captions,
-            model_name=model_name,
-            steps=args.steps,
-            lr=args.lr,
-            batch_size=args.train_batch_size,
-            height=height,
-            width=width,
-            stretch=args.stretch,
-            device=args.device,
-            low_memory=args.low_memory,
-            checkpoint=args.checkpoint,
-            save_dir=args.save_dir,
-        )
-    else:
-        # if sample_only, we need to load in the correct model and calcualate stretched size ourself
+    model, stretched_size = finetune(
+        images,
+        captions=args.captions,
+        model_name=model_name,
+        steps=args.steps,
+        lr=args.lr,
+        batch_size=args.train_batch_size,
+        height=height,
+        width=width,
+        stretch=args.stretch,
+        device=args.device,
+        low_memory=args.low_memory,
+        checkpoint=args.checkpoint,
+        save_dir=args.save_dir,
+    )
 
-        model = get_rudalle_model("Malevich", pretrained=True, fp16=True, device=device, cache_dir="modelzoo/")
-        if args.checkpoint is not None:
-            model.load_state_dict(torch.load(args.checkpoint))
-            print(f"Loaded from {args.checkpoint}")
-
-        stretched_size = None
-        if args.stretch:
-            original_size = (Image.open(images[0]) if isinstance(images[0], (str, Path)) else images[0]).size
-            w, h = original_size
-            short, long = (w, h) if w <= h else (h, w)
-            requested_new_short = min(w, h, 256)
-            new_short, new_long = requested_new_short, int(requested_new_short * long / short)
-            stretched_size = (new_short, new_long) if w <= h else (new_long, new_short)
+    from dalle.ru.generate import generate
 
     outputs = generate(
         model,

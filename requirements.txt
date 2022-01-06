@@ -14,3 +14,8 @@ joblib
 matplotlib
 scikit-learn
 npy-append-array
+more_itertools
+transformers
+ftfy
+omegaconf
+-e submodules/CLIP

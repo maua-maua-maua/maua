@@ -55,3 +55,6 @@
 [submodule "GAN"]
 	path = GAN
 	url = https://github.com/maua-maua-maua/GAN
+[submodule "submodules/minDALLE"]
+	path = submodules/minDALLE
+	url = https://github.com/kakaobrain/minDALL-E.git
