@@ -10,9 +10,9 @@ from utility import download, fetch, resample
 
 from .util import MakeCutouts, parse_prompt, range_loss, spherical_dist_loss, tv_loss
 
-sys.path += ["submodules/CLIP", "submodules/guided-diffusion"]
+sys.path += ["submodules/guided-diffusion"]
 
-import clip
+from maua.submodules.CLIP import clip
 from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
 

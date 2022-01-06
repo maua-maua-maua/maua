@@ -5,11 +5,11 @@ import gdown
 import torch
 import torch.nn as nn
 from nestedtensor import nested_tensor
-from ops.loss import feature_loss, gram_matrix
 from torch.utils.model_zoo import load_url
-from utility import download
 
-from perceptors import Perceptor
+from maua.ops.loss import feature_loss, gram_matrix
+from maua.perceptors import Perceptor
+from maua.utility import download
 
 
 class PGGPerceptor(Perceptor):

@@ -423,7 +423,7 @@ if __name__ == "__main__":
         save_dir=args.save_dir,
     )
 
-    from dalle.ru.generate import generate
+    from maua.dalle.ru.generate import generate
 
     outputs = generate(
         model,

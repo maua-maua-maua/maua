@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import List, Union
 
 import torch
-from ops.image import match_histogram, resample
-from ops.loss import tv_loss
-from ops.tensor import load_images, tensor2img
-from optimizers import load_optimizer, optimizer_choices
-from perceptors import Perceptor, load_perceptor
+from maua.ops.image import match_histogram, resample
+from maua.ops.loss import tv_loss
+from maua.ops.tensor import load_images, tensor2img
+from maua.optimizers import load_optimizer, optimizer_choices
+from maua.perceptors import Perceptor, load_perceptor
 from PIL import Image
 from torch import Tensor
 from torch.optim import Optimizer

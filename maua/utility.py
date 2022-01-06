@@ -1,4 +1,3 @@
-import math
 import os
 import urllib.request
 from pathlib import Path

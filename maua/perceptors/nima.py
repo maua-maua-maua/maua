@@ -15,7 +15,7 @@ import torchvision.models as models
 import torchvision.transforms.functional as tvtf
 from PIL import Image
 
-from submodules.NIMA.model.model import *
+from maua.submodules.NIMA.model.model import *
 
 if __name__ == "__main__":
     seed = 42

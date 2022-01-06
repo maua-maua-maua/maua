@@ -5,7 +5,7 @@ import torch
 from PIL import Image
 from torch import Tensor
 
-from style.video import transfer
+from .video import transfer
 
 
 @torch.no_grad()

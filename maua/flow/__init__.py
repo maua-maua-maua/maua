@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ops.image import luminance, resample
+from maua.ops.image import luminance, resample
 
 # remove shape asserts from optical flow files
 for file in [
