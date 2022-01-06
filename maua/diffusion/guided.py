@@ -1,19 +1,31 @@
+import argparse
 import os
 import sys
 
+import clip
 import lpips
 import torch
+from maua.dalle.ru.finetune import argument_parser
+from maua.ops.image import random_cutouts, resample
+from maua.ops.loss import range_loss, spherical_dist_loss, tv_loss
+from maua.utility import download, fetch
 from PIL import Image
 from torchvision import transforms
 from torchvision.transforms import functional as TF
-from utility import download, fetch, resample
 
-from .util import MakeCutouts, parse_prompt, range_loss, spherical_dist_loss, tv_loss
+sys.path += ["maua/submodules/guided_diffusion"]
 
-sys.path += ["submodules/guided-diffusion"]
-
-from maua.submodules.CLIP import clip
 from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
+
+
+def parse_prompt(prompt):
+    if prompt.startswith("http://") or prompt.startswith("https://"):
+        vals = prompt.rsplit(":", 2)
+        vals = [vals[0] + ":" + vals[1], *vals[2:]]
+    else:
+        vals = prompt.rsplit(":", 1)
+    vals = vals + ["", "1"][len(vals) :]
+    return vals[0], float(vals[1])
 
 
 def create_models(
@@ -80,8 +92,6 @@ def create_models(
 
 @torch.no_grad()
 def initialize(prompts, image_prompts, init_image, side_x, side_y, cutn, cut_pow, clip_models, device):
-    cutouters = [MakeCutouts(clip_model.visual.input_resolution, cutn, cut_pow) for clip_model in clip_models]
-
     target_embeds, weights = [[] for _ in range(len(clip_models))], []
 
     for prompt in prompts:
@@ -100,8 +110,12 @@ def initialize(prompts, image_prompts, init_image, side_x, side_y, cutn, cut_pow
                 TF.resize(img, min(side_x, side_y, *img.size), transforms.InterpolationMode.LANCZOS)
             ).unsqueeze(0)
         img = img.to(device)
-        for c, (make_cutouts, clip_model) in enumerate(zip(cutouters, clip_models)):
-            target_embeds[c].append(clip_model.encode_image(normalize(make_cutouts(img))).float())
+        for c, clip_model in enumerate(clip_models):
+            target_embeds[c].append(
+                clip_model.encode_image(
+                    normalize(random_cutouts(img, clip_model.visual.input_resolution, cutn, cut_pow))
+                ).float()
+            )
         weights.extend([0.5 * weight / cutn] * cutn)
 
     target_embeds = [torch.cat(target_embed) for target_embed in target_embeds]
@@ -119,7 +133,7 @@ def initialize(prompts, image_prompts, init_image, side_x, side_y, cutn, cut_pow
             init = TF.to_tensor(init.resize((side_x, side_y), Image.LANCZOS)).unsqueeze(0)
         init = init.to(device).mul(2).sub(1)
 
-    return cutouters, target_embeds, weights, init
+    return target_embeds, weights, init
 
 
 diffusion_model = None
@@ -164,7 +178,7 @@ def guided_diffusion(
             perceptor_names, diffusion_model_size, timestep_respacing, diffusion_steps, device
         )
 
-    cutouters, target_embeds, weights, init = initialize(
+    target_embeds, weights, init = initialize(
         prompts, image_prompts, init_image, side_x, side_y, cutn, cut_pow, clip_models, device
     )
 
@@ -180,9 +194,11 @@ def guided_diffusion(
             x_in_grad = torch.zeros_like(x_in)
             clip_in = x_in.add(1).div(2)
             losses = []
-            for make_cutouts, clip_model, target_embed in zip(cutouters, clip_models, target_embeds):
+            for clip_model, target_embed in zip(clip_models, target_embeds):
                 for i in range(cutn_batches):
-                    image_embeds = clip_model.encode_image(normalize(make_cutouts(clip_in))).float()
+                    image_embeds = clip_model.encode_image(
+                        normalize(random_cutouts(clip_in, clip_model.visual.input_resolution, cutn, cut_pow))
+                    ).float()
                     dists = spherical_dist_loss(image_embeds.unsqueeze(1), target_embed.unsqueeze(0))
                     dists = dists.view([cutn, n, -1])
                     losses.append(dists.mul(weights).sum(2).mean(0))
@@ -214,3 +230,67 @@ def guided_diffusion(
             for k, image in enumerate(sample["pred_xstart"]):
                 TF.to_pil_image(image.add(1).div(2).clamp(0, 1)).save(outname + f"_{seed}_{k}.png")
     return sample["pred_xstart"][0].add(1).div(2).clamp(0, 1)
+
+
+def argument_parser():
+    # fmt: off
+    parser = argparse.ArgumentParser()
+    parser.add_argument("prompts", nargs="+")
+    parser.add_argument("--image_prompts", nargs="*", default=[])
+    parser.add_argument("--init_image", default=None)
+    parser.add_argument("--size", default='512,512')
+    parser.add_argument("--diffusion_model_size", type=int, default=512)
+    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--clip_guidance_scale", type=float, default=5000)
+    parser.add_argument("--tv_scale", type=float, default=100)
+    parser.add_argument("--range_scale", type=float, default=50)
+    parser.add_argument("--init_scale", type=float, default=0)
+    parser.add_argument("--diffusion_steps", type=int, default=1000)
+    parser.add_argument("--timestep_respacing", type=str, default='1000')
+    parser.add_argument("--skip_timesteps", type=int, default=0)
+    parser.add_argument("--cutn", type=int, default=64)
+    parser.add_argument("--cutn_batches", type=int, default=1)
+    parser.add_argument("--cut_pow", type=float, default=0.5)
+    parser.add_argument("--device", default='cuda:0')
+    parser.add_argument("--perceptor_names", nargs='+', default=['ViT-B/32'])
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--out_dir", default="output/")
+    parser.add_argument("--out_name", default="guided_diffusion")
+    parser.add_argument("--save_intermediate", action='store_true')
+    # fmt: on
+    return parser
+
+
+def main(args):
+    side_x, side_y = [int(v) for v in args.size.split(",")]
+    imgs = guided_diffusion(
+        prompts=args.prompts,
+        image_prompts=args.image_prompts,
+        init_image=args.init_image,
+        side_x=side_x,
+        side_y=side_y,
+        diffusion_model_size=args.diffusion_model_size,
+        batch_size=args.batch_size,
+        clip_guidance_scale=args.clip_guidance_scale,
+        tv_scale=args.tv_scale,
+        range_scale=args.range_scale,
+        init_scale=args.init_scale,
+        diffusion_steps=args.diffusion_steps,
+        timestep_respacing=args.timestep_respacing,
+        skip_timesteps=args.skip_timesteps,
+        cutn=args.cutn,
+        cutn_batches=args.cutn_batches,
+        cut_pow=args.cut_pow,
+        device=args.device,
+        perceptor_names=args.perceptor_names,
+        seed=args.seed,
+        outname=f"{args.out_dir}/{args.out_name}",
+        save_intermediate=args.save_intermediate,
+        cache_model=False,
+    )
+    for k, image in enumerate(imgs):
+        TF.to_pil_image(image).save(f"{args.out_dir}/{args.out_name}_{k}.png")
+
+
+if __name__ == "__main__":
+    main(argument_parser().parse_args())

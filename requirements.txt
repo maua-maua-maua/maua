@@ -20,3 +20,4 @@ ftfy
 omegaconf
 youtokentome
 -e submodules/CLIP
+lpips
