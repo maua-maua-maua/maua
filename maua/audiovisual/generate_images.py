@@ -4,8 +4,9 @@ from typing import List, Tuple
 
 import numpy as np
 import torch
-from maua.ops.tensor import tensor2imgs
 from torch.nn.functional import one_hot
+
+from maua.ops.tensor import tensor2imgs
 
 from .wrappers import get_generator_classes
 

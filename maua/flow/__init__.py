@@ -124,4 +124,4 @@ def get_flow_model(which: List[str] = ["pwc", "spynet", "liteflownet"], use_trai
 
 
 from .consistency import check_consistency, motion_edge
-from .utils import resample_flow, read_flow, write_flow, flow_to_image
+from .utils import flow_to_image, read_flow, resample_flow, write_flow

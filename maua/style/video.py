@@ -6,6 +6,13 @@ from typing import List, Union
 import numpy as np
 import torch
 from decord import VideoReader, cpu
+from npy_append_array import NpyAppendArray as NpyFile
+from PIL import Image
+from scipy.ndimage import gaussian_filter
+from torch import Tensor
+from torch.nn.functional import grid_sample
+from tqdm import tqdm
+
 from maua.flow import check_consistency, get_flow_model, motion_edge, resample_flow
 from maua.flow.utils import flow_to_image
 from maua.ops.image import match_histogram, resample
@@ -13,12 +20,6 @@ from maua.ops.loss import feature_loss, tv_loss
 from maua.ops.tensor import load_images, write_video
 from maua.optimizers import load_optimizer, optimizer_choices
 from maua.perceptors import load_perceptor
-from npy_append_array import NpyAppendArray as NpyFile
-from PIL import Image
-from scipy.ndimage import gaussian_filter
-from torch import Tensor
-from torch.nn.functional import grid_sample
-from tqdm import tqdm
 
 from .parameterization.rgb import RGB
 

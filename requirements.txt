@@ -19,5 +19,9 @@ transformers
 ftfy
 omegaconf
 youtokentome
--e submodules/CLIP
+-e maua/submodules/CLIP
 lpips
+basicsr
+py7zr
+-e maua/submodules/RealESRGAN
+timm

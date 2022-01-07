@@ -28,14 +28,15 @@ from pathlib import Path
 
 import clip
 import torch
-from maua.ops.image import random_cutouts
-from maua.ops.loss import spherical_dist_loss
-from maua.utility import download
 from PIL import Image
 from torch.nn import functional as F
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm import trange
+
+from maua.ops.image import random_cutouts
+from maua.ops.loss import spherical_dist_loss
+from maua.utility import download
 
 from .guided import parse_prompt
 

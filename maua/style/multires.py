@@ -3,9 +3,10 @@ import sys
 from pathlib import Path
 
 import torch
+from PIL import Image
+
 from maua.ops.image import match_histogram, resample
 from maua.ops.tensor import img2tensor, tensor2img
-from PIL import Image
 
 from .transfer import transfer
 

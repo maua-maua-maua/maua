@@ -1,8 +1,7 @@
+import ffmpeg
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
-
-import ffmpeg
 
 from . import Renderer
 

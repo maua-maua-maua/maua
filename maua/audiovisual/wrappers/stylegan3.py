@@ -10,8 +10,7 @@ from . import MauaMapper, MauaSynthesizer
 
 sys.path.append("maua/GAN")
 from maua.GAN import dnnlib, legacy
-from maua.GAN.training.networks_stylegan3 import (MappingNetwork,
-                                                  SynthesisNetwork)
+from maua.GAN.training.networks_stylegan3 import MappingNetwork, SynthesisNetwork
 
 layer_multipliers = {
     1024: {0: 64, 1: 64, 2: 64, 3: 32, 4: 32, 5: 16, 6: 8, 7: 8, 8: 4, 9: 4, 10: 2, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1},

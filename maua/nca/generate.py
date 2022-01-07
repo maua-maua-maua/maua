@@ -2,8 +2,9 @@
 Based on https://github.com/znah/gitart_kunstformen_ca
 """
 
-from NCA_train import *
 from glob import glob
+
+from NCA_train import *
 
 model_file = f"{out_dir}{name(style_file)}_7500.pt"
 ca = torch.load(model_file)

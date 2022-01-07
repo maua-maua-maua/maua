@@ -17,9 +17,8 @@ import torchvision.models as models
 from tqdm import tqdm
 
 os.environ["FFMPEG_BINARY"] = "ffmpeg"
-from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
-
 from maua_utils import name
+from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
 
 torch.set_default_tensor_type("torch.cuda.FloatTensor")
 

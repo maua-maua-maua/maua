@@ -10,6 +10,10 @@ from torch import Tensor
 from torchvision.transforms.functional import to_tensor
 
 
+def load_image(im: Union[Tensor, Image, Path, str]):
+    return im if isinstance(im, Tensor) else (to_tensor(im) if isinstance(im, Image) else to_tensor(open_img(im)))
+
+
 def load_images(*inputs):
     results = []
     for maybe_nested_paths_imgs_or_tensors in inputs:
@@ -61,7 +65,7 @@ def tensor2imgs(tensor: torch.Tensor, format: str = "RGB") -> List[Image]:
     return [fromarray(tensor2bytes(img), format) for img in tensor]
 
 
-def write_video(tensor: Union[torch.Tensor, np.ndarray], output_file: str, fps: float=24) -> None:
+def write_video(tensor: Union[torch.Tensor, np.ndarray], output_file: str, fps: float = 24) -> None:
     """Write a tensor [T,C,H,W] to an mp4 file with FFMPEG.
 
     Args:

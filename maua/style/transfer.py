@@ -7,15 +7,16 @@ from pathlib import Path
 from typing import List, Union
 
 import torch
+from PIL import Image
+from torch import Tensor
+from torch.optim import Optimizer
+from tqdm import tqdm
+
 from maua.ops.image import match_histogram, resample
 from maua.ops.loss import tv_loss
 from maua.ops.tensor import load_images, tensor2img
 from maua.optimizers import load_optimizer, optimizer_choices
 from maua.perceptors import Perceptor, load_perceptor
-from PIL import Image
-from torch import Tensor
-from torch.optim import Optimizer
-from tqdm import tqdm
 
 from .parameterization import Parameterization
 from .parameterization.rgb import RGB

@@ -8,11 +8,11 @@ NIMA is released under the MIT license. See LICENSE for the fill license text.
 
 import argparse
 from glob import glob
-from numpy import arange
 
 import torch
 import torchvision.models as models
 import torchvision.transforms.functional as tvtf
+from numpy import arange
 from PIL import Image
 
 from maua.submodules.NIMA.model.model import *

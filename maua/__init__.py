@@ -1,6 +1,6 @@
 import argparse
 
-from . import dalle, diffusion
+from . import dalle, diffusion, super
 
 
 def argument_parser():
@@ -13,6 +13,12 @@ def argument_parser():
         "diffusion",
         parents=[diffusion.argument_parser()],
         help="Generate images using score-matching/diffusion models",
+        add_help=False,
+    )
+    subparsers.add_parser(
+        "super",
+        parents=[super.argument_parser()],
+        help="Upscale images using super resolution models",
         add_help=False,
     )
     return parser

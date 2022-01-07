@@ -1,24 +1,40 @@
-import argparse
 import os
 import sys
-from typing import List
+from pathlib import Path
+from typing import List, Union
 
 import numpy as np
 import torch
 from einops import rearrange
-from maua.utility import download
 from PIL import Image
-from torchvision.transforms.functional import resize, to_tensor
+from torch import Tensor
+from torchvision.transforms.functional import resize
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from maua.ops.tensor import load_image
+from maua.utility import download
 
 
-@torch.inference_mode()
-def latentdiffusion(images: List[Image.Image]):
-    sys.path.append("./submodules/latent_diffusion")
-    sys.path.append("./submodules/VQGAN")
+def load_model(model_name="latent-diffusion", device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+    for file in [
+        "maua/submodules/latent_diffusion/ldm/models/diffusion/ddim.py",
+        "maua/submodules/latent_diffusion/ldm/models/diffusion/ddpm.py",
+        "maua/submodules/latent_diffusion/ldm/modules/diffusionmodules/model.py",
+        "maua/submodules/latent_diffusion/ldm/util.py",
+    ]:
+        with open(file, "r") as f:
+            txt = (
+                f.read()
+                .replace("print", "None # print")
+                .replace("None # None #", "None #")
+                .replace("    self.z_shape, np.prod(self.z_shape)))", "#    self.z_shape, np.prod(self.z_shape)))")
+            )
+        with open(file, "w") as f:
+            f.write(txt)
+
+    sys.path.append("maua/submodules/latent_diffusion")
+    sys.path.append("maua/submodules/VQGAN")
     from ldm.models.diffusion.ddim import DDIMSampler
-    from ldm.util import instantiate_from_config, ismap
+    from ldm.util import instantiate_from_config
     from omegaconf import OmegaConf
 
     path_conf = "modelzoo/latent-diffusion/superresolution_bsr_config_project.yaml"
@@ -31,12 +47,16 @@ def latentdiffusion(images: List[Image.Image]):
     model = instantiate_from_config(OmegaConf.load(path_conf).model)
     sd = torch.load(path_ckpt, map_location="cpu")["state_dict"]
     model.load_state_dict(sd, strict=False)
-    model = model.cuda().eval()
+    model = model.to(device).eval()
+    return model, DDIMSampler, device
 
+
+@torch.inference_mode()
+def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
+    model, DDIMSampler, device = model
     up_f = 4
-
     for img in images:
-        c = torch.unsqueeze(to_tensor(img), 0)
+        c = load_image(img).unsqueeze(0)
         example = dict(
             LR_image=rearrange(c, "1 c h w -> 1 h w c").mul(2).add(-1).to(device),
             image=rearrange(resize(c, size=[up_f * c.size(2), up_f * c.size(3)], antialias=True), "1 c h w -> 1 h w c"),

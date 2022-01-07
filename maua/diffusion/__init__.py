@@ -1,6 +1,6 @@
 import argparse
 
-from . import guided, v, cfg  # , glide, latent
+from . import cfg, guided, v  # , glide, latent
 
 
 def argument_parser():
@@ -18,13 +18,13 @@ def argument_parser():
         help="Generate images with classifier-free guided diffusion",
         add_help=False,
     ).set_defaults(func=cfg.main)
-    # subparsers.add_parser(
+    # subparsers.add_parser( # TODO
     #     "glide",
     #     parents=[glide.argument_parser()],
     #     help="Generate images with GLIDE",
     #     add_help=False,
     # ).set_defaults(func=glide.main)
-    # subparsers.add_parser(
+    # subparsers.add_parser( # TODO
     #     "latent",
     #     parents=[latent.argument_parser()],
     #     help="Generate images with latent diffusion",
