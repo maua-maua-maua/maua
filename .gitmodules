@@ -58,3 +58,6 @@
 [submodule "maua/submodules/minDALLE"]
 	path = maua/submodules/minDALLE
 	url = https://github.com/kakaobrain/minDALL-E.git
+[submodule "maua/submodules/waifu2x"]
+	path = maua/submodules/waifu2x
+	url = https://github.com/yu45020/Waifu2x.git

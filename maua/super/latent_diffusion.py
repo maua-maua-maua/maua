@@ -6,10 +6,9 @@ from typing import List
 import numpy as np
 import torch
 from einops import rearrange
+from maua.utility import download
 from PIL import Image
 from torchvision.transforms.functional import resize, to_tensor
-
-from maua_utils import download
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

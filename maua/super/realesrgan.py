@@ -1,14 +1,15 @@
 import argparse
 import os
 import sys
-from typing import  List
+from typing import List
 
 import torch
 from PIL import Image
 
-from maua_utils import download
+from maua.utility import download
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 @torch.inference_mode()
 def realesrgan(images: List[Image.Image]):
@@ -33,4 +34,3 @@ def realesrgan(images: List[Image.Image]):
 
     for img in images:
         yield upsampler.enhance(img, outscale=4)[0]
-

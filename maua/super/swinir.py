@@ -4,7 +4,7 @@ from typing import List
 
 import numpy as np
 import torch
-from utility import download
+from maua.utility import download
 from PIL import Image
 from torchvision.transforms.functional import to_tensor
 

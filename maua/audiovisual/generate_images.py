@@ -4,9 +4,9 @@ from typing import List, Tuple
 
 import numpy as np
 import torch
+from maua.ops.tensor import tensor2imgs
 from torch.nn.functional import one_hot
 
-from .util import tensor2imgs
 from .wrappers import get_generator_classes
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
