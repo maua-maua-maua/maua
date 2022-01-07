@@ -400,7 +400,7 @@ def main(args):
         if args.num_examples is not None:
             images = random.choices(images, k=args.num_examples)
 
-    model_name = f"rudalle_finetuned_{Path(args.input_dir).stem if args.input_dir is not None else Path(args.input_imgs[0]).stem}"
+    model_name = f"{Path(args.input_dir).stem if args.input_dir is not None else Path(args.input_imgs[0]).stem}_rudalle_finetuned"
     width, height = [int(v) for v in args.size.split(",")]
 
     model, stretched_size = finetune(

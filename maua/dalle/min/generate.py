@@ -62,7 +62,7 @@ def main(args):
         device=torch.device(args.device),
     )
 
-    output_name = args.prompt.replace(" ", "_")
+    output_name = args.prompt.replace(" ", "_") + "_mindalle"
     for id, im in enumerate((images[: args.num_outputs] * 255).astype(np.uint8)):
         Image.fromarray(im).save(f"{args.output_dir}/{output_name}_{id}.png")
 

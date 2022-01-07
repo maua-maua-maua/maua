@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+from pathlib import Path
 
 import clip
 import lpips
@@ -177,6 +178,7 @@ def guided_diffusion(
         diffusion_model, diffusion, sample_fn, clip_models, normalize, lpips_model = create_models(
             perceptor_names, diffusion_model_size, timestep_respacing, diffusion_steps, device
         )
+    sqrt_one_minus_alphas_cumprod = torch.from_numpy(diffusion.sqrt_one_minus_alphas_cumprod).to(device)
 
     target_embeds, weights, init = initialize(
         prompts, image_prompts, init_image, side_x, side_y, cutn, cut_pow, clip_models, device
@@ -189,7 +191,7 @@ def guided_diffusion(
             cur_t = torch.round(t * int(timestep_respacing) / diffusion_steps).long()
             my_t = torch.ones([n], device=device, dtype=torch.long) * cur_t
             out = diffusion.p_mean_variance(diffusion_model, x, my_t, clip_denoised=False, model_kwargs={"y": y})
-            fac = diffusion.sqrt_one_minus_alphas_cumprod[cur_t]
+            fac = sqrt_one_minus_alphas_cumprod[cur_t].reshape(-1, 1, 1, 1)
             x_in = out["pred_xstart"] * fac + x * (1 - fac)
             x_in_grad = torch.zeros_like(x_in)
             clip_in = x_in.add(1).div(2)
@@ -228,8 +230,8 @@ def guided_diffusion(
     ):
         if save_intermediate and j % 25 == 0:
             for k, image in enumerate(sample["pred_xstart"]):
-                TF.to_pil_image(image.add(1).div(2).clamp(0, 1)).save(outname + f"_{seed}_{k}.png")
-    return sample["pred_xstart"][0].add(1).div(2).clamp(0, 1)
+                TF.to_pil_image(image.add(1).div(2).clamp(0, 1)).save(f"{outname}_{seed}_{k}.png")
+    return sample["pred_xstart"].add(1).div(2).clamp(0, 1)
 
 
 def argument_parser():
@@ -238,7 +240,7 @@ def argument_parser():
     parser.add_argument("prompts", nargs="+")
     parser.add_argument("--image_prompts", nargs="*", default=[])
     parser.add_argument("--init_image", default=None)
-    parser.add_argument("--size", default='512,512')
+    parser.add_argument("--size", default="512,512")
     parser.add_argument("--diffusion_model_size", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--clip_guidance_scale", type=float, default=5000)
@@ -246,23 +248,28 @@ def argument_parser():
     parser.add_argument("--range_scale", type=float, default=50)
     parser.add_argument("--init_scale", type=float, default=0)
     parser.add_argument("--diffusion_steps", type=int, default=1000)
-    parser.add_argument("--timestep_respacing", type=str, default='1000')
+    parser.add_argument("--timestep_respacing", type=str, default="1000")
     parser.add_argument("--skip_timesteps", type=int, default=0)
     parser.add_argument("--cutn", type=int, default=64)
     parser.add_argument("--cutn_batches", type=int, default=1)
     parser.add_argument("--cut_pow", type=float, default=0.5)
-    parser.add_argument("--device", default='cuda:0')
-    parser.add_argument("--perceptor_names", nargs='+', default=['ViT-B/32'])
+    parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--perceptor_names", nargs="+", default=["ViT-B/32"])
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--out_dir", default="output/")
-    parser.add_argument("--out_name", default="guided_diffusion")
-    parser.add_argument("--save_intermediate", action='store_true')
+    parser.add_argument("--out_name", default=None)
     # fmt: on
     return parser
 
 
 def main(args):
     side_x, side_y = [int(v) for v in args.size.split(",")]
+    out_name = (
+        args.out_name
+        if args.out_name is not None
+        else "_".join([p.replace(" ", "_") for p in args.prompts] + [Path(i).stem for i in args.image_prompts])
+        + "_guided_diffusion"
+    )
     imgs = guided_diffusion(
         prompts=args.prompts,
         image_prompts=args.image_prompts,
@@ -284,12 +291,12 @@ def main(args):
         device=args.device,
         perceptor_names=args.perceptor_names,
         seed=args.seed,
-        outname=f"{args.out_dir}/{args.out_name}",
-        save_intermediate=args.save_intermediate,
+        outname=f"{args.out_dir}/{out_name}",
+        save_intermediate=True,
         cache_model=False,
     )
     for k, image in enumerate(imgs):
-        TF.to_pil_image(image).save(f"{args.out_dir}/{args.out_name}_{k}.png")
+        TF.to_pil_image(image).save(f"{args.out_dir}/{out_name}_{k}.png")
 
 
 if __name__ == "__main__":

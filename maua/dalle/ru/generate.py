@@ -363,7 +363,8 @@ def main(args):
         if args.checkpoint is not None:
             output_name = Path(args.checkpoint).stem
         else:
-            output_name = "ru-dalle"
+            output_name = ""
+    output_name += "_rudalle"
 
     outputs = generate(
         model,
