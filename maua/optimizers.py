@@ -31,18 +31,18 @@ optimizer_choices = {
 }
 
 
-def load_optimizer(name, kwargs, n_iters, params):
+def load_optimizer(name, lr, kwargs, n_iters, params):
     if name == "LBFGS":
         if kwargs == {}:
             kwargs = dict(tolerance_grad=-1, tolerance_change=-1)
-        return optim.LBFGS(params, max_iter=n_iters, **kwargs), 1
+        return optim.LBFGS(params, lr=lr, max_iter=n_iters, **kwargs), 1
 
     if "LBFGS-" in name:
         max_iter = int(name.split("-")[1])
-        return optim.LBFGS(params, max_iter=max_iter, **kwargs), n_iters // max_iter
+        return optim.LBFGS(params, lr=lr, max_iter=max_iter, **kwargs), n_iters // max_iter
 
     if name in optimizer_choices:
-        return optimizer_choices[name](params, **kwargs), n_iters
+        return optimizer_choices[name](params, lr=lr, **kwargs), n_iters
 
     raise Exception(
         f"Optimizer {name} not recognized! Choices are: {['LBFGS', 'LBFGS20'] + list(optimizer_choices.keys())}"

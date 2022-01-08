@@ -29,7 +29,7 @@ class PGGPerceptor(Perceptor):
         if style_layers is None:
             style_layers = default_layers[model_name]["style"]
 
-        super().__init__(content_layers, style_layers)
+        super().__init__(content_strength, content_layers, style_strength, style_layers)
 
         net = select_model(model_name.lower(), pooling)
         self.net = nn.Sequential(
@@ -37,84 +37,10 @@ class PGGPerceptor(Perceptor):
         )
 
         # convert to BGR and scale to range Caffe VGGs expect
-        self.preprocess = (
-            lambda x: 255 * x[:, [2, 1, 0]]
-            - torch.tensor([[103.939, 116.779, 123.68]], device=x.device)[..., None, None]
-        )
+        mean_pixel = torch.tensor([103.939, 116.779, 123.68]) / 255
+        self.preprocess = lambda x: 255 * (x[:, [2, 1, 0]] - mean_pixel.to(x.device).reshape(1, 3, 1, 1))
 
-        self.embeddings = [None for _ in content_layers + style_layers]
-        self.targets = None
-        self.loss = 0
-
-        for c, layer in enumerate(content_layers):
-
-            def content_hook(module, input, output, l=c):
-                embedding = output.squeeze().flatten(1)
-                if self.targets is None:
-                    self.embeddings[l] = embedding
-                else:
-                    self.loss += content_strength * feature_loss(embedding, self.targets[l])
-
-            getattr(net, str(layer)).register_forward_hook(content_hook)
-
-        for s, layer in enumerate(style_layers):
-
-            def style_hook(module, input, output, l=c + 1 + s):
-                embedding = gram_matrix(output)
-                if self.targets is None:
-                    self.embeddings[l] = embedding
-                else:
-                    self.loss += style_strength * feature_loss(embedding, self.targets[l])
-
-            getattr(net, str(layer)).register_forward_hook(style_hook)
-
-    def get_target_embeddings(self, contents=None, styles=None, content_weights=None, style_weights=None):
-        if isinstance(contents, torch.Tensor):
-            contents = [contents]
-
-        content_embeddings = None
-        if contents is not None:
-            if content_weights is None:
-                content_weights = torch.ones(len(contents))
-            content_weights /= content_weights.sum()
-
-            for content, content_weight in zip(contents, content_weights):
-                if content_embeddings is None:
-                    content_embeddings = content_weight * self.forward(content)[: len(self.content_layers)]
-                else:
-                    content_embeddings += content_weight * self.forward(content)[: len(self.content_layers)]
-
-        style_embeddings = None
-        if styles is not None:
-            if style_weights is None:
-                style_weights = torch.ones(len(styles))
-            style_weights /= style_weights.sum()
-
-            for style, style_weight in zip(styles, style_weights):
-                if style_embeddings is None:
-                    style_embeddings = style_weight * self.forward(style)[len(self.content_layers) :]
-                else:
-                    style_embeddings += style_weight * self.forward(style)[len(self.content_layers) :]
-
-        if content_embeddings is None:
-            return style_embeddings
-        if style_embeddings is None:
-            return content_embeddings
-        return torch.cat((content_embeddings, style_embeddings))
-
-    def forward(self, x):
-        self.net(self.preprocess(x))
-        return nested_tensor(self.embeddings, device=x.device)
-
-    def get_loss(self, x, targets):
-        assert len(targets) == len(
-            self.embeddings
-        ), f"The target embeddings don't match this perceptor's embeddings: {len(targets)}. Expected: {len(self.embeddings)}"
-        self.loss = 0
-        self.targets = targets
-        self.forward(x)
-        self.targets = None
-        return self.loss
+        self.register_layer_hooks()
 
 
 default_layers = {
@@ -195,7 +121,8 @@ def select_model(model_name, pooling):
     else:
         raise ValueError("Model architecture not recognized.")
 
-    cnn.load_state_dict(torch.load(model_file))
+    state_dict = torch.load(model_file)
+    cnn.load_state_dict(state_dict)
 
     for param in cnn.parameters():
         param.requires_grad = False

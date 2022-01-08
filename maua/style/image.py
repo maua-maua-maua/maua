@@ -27,17 +27,16 @@ def transfer(
     init_type="content",
     match_hist="avg",
     size=512,
-    perceptor="pgg-vgg19",
+    perceptor="kbc-vgg19",
     perceptor_kwargs={},
     optimizer="LBFGS",
+    lr=0.5,
     optimizer_kwargs={},
-    n_iters=500,
+    n_iters=512,
     content_weight=1,
     style_weight=50,
-    tv_weight=1,
+    tv_weight=100,
     style_scale=1,
-    content_layers: List[int] = None,
-    style_layers: List[int] = None,
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ):
     """Perform a neural style transfer
@@ -49,9 +48,10 @@ def transfer(
         init_type (str, optional): How to initialize the image for optimization. Choices ['content', 'random', 'init_img'].
         match_hist (str, optional): How to match color histogram of intermediate images. Choices ['avg', False].
         size (int, optional): Size of output image.
-        perceptor (str, optional): Which perceptor to optimize with. Choices ["pgg-vgg19", "pgg-vgg16", "pgg-prune", "pgg-nyud", "pgg-fcn32s", "pgg-sod", "pgg-nin"].
+        perceptor (str, optional): Which perceptor to optimize with. Choices ["kbc-vgg19", "pgg-vgg19", "pgg-vgg16", "pgg-prune", "pgg-nyud", "pgg-fcn32s", "pgg-sod", "pgg-nin"].
         perceptor_kwargs (dict, optional): Key word arguments for the Perceptor class.
         optimizer (str, optional): Optimizer to use. For choices see optimizers.py
+        lr (float, optional): Optimizer learning rate.
         optimizer_kwargs (dict, optional): Key word arguments for the optimizer.
         n_iters (int, optional): Number of iterations to optimize for.
         content_weight (int, optional): Strength of content preserving loss. Higher values will lead to outputs which better preserve the content's structure and texture.
@@ -80,11 +80,7 @@ def transfer(
     pastiche = RGB(content_img.shape[2], content_img.shape[3], tensor=init_tensor).to(device)
 
     perceptor = load_perceptor(perceptor)(
-        content_layers,
-        style_layers,
-        content_strength=content_weight,
-        style_strength=style_weight,
-        **perceptor_kwargs,
+        content_strength=content_weight, style_strength=style_weight, **perceptor_kwargs
     ).to(device)
     target_embeddings = perceptor.get_target_embeddings(content_img, style_imgs)
 
@@ -92,21 +88,20 @@ def transfer(
     gc.collect()
     torch.cuda.empty_cache()
 
-    with torch.enable_grad():  # , tqdm(total=n_iters, desc=f"Optimizing @ {size}px") as pbar:
+    with torch.enable_grad(), tqdm(total=n_iters, desc=f"Optimizing @ {size}px") as pbar:
 
-        opt, niter = load_optimizer(optimizer, optimizer_kwargs, n_iters, pastiche.parameters())
+        opt, niter = load_optimizer(optimizer, lr, optimizer_kwargs, n_iters, pastiche.parameters())
 
         def closure():
             opt.zero_grad()
             img = pastiche()
 
             loss = perceptor.get_loss(img, target_embeddings)
-            print(img.min().item(), img.mean().item(), img.max().item(), loss.item(), tv_loss(img).item())
             if tv_weight > 0:
                 loss += tv_weight * tv_loss(img)
 
             loss.backward()
-            # pbar.update()
+            pbar.update()
             return loss
 
         for _ in range(niter):
@@ -126,20 +121,18 @@ def argument_parser():
     parser.add_argument("--init_type", default="content", choices=['content', 'random', 'init_img'])
     parser.add_argument("--match_hist", default="avg", choices=['avg', 'False'])
     parser.add_argument("--size", type=int, default=512)
-    parser.add_argument("--perceptor", default="pgg-vgg19", choices=["pgg-vgg19", "pgg-vgg16", "pgg-prune", "pgg-nyud", "pgg-fcn32s", "pgg-sod", "pgg-nin"])
+    parser.add_argument("--perceptor", default="kbc-vgg19", choices=["kbc-vgg19" ,"pgg-vgg19", "pgg-vgg16", "pgg-prune", "pgg-nyud", "pgg-fcn32s", "pgg-sod", "pgg-nin"])
     parser.add_argument("--perceptor_kwargs", nargs="*", default=[])
     parser.add_argument("--optimizer", default="LBFGS", choices=['LBFGS'] + list(optimizer_choices.keys()))
+    parser.add_argument("--lr", type=float, default=0.5)
     parser.add_argument("--optimizer_kwargs", nargs="*", default=[])
-    parser.add_argument("--n_iters", type=int, default=500)
+    parser.add_argument("--n_iters", type=int, default=512)
     parser.add_argument("--content_weight", type=float, default=1)
     parser.add_argument("--style_weight", type=float, default=50)
-    parser.add_argument("--tv_weight", type=float, default=1)
+    parser.add_argument("--tv_weight", type=float, default=100)
     parser.add_argument("--style_scale", type=float, default=1)
-    parser.add_argument("--content_layers", default=None)
-    parser.add_argument("--style_layers", default=None)
     parser.add_argument("--device", default=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
     # fmt: on
-
     return parser
 
 
@@ -170,14 +163,13 @@ def main(args):
         perceptor=args.perceptor,
         perceptor_kwargs=perceptor_kwargs,
         optimizer=args.optimizer,
+        lr=args.lr,
         optimizer_kwargs=optimizer_kwargs,
         n_iters=args.n_iters,
         content_weight=args.content_weight,
         style_weight=args.style_weight,
         tv_weight=args.tv_weight,
         style_scale=args.style_scale,
-        content_layers=args.content_layers,
-        style_layers=args.style_layers,
         device=args.device,
     )
     tensor2img(img).save(f"output/{'_'.join([Path(arg).stem for arg in [args.content] + args.styles])}.png")

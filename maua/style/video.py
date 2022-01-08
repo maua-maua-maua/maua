@@ -42,7 +42,7 @@ def flow_warp_map(raw_flow: np.ndarray, size: int) -> torch.Tensor:
     flow[..., 1] /= h
 
     neutral = torch.stack(torch.meshgrid(torch.linspace(-1, 1, h), torch.linspace(-1, 1, w), indexing="ij"), axis=2)
-    warp_map = neutral + flow[..., [1, 0]]
+    warp_map = neutral[..., [1, 0]] + flow[..., [1, 0]]
 
     return warp_map.unsqueeze(0)
 
@@ -141,22 +141,21 @@ def transfer(
     init_type="content",
     match_hist="avg",
     size=512,
-    perceptor="pgg-vgg19",
+    perceptor="kbc-vgg19",
     perceptor_kwargs={},
     optimizer="LBFGS",
+    lr=0.5,
     optimizer_kwargs={},
     flow_models=["farneback"],
     n_iters=512,
     n_passes=16,
-    temporal_loss_after=2,
+    temporal_loss_after=-1,
     blend_factor=1,
     content_weight=1,
-    style_weight=10000,
-    tv_weight=1,
-    temporal_weight=1000,
+    style_weight=5000,
+    tv_weight=10,
+    temporal_weight=100,
     style_scale=1,
-    content_layers: List[int] = None,
-    style_layers: List[int] = None,
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     save_intermediate=False,
     fps=24,
@@ -170,9 +169,10 @@ def transfer(
         init_type (str, optional): How to initialize the image for optimization. Choices ["content", "random", "prev_warped", "init_video"].
         match_hist (str, optional): How to match color histogram of intermediate images. Choices ["avg", False].
         size (int, optional): Size of output image.
-        perceptor (str, optional): Which perceptor to optimize with. Choices ["pgg-vgg19", "pgg-vgg16", "pgg-prune", "pgg-nyud", "pgg-fcn32s", "pgg-sod", "pgg-nin"].
+        perceptor (str, optional): Which perceptor to optimize with. Choices ["kbc-vgg19", "pgg-vgg19", "pgg-vgg16", "pgg-prune", "pgg-nyud", "pgg-fcn32s", "pgg-sod", "pgg-nin"].
         perceptor_kwargs (dict, optional): Key word arguments for the Perceptor class.
         optimizer (str, optional): Optimizer to use. For choices see optimizers.py
+        lr (float, optional): Optimizer learning rate.
         optimizer_kwargs (dict, optional): Key word arguments for the optimizer.
         flow_models (list, optional): A list of models to use calculate optical flow. Choices ["spynet", "pwc", "liteflownet", "unflow", "farneback"]
         n_iters (int, optional): Number of iterations to optimize for.
@@ -198,11 +198,7 @@ def transfer(
     content, forward, backward, reliable = preprocess_optical_flow(content_video, get_flow_model(flow_models))
 
     perceptor = load_perceptor(perceptor)(
-        content_layers,
-        style_layers,
-        content_strength=content_weight,
-        style_strength=style_weight,
-        **perceptor_kwargs,
+        content_strength=content_weight, style_strength=style_weight, **perceptor_kwargs
     ).to(device)
     style_embeddings = perceptor.get_target_embeddings(contents=None, styles=style_imgs)
     style_imgs = [im.cpu() for im in style_imgs]
@@ -214,8 +210,6 @@ def transfer(
     prev_frame_file = f"workspace/{Path(content_video).stem}_frames_prev.npy"
     next_frame_file = f"workspace/{Path(content_video).stem}_frames_next.npy"
 
-    # from contextlib import nullcontext
-    # with nullcontext:
     with tqdm(total=n_iters * len(content)) as pbar:
         for p_n in range(n_passes):
             pbar.set_description(f"Optimizing @ {size}px pass {p_n + 1} of {n_passes}")
@@ -241,14 +235,14 @@ def transfer(
                     if using_blending or using_temporal_loss or init_type == "prev_warped":
                         flow_map = flow_warp_map((forward if d == 1 else backward)[f_n], size).to(device)
                         flow_mask = resample(torch.from_numpy(reliable[None, [f_n]].copy()).to(device), size)
-                        prev_warped = grid_sample(prev_frame, flow_map, padding_mode="reflection", align_corners=False)
+                        prev_warped = grid_sample(prev_frame, flow_map, padding_mode="border", align_corners=False)
 
                     init_tensor = None
                     if init_type == "prev_warped":
                         init_tensor = prev_warped
                     elif p_n == 0:
                         if init_type == "random":
-                            init_tensor = torch.empty_like(curr_frame).uniform_()
+                            init_tensor = torch.empty_like(curr_frame).uniform_().mul(0.1)
                         elif init_type == "init_video" and init_video is not None:
                             init_tensor = init_video[[f_n]]
                             if isinstance(init_tensor, np.ndarray):
@@ -267,8 +261,9 @@ def transfer(
                     del curr_frame, prev_frame, init_tensor
 
                     with torch.enable_grad():
+
                         opt, niter = load_optimizer(
-                            optimizer, optimizer_kwargs, n_iters // n_passes, pastiche.parameters()
+                            optimizer, lr, optimizer_kwargs, n_iters // n_passes, pastiche.parameters()
                         )
 
                         def closure():
@@ -285,23 +280,12 @@ def transfer(
                                 loss += temporal_weight * feature_loss(img, prev_warped)
 
                             loss.backward()
-                            # grads = next(pastiche.parameters()).grad
-                            # print(
-                            #     f_n,
-                            #     img.min().item(),
-                            #     img.mean().item(),
-                            #     img.max().item(),
-                            #     log(grads.min()).item(),
-                            #     log(grads.mean()).item(),
-                            #     log(grads.max()).item(),
-                            # )
                             pbar.update()
                             return loss
 
                         for _ in range(niter):
                             opt.step(closure)
 
-                    # print()
                     result = match_histogram(pastiche(), style_imgs, match_hist).detach().cpu().numpy()
                     styled.append(result)
 
@@ -323,22 +307,21 @@ def argument_parser():
     parser.add_argument("--init_type", default="content", choices=["content", "random", "prev_warped"])
     parser.add_argument("--match_hist", default="avg", choices=["avg", False])
     parser.add_argument("--size", type=int, default=512)
-    parser.add_argument("--perceptor", default="pgg-vgg19", choices=["pgg-vgg19", "pgg-vgg16", "pgg-prune", "pgg-nyud", "pgg-fcn32s", "pgg-sod", "pgg-nin"])
+    parser.add_argument("--perceptor", default="kbc-vgg19", choices=["kbc-vgg19", "pgg-vgg19", "pgg-vgg16", "pgg-prune", "pgg-nyud", "pgg-fcn32s", "pgg-sod", "pgg-nin"])
     parser.add_argument("--perceptor_kwargs", default={})
     parser.add_argument("--optimizer", default="LBFGS", choices=["LBFGS","LBFGS-20"] + list(optimizer_choices.keys()))
+    parser.add_argument("--lr", type=float,default=0.5)
     parser.add_argument("--optimizer_kwargs", default={})
     parser.add_argument("--flow_models", nargs="+", default=["farneback"], choices=["farneback", "spynet", "pwc", "liteflownet", "unflow"])
     parser.add_argument("--n_iters", type=int, default=512)
     parser.add_argument("--n_passes", type=int, default=16)
-    parser.add_argument("--temporal_loss_after", type=int, default=0)
+    parser.add_argument("--temporal_loss_after", type=int, default=2)
     parser.add_argument("--blend_factor", type=float, default=1)
     parser.add_argument("--content_weight", type=float, default=1)
-    parser.add_argument("--style_weight", type=float, default=10000)
-    parser.add_argument("--tv_weight", type=float, default=1)
-    parser.add_argument("--temporal_weight", type=float, default=7500)
+    parser.add_argument("--style_weight", type=float, default=5000)
+    parser.add_argument("--tv_weight", type=float, default=10)
+    parser.add_argument("--temporal_weight", type=float, default=100)
     parser.add_argument("--style_scale", type=float, default=1)
-    parser.add_argument("--content_layers", default=None)
-    parser.add_argument("--style_layers", default=None)
     parser.add_argument("--device", default=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
     parser.add_argument("--save_intermediate", action="store_true")
     parser.add_argument("--fps", type=float, default=24)
@@ -357,6 +340,7 @@ def main(args):
         perceptor=args.perceptor,
         perceptor_kwargs=args.perceptor_kwargs,
         optimizer=args.optimizer,
+        lr=args.lr,
         optimizer_kwargs=args.optimizer_kwargs,
         flow_models=args.flow_models,
         n_iters=args.n_iters,
@@ -368,8 +352,6 @@ def main(args):
         tv_weight=args.tv_weight,
         temporal_weight=args.temporal_weight,
         style_scale=args.style_scale,
-        content_layers=args.content_layers,
-        style_layers=args.style_layers,
         device=args.device,
         save_intermediate=output_name,
         fps=args.fps,

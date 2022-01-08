@@ -22,12 +22,11 @@ def transfer_multires(
     perceptor,
     perceptor_kwargs,
     optimizer,
+    lr,
     optimizer_kwargs,
     n_iters,
     content_weight,
-    content_layers,
     style_weight,
-    style_layers,
     style_scale,
     device,
 ):
@@ -39,7 +38,7 @@ def transfer_multires(
     elif init_type == "content":
         img = content_img
     elif init_type == "random":
-        img = torch.empty((1, 3, sizes[0], sizes[0]), device=device).uniform_()
+        img = torch.empty((1, 3, sizes[0], sizes[0]), device=device).uniform_().mul(0.1)
 
     for size, iters in zip(sizes, n_iters):
         img = resample(img, size)
@@ -53,12 +52,11 @@ def transfer_multires(
             perceptor=perceptor,
             perceptor_kwargs=perceptor_kwargs,
             optimizer=optimizer,
+            lr=lr,
             optimizer_kwargs=optimizer_kwargs,
             n_iters=iters,
             content_weight=content_weight,
-            content_layers=content_layers,
             style_weight=style_weight,
-            style_layers=style_layers,
             style_scale=style_scale,
             device=device,
         )
@@ -79,12 +77,11 @@ if __name__ == "__main__":
         perceptor="pgg-vgg19",
         perceptor_kwargs={},
         optimizer="LBFGS",
+        lr=0.5,
         optimizer_kwargs=dict(tolerance_grad=-1.0, tolerance_change=-1.0, history_size=100),
         n_iters=[500, 400, 300, 200, 100],
         content_weight=1,
-        content_layers=[26],
         style_weight=5000,
-        style_layers=[3, 8, 17, 26, 35],
         style_scale=1,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     )

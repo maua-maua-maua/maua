@@ -30,15 +30,24 @@ def normalize_weights(tensor, strategy: str):
     return 1
 
 
+def scaled_mse_loss(input: torch.Tensor, target: torch.Tensor, eps: float = 1e-8):
+    """Computes MSE scaled such that its gradient L1 norm is approximately 1."""
+    diff = input - target
+    return diff.pow(2).sum() / diff.abs().sum().add(eps)
+
+
 def feature_loss(
-    input_features: torch.Tensor,
-    target_features: torch.Tensor,
+    input: torch.Tensor,
+    target: torch.Tensor,
     norm_weights: Optional[str] = "elements",
-    norm_grads: bool = True,
+    scaled: bool = True,
 ):
-    loss = mse_loss(input_features, target_features)
-    loss /= normalize_weights(input_features, norm_weights)
-    if norm_grads:
+    if scaled:
+        loss = scaled_mse_loss(input, target)
+        loss /= normalize_weights(input, norm_weights)
+    else:
+        loss = mse_loss(input, target)
+        loss /= normalize_weights(input, norm_weights)
         loss = normalize_gradients(loss)
     return loss
 
