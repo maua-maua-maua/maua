@@ -19,9 +19,8 @@ from maua.ops.image import match_histogram, resample
 from maua.ops.loss import feature_loss, tv_loss
 from maua.ops.tensor import load_images, write_video
 from maua.optimizers import load_optimizer, optimizer_choices
+from maua.parameterizations.rgb import RGB
 from maua.perceptors import load_perceptor
-
-from .parameterization.rgb import RGB
 
 
 def scaled_height_width(h, w, size):
@@ -286,7 +285,7 @@ def transfer(
                                 loss += temporal_weight * feature_loss(img, prev_warped)
 
                             loss.backward()
-                            grads = next(pastiche.parameters()).grad
+                            # grads = next(pastiche.parameters()).grad
                             # print(
                             #     f_n,
                             #     img.min().item(),
@@ -344,12 +343,10 @@ def argument_parser():
     parser.add_argument("--save_intermediate", action="store_true")
     parser.add_argument("--fps", type=float, default=24)
     # fmt: on
-
     return parser
 
 
-if __name__ == "__main__":
-    args = argument_parser().parse_args()
+def main(args):
     output_name = "output/" + "_".join([Path(v).stem for v in [args.content] + args.styles]) + ".mp4"
     video = transfer(
         content_video=args.content,
@@ -378,3 +375,7 @@ if __name__ == "__main__":
         fps=args.fps,
     )
     write_video(video, output_name, args.fps)
+
+
+if __name__ == "__main__":
+    main(argument_parser().parse_args())

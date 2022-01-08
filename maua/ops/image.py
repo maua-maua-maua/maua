@@ -70,8 +70,9 @@ def get_histogram(tensor):
 
 
 def match_histogram(target_tensor, source_tensor, mode="avg"):
-    if not mode:
+    if mode == "False":
         return target_tensor
+        
     backup = target_tensor.clone()
     try:
         if mode == "avg":

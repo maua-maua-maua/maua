@@ -1,6 +1,6 @@
 import argparse
 
-from . import dalle, diffusion, super
+from . import dalle, diffusion, super, style
 
 
 def argument_parser():
@@ -19,6 +19,12 @@ def argument_parser():
         "super",
         parents=[super.argument_parser()],
         help="Upscale images using super resolution models",
+        add_help=False,
+    )
+    subparsers.add_parser(
+        "style",
+        parents=[style.argument_parser()],
+        help="Neural style transfer",
         add_help=False,
     )
     return parser

@@ -8,7 +8,7 @@ from PIL import Image
 from maua.ops.image import match_histogram, resample
 from maua.ops.tensor import img2tensor, tensor2img
 
-from .transfer import transfer
+from .image import transfer
 
 
 @torch.no_grad()

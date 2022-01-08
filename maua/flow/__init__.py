@@ -9,10 +9,10 @@ from maua.ops.image import luminance, resample
 
 # remove shape asserts from optical flow files
 for file in [
-    "submodules/unflow/run.py",
-    "submodules/pwc/run.py",
-    "submodules/spynet/run.py",
-    "submodules/liteflownet/run.py",
+    "maua/submodules/unflow/run.py",
+    "maua/submodules/pwc/run.py",
+    "maua/submodules/spynet/run.py",
+    "maua/submodules/liteflownet/run.py",
 ]:
     with open(file, "r") as f:
         txt = f.read().replace("assert", "# assert").replace("# #", "#")
