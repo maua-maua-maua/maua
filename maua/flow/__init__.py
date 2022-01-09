@@ -42,7 +42,7 @@ def get_flow_model(which: List[str] = ["pwc", "spynet", "liteflownet"], use_trai
 
     if "unflow" in which:
         del sys.argv[1:]
-        from submodules.unflow.run import estimate as unflow
+        from maua.submodules.unflow.run import estimate as unflow
 
         del sys.path[-1]
         torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away
@@ -56,7 +56,7 @@ def get_flow_model(which: List[str] = ["pwc", "spynet", "liteflownet"], use_trai
 
     if "pwc" in which:
         del sys.argv[1:]
-        from submodules.pwc.run import estimate as pwc
+        from maua.submodules.pwc.run import estimate as pwc
 
         del sys.path[-1]
         torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away
@@ -70,7 +70,7 @@ def get_flow_model(which: List[str] = ["pwc", "spynet", "liteflownet"], use_trai
 
     if "spynet" in which:
         del sys.argv[1:]
-        from submodules.spynet.run import estimate as spynet
+        from maua.submodules.spynet.run import estimate as spynet
 
         torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away
 
@@ -83,7 +83,7 @@ def get_flow_model(which: List[str] = ["pwc", "spynet", "liteflownet"], use_trai
 
     if "liteflownet" in which:
         del sys.argv[1:]
-        from submodules.liteflownet.run import estimate as liteflownet
+        from maua.submodules.liteflownet.run import estimate as liteflownet
 
         del sys.path[-1]
         torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away

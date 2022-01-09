@@ -1,7 +1,7 @@
 import os
 import shutil
 from pathlib import Path
-from typing import List, Union
+from typing import List, Tuple, Union
 
 import numpy as np
 import torch
@@ -31,9 +31,12 @@ def scaled_height_width(h, w, size):
     return h, w
 
 
-def flow_warp_map(raw_flow: np.ndarray, size: int) -> torch.Tensor:
-    h, w, _ = raw_flow.shape
-    h, w = scaled_height_width(h, w, size)
+def flow_warp_map(raw_flow: np.ndarray, size: Union[int, Tuple[int, int]]) -> torch.Tensor:
+    if isinstance(size, int):
+        h, w, _ = raw_flow.shape
+        h, w = scaled_height_width(h, w, size)
+    else:
+        h, w = size
 
     flow = gaussian_filter(raw_flow, [5, 5, 0])
     flow = resample_flow(flow, (h, w))
@@ -207,8 +210,12 @@ def transfer(
     pastiche = RGB(h, w).to(device)
 
     d = 1
-    prev_frame_file = f"workspace/{Path(content_video).stem}_frames_prev.npy"
-    next_frame_file = f"workspace/{Path(content_video).stem}_frames_next.npy"
+    prev_frame_file = (
+        f"workspace/{Path(save_intermediate).stem if save_intermediate else Path(content_video).stem}_frames_prev.npy"
+    )
+    next_frame_file = (
+        f"workspace/{Path(save_intermediate).stem if save_intermediate else Path(content_video).stem}_frames_next.npy"
+    )
 
     with tqdm(total=n_iters * len(content)) as pbar:
         for p_n in range(n_passes):
@@ -222,19 +229,19 @@ def transfer(
             with NpyFile(next_frame_file) as styled:
                 for f_n in range(len(content)):
 
-                    content_frame = resample(torch.from_numpy(content[[f_n]].copy()).to(device), size)
+                    content_frame = resample(torch.from_numpy(content[[f_n]].copy()).to(device), (h, w))
                     content_embeddings = perceptor.get_target_embeddings(contents=content_frame, styles=None)
                     target_embeddings = torch.cat((content_embeddings, style_embeddings))
                     del content_frame, content_embeddings
 
-                    curr_frame = resample(torch.from_numpy(frames[[f_n]].copy()).to(device), size)
-                    prev_frame = resample(torch.from_numpy(frames[[(f_n - d) % len(frames)]].copy()).to(device), size)
+                    curr_frame = resample(torch.from_numpy(frames[[f_n]].copy()).to(device), (h, w))
+                    prev_frame = resample(torch.from_numpy(frames[[(f_n - d) % len(frames)]].copy()).to(device), (h, w))
 
                     using_blending = blend_factor > 0 and 1 < p_n < n_passes - 1
                     using_temporal_loss = temporal_weight > 0 and p_n > temporal_loss_after
                     if using_blending or using_temporal_loss or init_type == "prev_warped":
-                        flow_map = flow_warp_map((forward if d == 1 else backward)[f_n], size).to(device)
-                        flow_mask = resample(torch.from_numpy(reliable[None, [f_n]].copy()).to(device), size)
+                        flow_map = flow_warp_map((forward if d == 1 else backward)[f_n], (h, w)).to(device)
+                        flow_mask = resample(torch.from_numpy(reliable[None, [f_n]].copy()).to(device), (h, w))
                         prev_warped = grid_sample(prev_frame, flow_map, padding_mode="border", align_corners=False)
 
                     init_tensor = None
@@ -247,7 +254,7 @@ def transfer(
                             init_tensor = init_video[[f_n]]
                             if isinstance(init_tensor, np.ndarray):
                                 init_tensor = torch.from_numpy(init_tensor.copy())
-                            init_tensor = resample(init_tensor.to(device), size)
+                            init_tensor = resample(init_tensor.to(device), (h, w))
                     if init_tensor is None:
                         init_tensor = curr_frame
 
