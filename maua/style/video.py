@@ -19,6 +19,7 @@ from maua.ops.image import match_histogram, resample
 from maua.ops.loss import feature_loss, tv_loss
 from maua.ops.tensor import load_images, write_video
 from maua.optimizers import load_optimizer, optimizer_choices
+from maua.parameterizations import load_parameterization
 from maua.parameterizations.rgb import RGB
 from maua.perceptors import load_perceptor
 
@@ -144,6 +145,7 @@ def transfer(
     init_type="content",
     match_hist="avg",
     size=512,
+    parameterization="rgb",
     perceptor="kbc-vgg19",
     perceptor_kwargs={},
     optimizer="LBFGS",
@@ -172,6 +174,7 @@ def transfer(
         init_type (str, optional): How to initialize the image for optimization. Choices ["content", "random", "prev_warped", "init_video"].
         match_hist (str, optional): How to match color histogram of intermediate images. Choices ["avg", False].
         size (int, optional): Size of output image.
+        parameterization (str, optional): How to parameterize the image. Choices ["rgb", "vqgan"]
         perceptor (str, optional): Which perceptor to optimize with. Choices ["kbc-vgg19", "pgg-vgg19", "pgg-vgg16", "pgg-prune", "pgg-nyud", "pgg-fcn32s", "pgg-sod", "pgg-nin"].
         perceptor_kwargs (dict, optional): Key word arguments for the Perceptor class.
         optimizer (str, optional): Optimizer to use. For choices see optimizers.py
@@ -207,7 +210,7 @@ def transfer(
     style_imgs = [im.cpu() for im in style_imgs]
 
     h, w = scaled_height_width(content.shape[2], content.shape[3], size)
-    pastiche = RGB(h, w).to(device)
+    pastiche = load_parameterization(parameterization)(h, w).to(device)
 
     d = 1
     prev_frame_file = (
@@ -265,6 +268,7 @@ def transfer(
 
                     init_tensor = match_histogram(init_tensor, style_imgs, match_hist)
                     pastiche.encode(init_tensor)
+                    pastiche.reset_ema()
                     del curr_frame, prev_frame, init_tensor
 
                     with torch.enable_grad():
@@ -275,6 +279,8 @@ def transfer(
 
                         def closure():
                             opt.zero_grad()
+                            pastiche.update_ema()
+
                             img = pastiche()
 
                             loss = perceptor.get_loss(img, target_embeddings)
@@ -293,7 +299,7 @@ def transfer(
                         for _ in range(niter):
                             opt.step(closure)
 
-                    result = match_histogram(pastiche(), style_imgs, match_hist).detach().cpu().numpy()
+                    result = match_histogram(pastiche.decode_average(), style_imgs, match_hist).detach().cpu().numpy()
                     styled.append(result)
 
             if save_intermediate:
@@ -314,6 +320,7 @@ def argument_parser():
     parser.add_argument("--init_type", default="content", choices=["content", "random", "prev_warped"])
     parser.add_argument("--match_hist", default="avg", choices=["avg", False])
     parser.add_argument("--size", type=int, default=512)
+    parser.add_argument("--parameterization", default="rgb", choices=["rgb", "vqgan"])
     parser.add_argument("--perceptor", default="kbc-vgg19", choices=["kbc-vgg19", "pgg-vgg19", "pgg-vgg16", "pgg-prune", "pgg-nyud", "pgg-fcn32s", "pgg-sod", "pgg-nin"])
     parser.add_argument("--perceptor_kwargs", default={})
     parser.add_argument("--optimizer", default="LBFGS", choices=["LBFGS","LBFGS-20"] + list(optimizer_choices.keys()))
@@ -344,6 +351,7 @@ def main(args):
         init_type=args.init_type,
         match_hist=args.match_hist,
         size=args.size,
+        parameterization=args.parameterization,
         perceptor=args.perceptor,
         perceptor_kwargs=args.perceptor_kwargs,
         optimizer=args.optimizer,
