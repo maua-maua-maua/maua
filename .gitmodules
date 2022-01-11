@@ -19,9 +19,6 @@
 [submodule "maua/submodules/FrozenInTime"]
 	path = maua/submodules/FrozenInTime
 	url = https://github.com/m-bain/frozen-in-time.git
-[submodule "maua/submodules/ranger"]
-	path = maua/submodules/ranger
-	url = https://github.com/lessw2020/Ranger-Deep-Learning-Optimizer/
 [submodule "maua/submodules/ic_gan"]
 	path = maua/submodules/ic_gan
 	url = https://github.com/facebookresearch/ic_gan.git

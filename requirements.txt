@@ -6,6 +6,8 @@ ffmpeg-python
 ftfy
 gdown
 git+https://github.com/pytorch/nestedtensor
+git+https://github.com/lessw2020/Ranger-Deep-Learning-Optimizer
+git+https://github.com/lessw2020/Ranger21
 h5py
 imageio-ffmpeg
 joblib
