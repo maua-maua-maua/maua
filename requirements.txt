@@ -25,3 +25,4 @@ basicsr
 py7zr
 -e maua/submodules/RealESRGAN
 timm
+sentencepiece
