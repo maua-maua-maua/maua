@@ -1,3 +1,5 @@
+import torch
+
 from ... import audioreactive as ar
 from ...patches.base.stylegan3 import StyleGAN3Patch
 
@@ -31,4 +33,8 @@ class ExampleSG3Patch(StyleGAN3Patch):
         latent_w_plus = (1 - self.drum_onsets) * latent_w_plus + self.drum_onsets * drum_latents
         latent_w_plus = (1 - self.bass_rms) * latent_w_plus + self.bass_rms * bass_latents
 
-        return {"latent_w_plus": latent_w_plus}
+        return {
+            "latent_w_plus": latent_w_plus,
+            "translation": torch.zeros((self.n_frames, 2)),
+            "rotation": torch.zeros(self.n_frames),
+        }

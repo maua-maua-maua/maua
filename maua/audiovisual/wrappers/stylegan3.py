@@ -1,4 +1,3 @@
-import sys
 import warnings
 from typing import Tuple
 
@@ -6,11 +5,12 @@ import numpy as np
 import torch
 from torch.nn.functional import interpolate, pad
 
+from maua.GAN.src.models.stylegan3 import MappingNetwork, SynthesisNetwork
+from maua.GAN.src.utils import legacy
+from maua.GAN.src.utils.style_ops import dnnlib
+
 from . import MauaMapper, MauaSynthesizer
 
-sys.path.append("maua/GAN")
-from maua.GAN import dnnlib, legacy
-from maua.GAN.training.networks_stylegan3 import MappingNetwork, SynthesisNetwork
 
 layer_multipliers = {
     1024: {0: 64, 1: 64, 2: 64, 3: 32, 4: 32, 5: 16, 6: 8, 7: 8, 8: 4, 9: 4, 10: 2, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1},
@@ -96,7 +96,7 @@ class StyleGAN3Synthesizer(MauaSynthesizer):
         if latent_w is not None and latent_w_plus is not None:
             warnings.warn("Both latent_w and latent_w_plus supplied, using latent_w_plus input...")
 
-        if not (torch.all(translation == 0) and rotation == 0):
+        if not (translation is None or rotation is None):
             self.G_synth.input.transform.copy_(make_transform_mat(translation, rotation))
 
         if latent_w_plus is None:
