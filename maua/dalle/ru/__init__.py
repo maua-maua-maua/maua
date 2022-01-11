@@ -1,6 +1,6 @@
 import argparse
 
-from . import finetune, generate
+from . import finetune, generate, api
 
 
 def argument_parser():
@@ -15,4 +15,10 @@ def argument_parser():
         help="Finetune RuDALL-E on a set of images (and captions)",
         add_help=False,
     ).set_defaults(func=finetune.main)
+    subparsers.add_parser(
+        "api",
+        parents=[api.argument_parser()],
+        help="Request RuDALL-E Kandinsky images from the Sbercloud API",
+        add_help=False,
+    ).set_defaults(func=api.main)
     return parser
