@@ -6,6 +6,7 @@ ffmpeg-python
 ftfy
 gdown
 git+https://github.com/pytorch/nestedtensor
+git+https://github.com/pathak22/pyflow
 git+https://github.com/lessw2020/Ranger-Deep-Learning-Optimizer
 git+https://github.com/lessw2020/Ranger21
 h5py
@@ -39,6 +40,5 @@ tqdm
 transformers
 wandb
 youtokentome
-
 -e maua/submodules/CLIP
 -e maua/submodules/RealESRGAN

@@ -161,6 +161,7 @@ def transfer(
     tv_weight=10,
     temporal_weight=100,
     style_scale=1,
+    start_random_frame=False,
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     save_intermediate=False,
     fps=24,
@@ -190,6 +191,7 @@ def transfer(
         tv_weight (int, optional): Strength of total variation loss. Higher values lead to smoother outputs.
         temporal_weight (int, optional): Strength of temporal loss. Higher values lead to more consistency between frames.
         style_scale (int, optional): Scale of style images relative to output image. Larger scales will make textures from styles larger in the output image.
+        start_random_frame (bool, optional): Start stylization from a random frame. Repeated random starting positions can help ensure that a video loops smoothly.
         content_layers (List[int], optional): Layers in Perceptor network that the content loss will be calculated for. Defaults to None which uses defaults defined in each Perceptor class.
         style_layers (List[int], optional): Layers in Perceptor network that the style loss will be calculated for. Defaults to None which uses defaults defined in each Perceptor class.
         device (torch.device, optional): Device to run on.
@@ -230,7 +232,11 @@ def transfer(
                 frames = content
 
             with NpyFile(next_frame_file) as styled:
-                for f_n in range(len(content)):
+                frame_range = list(range(len(content)))
+                if start_random_frame:
+                    start_idx = np.random.randint(0, len(content))
+                    frame_range = frame_range[start_idx:] + frame_range[:start_idx]
+                for f_n in frame_range:
 
                     content_frame = resample(torch.from_numpy(content[[f_n]].copy()).to(device), (h, w))
                     content_embeddings = perceptor.get_target_embeddings(contents=content_frame, styles=None)
@@ -336,6 +342,7 @@ def argument_parser():
     parser.add_argument("--tv_weight", type=float, default=10)
     parser.add_argument("--temporal_weight", type=float, default=100)
     parser.add_argument("--style_scale", type=float, default=1)
+    parser.add_argument("--start_random_frame", action="store_true")
     parser.add_argument("--device", default=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
     parser.add_argument("--save_intermediate", action="store_true")
     parser.add_argument("--fps", type=float, default=24)
@@ -367,6 +374,7 @@ def main(args):
         tv_weight=args.tv_weight,
         temporal_weight=args.temporal_weight,
         style_scale=args.style_scale,
+        start_random_frame=args.start_random_frame,
         device=args.device,
         save_intermediate=output_name,
         fps=args.fps,

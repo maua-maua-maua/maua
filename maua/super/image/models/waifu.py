@@ -115,7 +115,7 @@ def merge(img: torch.Tensor, height: int, width: int, scale: int, pad_size: int,
 
 def upscale(images, model, scale=4, pad_size=3, seg_size=64, batch_size=256):
     for img in images:
-        img = load_image(img).unsqueeze(0).to(model.device)
+        img = load_image(img).to(model.device)
         for _ in range(round(np.log2(scale))):
             img_patches, h, w = split(img, 2, pad_size, seg_size)
             larger_patches = torch.cat([model(patches) for patches in torch.split(img_patches, batch_size)])

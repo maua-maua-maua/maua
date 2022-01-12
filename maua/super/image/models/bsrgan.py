@@ -44,7 +44,7 @@ def load_model(model_name="BSRGAN", device=torch.device("cuda" if torch.cuda.is_
 @torch.inference_mode()
 def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
     for img in images:
-        img_L = load_image(img).unsqueeze(0).to(model.device)
+        img_L = load_image(img).to(model.device)
         img_E = model(img_L)
         img_E = np.uint8(img_E.data.squeeze().float().clamp_(0, 1).permute(1, 2, 0).mul(255).cpu().numpy().round())
         # img_E = img_E[:, :, [2, 1, 0]]

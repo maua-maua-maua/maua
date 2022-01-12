@@ -58,3 +58,6 @@
 [submodule "maua/GAN"]
 	path = maua/GAN
 	url = https://github.com/maua-maua-maua/GAN
+[submodule "maua/submodules/RIFE"]
+	path = maua/submodules/RIFE
+	url = https://github.com/hzwer/arXiv2020-RIFE.git

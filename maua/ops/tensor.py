@@ -11,7 +11,7 @@ from torchvision.transforms.functional import to_tensor
 
 
 def load_image(im: Union[Tensor, Image, Path, str]):
-    return im if isinstance(im, Tensor) else (to_tensor(im) if isinstance(im, Image) else to_tensor(open_img(im)))
+    return im if isinstance(im, Tensor) else (img2tensor(im) if isinstance(im, Image) else img2tensor(open_img(im)))
 
 
 def load_images(*inputs):

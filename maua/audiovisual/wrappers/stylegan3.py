@@ -123,10 +123,10 @@ class StyleGAN3Synthesizer(MauaSynthesizer):
 
 
 def make_transform_mat(translate: Tuple[float, float], angle: float) -> torch.Tensor:
-    s = np.sin(angle / 360.0 * np.pi * 2)
-    c = np.cos(angle / 360.0 * np.pi * 2)
-    m = np.array([[c, s, translate[0]], [-s, c, translate[1]], [0, 0, 0]])
-    m = np.linalg.inv(m)
+    s = np.sin(angle.squeeze().cpu() / 360.0 * np.pi * 2)
+    c = np.cos(angle.squeeze().cpu() / 360.0 * np.pi * 2)
+    m = np.array([[c, s, translate.squeeze().cpu()[0]], [-s, c, translate.squeeze().cpu()[1]], [0, 0, 0]])
+    m = np.linalg.pinv(m)
     return torch.from_numpy(m)
 
 

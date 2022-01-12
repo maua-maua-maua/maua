@@ -6,7 +6,7 @@ from ...patches.base.stylegan3 import StyleGAN3Patch
 
 class ExampleSG3Patch(StyleGAN3Patch):
     def process_audio(self):
-        vocals, drums, bass, other = ar.separate_sources(self.audio, self.sr)
+        vocals, drums, bass, other = ar.separate_sources(self.audio, self.sr, device=torch.device("cpu"))
 
         self.drum_onsets = ar.onsets(drums, self.sr, self.n_frames, margin=2, clip=95, smooth=2).reshape(-1, 1, 1)
         self.bass_rms = ar.rms(bass, self.sr, self.n_frames, smooth=20, clip=95, power=1).reshape(-1, 1, 1)

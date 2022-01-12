@@ -86,7 +86,7 @@ def worker(rank, world_size, q, dataset, scale, seg_size, pad_size, model_name, 
         cleanup()
 
 
-def bulk_main(args):
+def main(args):
     seg_size = 64
     pad_size = 3
     world_size = torch.cuda.device_count()
@@ -107,3 +107,7 @@ def bulk_main(args):
 
     num_writers = 1
     ctx2 = mp.spawn(writer, args=(num_writers, q, args.out_dir), nprocs=num_writers, join=True, daemon=True)
+
+
+def argument_parser():
+    raise NotImplementedError()

@@ -56,7 +56,7 @@ def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
     model, DDIMSampler, device = model
     up_f = 4
     for img in images:
-        c = load_image(img).unsqueeze(0)
+        c = load_image(img)
         example = dict(
             LR_image=rearrange(c, "1 c h w -> 1 h w c").mul(2).add(-1).to(device),
             image=rearrange(resize(c, size=[up_f * c.size(2), up_f * c.size(3)], antialias=True), "1 c h w -> 1 h w c"),

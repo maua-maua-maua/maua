@@ -1,5 +1,7 @@
 # Maua
 
+## 👷 ⛏️ WIP 🛠️ 👷
+
 Maua is a Python library (and command line interface) for synthesizing images, video, and audio using deep learning.
 
 While many research groups publish code to reproduce results of their papers, it is often still time intensive to set up the environment correctly and figure out how to run the algorithms on your own data. The goal of Maua is to collect these methods in one place to make it easy to use them as creative tools. The primary design goal is composability. Combining different methods in unique ways exponentially expands the space of possible results--and so the creative freedom.
