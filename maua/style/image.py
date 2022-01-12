@@ -14,7 +14,7 @@ from tqdm import tqdm
 from maua.ops.image import match_histogram, resample
 from maua.ops.loss import tv_loss
 from maua.ops.tensor import load_images, tensor2img
-from maua.optimizers import load_optimizer, optimizer_choices
+from maua.optimizers import load_optimizer, OPTIMIZERS
 from maua.parameterizations import load_parameterization
 from maua.perceptors import load_perceptor
 
@@ -131,7 +131,7 @@ def argument_parser():
     parser.add_argument("--parameterization", default="rgb", choices=["rgb", "vqgan"])
     parser.add_argument("--perceptor", default="kbc-vgg19", choices=["kbc-vgg19" ,"pgg-vgg19", "pgg-vgg16", "pgg-prune", "pgg-nyud", "pgg-fcn32s", "pgg-sod", "pgg-nin"])
     parser.add_argument("--perceptor_kwargs", nargs="*", default=[])
-    parser.add_argument("--optimizer", default="LBFGS", choices=['LBFGS'] + list(optimizer_choices.keys()))
+    parser.add_argument("--optimizer", default="LBFGS", choices=OPTIMIZERS)
     parser.add_argument("--lr", type=float, default=0.5)
     parser.add_argument("--optimizer_kwargs", nargs="*", default=[])
     parser.add_argument("--n_iters", type=int, default=512)

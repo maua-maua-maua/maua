@@ -5,7 +5,7 @@ from typing import List, Tuple, Union
 
 import numpy as np
 import torch
-from decord import VideoReader, cpu
+from decord import VideoReader
 from npy_append_array import NpyAppendArray as NpyFile
 from PIL import Image
 from scipy.ndimage import gaussian_filter
@@ -17,10 +17,10 @@ from maua.flow import check_consistency, get_flow_model, motion_edge, resample_f
 from maua.flow.utils import flow_to_image
 from maua.ops.image import match_histogram, resample
 from maua.ops.loss import feature_loss, tv_loss
-from maua.ops.tensor import load_images, write_video
-from maua.optimizers import load_optimizer, optimizer_choices
+from maua.ops.tensor import load_images
+from maua.ops.video import write_video
+from maua.optimizers import load_optimizer, OPTIMIZERS
 from maua.parameterizations import load_parameterization
-from maua.parameterizations.rgb import RGB
 from maua.perceptors import load_perceptor
 
 
@@ -61,7 +61,7 @@ def preprocess_optical_flow(video_file, flow_model, smooth=1.5, consistency="mag
     if not (os.path.exists(frf) and os.path.exists(fwf) and os.path.exists(bkf)):
         with NpyFile(frf) as frames, NpyFile(fwf) as forward, NpyFile(bkf) as backward:
 
-            vr = VideoReader(video_file, ctx=cpu())
+            vr = VideoReader(video_file)
             for i in tqdm(range(len(vr)), desc="Estimating optical flow..."):
                 frame1 = torch.from_numpy(vr[i].asnumpy()).div(255)
                 frame2 = torch.from_numpy(vr[(i + 1) % len(vr)].asnumpy()).div(255)
@@ -329,7 +329,7 @@ def argument_parser():
     parser.add_argument("--parameterization", default="rgb", choices=["rgb", "vqgan"])
     parser.add_argument("--perceptor", default="kbc-vgg19", choices=["kbc-vgg19", "pgg-vgg19", "pgg-vgg16", "pgg-prune", "pgg-nyud", "pgg-fcn32s", "pgg-sod", "pgg-nin"])
     parser.add_argument("--perceptor_kwargs", default={})
-    parser.add_argument("--optimizer", default="LBFGS", choices=["LBFGS","LBFGS-20"] + list(optimizer_choices.keys()))
+    parser.add_argument("--optimizer", default="LBFGS", choices=OPTIMIZERS)
     parser.add_argument("--lr", type=float,default=0.5)
     parser.add_argument("--optimizer_kwargs", default={})
     parser.add_argument("--flow_models", nargs="+", default=["farneback"], choices=["farneback", "spynet", "pwc", "liteflownet", "unflow"])
@@ -346,12 +346,29 @@ def argument_parser():
     parser.add_argument("--device", default=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
     parser.add_argument("--save_intermediate", action="store_true")
     parser.add_argument("--fps", type=float, default=24)
+    parser.add_argument("--out_dir", default="output/")
     # fmt: on
     return parser
 
 
 def main(args):
-    output_name = "output/" + "_".join([Path(v).stem for v in [args.content] + args.styles]) + ".mp4"
+    if len(args.perceptor_kwargs) > 0:
+        perceptor_kwargs = {
+            k: eval(t)(v)
+            for k, t, v in zip(args.perceptor_kwargs[::3], args.perceptor_kwargs[1::3], args.perceptor_kwargs[2::3])
+        }
+    else:
+        perceptor_kwargs = {}
+
+    if len(args.optimizer_kwargs) > 0:
+        optimizer_kwargs = {
+            k: eval(t)(v)
+            for k, t, v in zip(args.optimizer_kwargs[::3], args.optimizer_kwargs[1::3], args.optimizer_kwargs[2::3])
+        }
+    else:
+        optimizer_kwargs = {}
+
+    output_name = args.out_dir + "/" + "_".join([Path(v).stem for v in [args.content] + args.styles]) + ".mp4"
     video = transfer(
         content_video=args.content,
         style_imgs=args.styles,
@@ -360,10 +377,10 @@ def main(args):
         size=args.size,
         parameterization=args.parameterization,
         perceptor=args.perceptor,
-        perceptor_kwargs=args.perceptor_kwargs,
+        perceptor_kwargs=perceptor_kwargs,
         optimizer=args.optimizer,
         lr=args.lr,
-        optimizer_kwargs=args.optimizer_kwargs,
+        optimizer_kwargs=optimizer_kwargs,
         flow_models=args.flow_models,
         n_iters=args.n_iters,
         n_passes=args.n_passes,

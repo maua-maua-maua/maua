@@ -7,7 +7,7 @@ from zipfile import ZipFile
 
 import gdown
 import torch
-from decord import VideoReader, cpu
+from decord import VideoReader
 from torch.nn import functional as F
 from tqdm import tqdm
 
@@ -97,7 +97,7 @@ def interpolate(
     fp16=True,
 ) -> Generator[torch.Tensor, None, None]:
 
-    vr = VideoReader(video_file, ctx=cpu())
+    vr = VideoReader(video_file)
 
     N = len(vr)
     h, w, _ = vr[0].shape
@@ -114,4 +114,4 @@ def interpolate(
 
         intermediate_frames = recursive_inference(model, frame1, frame2, factor)
         for frame in intermediate_frames:
-            yield frame.squeeze().permute(1, 2, 0).clamp(0, 1).float().mul(255).round().byte().cpu()[:h, :w]
+            yield frame.squeeze().permute(1, 2, 0).clamp(0, 1).float().cpu()[:h, :w]

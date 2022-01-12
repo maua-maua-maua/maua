@@ -21,13 +21,13 @@ def transfer_multires(
     lr=0.25,
     optimizer_kwargs={},
     flow_models=["farneback"],
-    n_iters=[384, 256, 128],
+    n_iters=[512, 384, 128],
     passes_per_scale=8,
-    blend_factor=0.8,
+    blend_factor=1,
     content_weight=0.01,
     style_weight=100,
     tv_weight=10,
-    temporal_weight=0.1,
+    temporal_weight=0.5,
     style_scale=1,
     start_random_frame=True,
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
@@ -73,7 +73,8 @@ def transfer_multires(
 if __name__ == "__main__":
     import sys
 
-    content = sys.argv[1]
-    styles = sys.argv[2:]
-    output_name = "output/" + "_".join([Path(v).stem for v in [content] + styles]) + ".mp4"
+    out_dir = sys.argv[1]
+    content = sys.argv[2]
+    styles = sys.argv[3:]
+    output_name = out_dir + "/" + "_".join([Path(v).stem for v in [content] + styles]) + ".mp4"
     transfer_multires(content, styles, save_intermediate=output_name)

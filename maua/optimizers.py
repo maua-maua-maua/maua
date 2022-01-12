@@ -46,6 +46,7 @@ optimizer_choices = {
     "SWATS": more_optim.SWATS,
     "Yogi": more_optim.Yogi,
 }
+OPTIMIZERS = list(optimizer_choices.keys()) + ["LBFGS"]
 
 
 def load_optimizer(name, lr, kwargs, n_iters, params):

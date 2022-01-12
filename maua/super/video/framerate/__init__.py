@@ -2,9 +2,10 @@ import argparse
 from pathlib import Path
 from typing import Generator
 
-import ffmpeg
 import torch
-from decord import VideoReader, cpu
+from decord import VideoReader
+
+from maua.ops.video import VideoWriter
 
 from . import rife
 
@@ -51,35 +52,17 @@ def interpolate(
 
 def main(args):
     for video_file in args.video_files:
-        vr = VideoReader(video_file, ctx=cpu())
+        vr = VideoReader(video_file)
         fps = vr.get_avg_fps()
-        h, w, c = vr[0].shape
+        h, w, _ = vr[0].shape
 
-        ffmpeg_proc = (
-            ffmpeg.input(
-                "pipe:",
-                format="rawvideo",
-                pix_fmt=f"rgb{8*c}",
-                framerate=fps * (args.factor / args.slow_factor),
-                s=f"{w}x{h}",
-            )
-            .output(
-                f"{args.out_dir}/{Path(video_file).stem}_{args.model_name}.mp4",
-                framerate=fps * (args.factor / args.slow_factor),
-                vcodec="libx264",
-                preset="slow",
-                v="warning",
-            )
-            .global_args("-benchmark", "-stats", "-hide_banner")
-            .overwrite_output()
-            .run_async(pipe_stdin=True, pipe_stderr=True)
-        )
-
-        for frame in interpolate(video_file, args.model_name, args.factor, not args.no_fp16, args.device):
-            ffmpeg_proc.stdin.write(frame.numpy().tobytes())
-
-        ffmpeg_proc.stdin.close()
-        ffmpeg_proc.wait()
+        with VideoWriter(
+            output_file=f"{args.out_dir}/{Path(video_file).stem}_{args.model_name}.mp4",
+            output_size=(w, h),
+            fps=fps * (args.factor / args.slow_factor),
+        ) as video:
+            for frame in interpolate(video_file, args.model_name, args.factor, not args.no_fp16, args.device):
+                video.write(frame.mul(255).round().byte().numpy().tobytes())
 
 
 def argument_parser():

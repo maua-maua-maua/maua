@@ -1,5 +1,7 @@
 import torch
 
+from maua.ops.image import resample
+
 from ... import audioreactive as ar
 
 
@@ -14,6 +16,12 @@ class MauaPatch:
 
     def process_audio(self):
         pass
+
+    def force_output_size(self, video):
+        t, c, h, w = video.shape
+        if (w, h) != self.synthesizer.output_size:
+            video = resample(video, reversed(self.synthesizer.output_size))
+        return video
 
 
 def get_patch_from_file(filepath):

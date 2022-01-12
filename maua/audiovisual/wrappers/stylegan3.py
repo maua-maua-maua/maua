@@ -47,8 +47,12 @@ class StyleGAN3Mapper(MauaMapper):
     def __init__(self, model_file: str) -> None:
         super().__init__()
 
-        with dnnlib.util.open_url(model_file) as f:
-            self.G_map: MappingNetwork = legacy.load_network_pkl(f)["G_ema"].mapping
+        if model_file is None or model_file == "None":
+            self.G_map = MappingNetwork(z_dim=512, c_dim=0, w_dim=512, num_ws=18)
+        else:
+            with dnnlib.util.open_url(model_file) as f:
+                self.G_map: MappingNetwork = legacy.load_network_pkl(f)["G_ema"].mapping
+
         self.z_dim, self.c_dim = self.G_map.z_dim, self.G_map.c_dim
 
         self.modulation_targets = {
@@ -71,8 +75,12 @@ class StyleGAN3Synthesizer(MauaSynthesizer):
     def __init__(self, model_file: str, output_size: Tuple[int, int], strategy: str, layer: int) -> None:
         super().__init__()
 
-        with dnnlib.util.open_url(model_file) as f:
-            self.G_synth: SynthesisNetwork = legacy.load_network_pkl(f)["G_ema"].synthesis
+        if model_file is None or model_file == "None":
+            self.G_synth = SynthesisNetwork(w_dim=512, img_resolution=1024, img_channels=3)
+        else:
+            with dnnlib.util.open_url(model_file) as f:
+                self.G_synth: SynthesisNetwork = legacy.load_network_pkl(f)["G_ema"].synthesis
+
         self.w_dim, self.num_ws = self.G_synth.w_dim, self.G_synth.num_ws
 
         self.modulation_targets = {
@@ -121,12 +129,20 @@ class StyleGAN3Synthesizer(MauaSynthesizer):
             hook = synth_layer.register_forward_hook(get_hook(self.G_synth, layer, size, strategy))
             self._hook_handles.append(hook)
 
+        self.output_size = output_size
+
 
 def make_transform_mat(translate: Tuple[float, float], angle: float) -> torch.Tensor:
     s = np.sin(angle.squeeze().cpu() / 360.0 * np.pi * 2)
     c = np.cos(angle.squeeze().cpu() / 360.0 * np.pi * 2)
     m = np.array([[c, s, translate.squeeze().cpu()[0]], [-s, c, translate.squeeze().cpu()[1]], [0, 0, 0]])
-    m = np.linalg.pinv(m)
+    try:
+        m = np.linalg.inv(m)
+    except np.linalg.LinAlgError:
+        warnings.warn(
+            f"Singular transform matrix, continuing with pseudo-inverse of transform matrix which might not give expected results!"
+        )
+        m = np.linalg.pinv(m)
     return torch.from_numpy(m)
 
 
