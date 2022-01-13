@@ -5,12 +5,12 @@ import numpy as np
 import torch
 from torch.nn.functional import interpolate, pad
 
-from maua.audiovisual.wrappers.stylegan import StyleGAN
-from maua.GAN.src.models.stylegan3 import MappingNetwork, SynthesisNetwork
+from maua.audiovisual.wrappers.stylegan import StyleGAN, StyleGANMapper
+from maua.GAN.src.models import stylegan3
 from maua.GAN.src.utils import legacy
 from maua.GAN.src.utils.style_ops import dnnlib
 
-from . import MauaMapper, MauaSynthesizer
+from . import MauaSynthesizer
 
 layer_multipliers = {
     1024: {0: 64, 1: 64, 2: 64, 3: 32, 4: 32, 5: 16, 6: 8, 7: 8, 8: 4, 9: 4, 10: 2, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1},
@@ -23,35 +23,8 @@ class StyleGAN3(StyleGAN):
     pass
 
 
-# TODO StyleGAN2Mapper/StyleGAN3Mapper are identical except for what MappingNetwork points to, can we unify?
-
-
-class StyleGAN3Mapper(MauaMapper):
-    def __init__(self, model_file: str) -> None:
-        super().__init__()
-
-        if model_file is None or model_file == "None":
-            self.G_map = MappingNetwork(z_dim=512, c_dim=0, w_dim=512, num_ws=18)
-        else:
-            with dnnlib.util.open_url(model_file) as f:
-                self.G_map: MappingNetwork = legacy.load_network_pkl(f)["G_ema"].mapping
-
-        self.z_dim, self.c_dim = self.G_map.z_dim, self.G_map.c_dim
-
-        self.modulation_targets = {
-            "latent_z": (self.z_dim,),
-            "truncation": (1,),
-        }
-        if self.c_dim > 0:
-            self.modulation_targets["class_conditioning"] = (self.c_dim,)
-
-    def forward(
-        self,
-        latent_z: torch.Tensor,
-        class_conditioning: torch.Tensor = None,
-        truncation: torch.Tensor = torch.ones(1, 1),
-    ):
-        return self.G_map.forward(latent_z, class_conditioning, truncation_psi=truncation)
+class StyleGAN3Mapper(StyleGANMapper):
+    MappingNetwork = stylegan3.MappingNetwork
 
 
 class StyleGAN3Synthesizer(MauaSynthesizer):
@@ -59,10 +32,10 @@ class StyleGAN3Synthesizer(MauaSynthesizer):
         super().__init__()
 
         if model_file is None or model_file == "None":
-            self.G_synth = SynthesisNetwork(w_dim=512, img_resolution=1024, img_channels=3)
+            self.G_synth = stylegan3.SynthesisNetwork(w_dim=512, img_resolution=1024, img_channels=3)
         else:
             with dnnlib.util.open_url(model_file) as f:
-                self.G_synth: SynthesisNetwork = legacy.load_network_pkl(f)["G_ema"].synthesis
+                self.G_synth: stylegan3.SynthesisNetwork = legacy.load_network_pkl(f)["G_ema"].synthesis
 
         self.w_dim, self.num_ws = self.G_synth.w_dim, self.G_synth.num_ws
 

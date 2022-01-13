@@ -1,6 +1,11 @@
 import numpy as np
 import torch
 
+from maua.GAN.src.utils import legacy
+from maua.GAN.src.utils.style_ops import dnnlib
+
+from . import MauaMapper
+
 
 class StyleGAN:
     def __init__(self, mapper, synthesizer) -> None:
@@ -24,3 +29,33 @@ class StyleGAN:
         latent_z = self.get_z_latents(seeds)
         latent_w = self.mapper(latent_z, truncation=truncation)
         return latent_w
+
+
+class StyleGANMapper(MauaMapper):
+    MappingNetwork = None
+
+    def __init__(self, model_file: str) -> None:
+        super().__init__()
+
+        if model_file is None or model_file == "None":
+            self.G_map = self.MappingNetwork(z_dim=512, c_dim=0, w_dim=512, num_ws=18)
+        else:
+            with dnnlib.util.open_url(model_file) as f:
+                self.G_map: self.MappingNetwork = legacy.load_network_pkl(f)["G_ema"].mapping
+
+        self.z_dim, self.c_dim = self.G_map.z_dim, self.G_map.c_dim
+
+        self.modulation_targets = {
+            "latent_z": (self.z_dim,),
+            "truncation": (1,),
+        }
+        if self.c_dim > 0:
+            self.modulation_targets["class_conditioning"] = (self.c_dim,)
+
+    def forward(
+        self,
+        latent_z: torch.Tensor,
+        class_conditioning: torch.Tensor = None,
+        truncation: torch.Tensor = torch.ones(1, 1),
+    ):
+        return self.G_map.forward(latent_z, class_conditioning, truncation_psi=truncation)
