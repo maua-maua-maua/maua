@@ -15,7 +15,7 @@ class FFMPEG(Renderer):
         self.output_file, self.fps, self.ffmpeg_preset = output_file, fps, ffmpeg_preset
         self.audio_file, self.audio_offset, self.audio_duration = audio_file, audio_offset, audio_duration
 
-    def __call__(self, synthesizer, inputs, postprocess, fp16=True):
+    def __call__(self, synthesizer, inputs, postprocess, fp16=False):
         dataset = TensorDataset(*inputs.values())
 
         def collate_fn(data):

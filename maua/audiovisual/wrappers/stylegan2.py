@@ -87,10 +87,10 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
         if latent_w is not None and latent_w_plus is not None:
             warnings.warn("Both latent_w and latent_w_plus supplied, using latent_w_plus input...")
 
-        # if translation is not None:
-        #     self.apply_translation(translation, translation_layer)
-        # if rotation is not None:
-        #     self.apply_rotation(rotation, rotation_layer)
+        if translation is not None:
+            self.apply_translation(translation, translation_layer)
+        if rotation is not None:
+            self.apply_rotation(rotation, rotation_layer)
 
         if latent_w_plus is None:
             latent_w_plus = torch.tile(latent_w[:, None, :], (1, self.G_synth.num_ws, 1))
