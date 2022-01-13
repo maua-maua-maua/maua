@@ -34,5 +34,9 @@ def get_generator_classes(architecture: str) -> Tuple[MauaMapper, MauaSynthesize
         from .stylegan3 import StyleGAN3Mapper, StyleGAN3Synthesizer
 
         return StyleGAN3Mapper, StyleGAN3Synthesizer
+    if architecture == "stylegan2":
+        from .stylegan2 import StyleGAN2Mapper, StyleGAN2Synthesizer
+
+        return StyleGAN2Mapper, StyleGAN2Synthesizer
     else:
         raise Exception(f"Architecture not found: {architecture}")

@@ -88,7 +88,7 @@ def write_video(
         output_file (str): File to write output mp4 to
         fps (float): Frames per second of output video
     """
-    t, c, h, w = tensor.shape
+    _, _, h, w = tensor.shape
     with VideoWriter(output_file, (w, h), fps, audio_file, audio_offset, audio_duration, ffmpeg_preset) as video:
         for frame in tensor:
             frame = frame if isinstance(frame, torch.Tensor) else torch.from_numpy(frame.copy())

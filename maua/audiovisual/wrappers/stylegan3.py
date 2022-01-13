@@ -5,12 +5,12 @@ import numpy as np
 import torch
 from torch.nn.functional import interpolate, pad
 
+from maua.audiovisual.wrappers.stylegan import StyleGAN
 from maua.GAN.src.models.stylegan3 import MappingNetwork, SynthesisNetwork
 from maua.GAN.src.utils import legacy
 from maua.GAN.src.utils.style_ops import dnnlib
 
 from . import MauaMapper, MauaSynthesizer
-
 
 layer_multipliers = {
     1024: {0: 64, 1: 64, 2: 64, 3: 32, 4: 32, 5: 16, 6: 8, 7: 8, 8: 4, 9: 4, 10: 2, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1},
@@ -19,28 +19,11 @@ layer_multipliers = {
 }
 
 
-class StyleGAN3:
-    def __init__(self, mapper, synthesizer) -> None:
-        self.mapper = mapper
-        self.synthesizer = synthesizer
+class StyleGAN3(StyleGAN):
+    pass
 
-    def get_z_latents(self, seeds):
-        seeds = sum(
-            [
-                ([int(seed)] if not "-" in seed else list(range(int(seed.split("-")[0]), int(seed.split("-")[1]))))
-                for seed in seeds.split(",")
-            ],
-            [],
-        )
-        latent_z = torch.cat(
-            [torch.from_numpy(np.random.RandomState(seed).randn(1, self.mapper.z_dim)) for seed in seeds]
-        )
-        return latent_z
 
-    def get_w_latents(self, seeds, truncation=1):
-        latent_z = self.get_z_latents(seeds)
-        latent_w = self.mapper(latent_z, truncation=truncation)
-        return latent_w
+# TODO StyleGAN2Mapper/StyleGAN3Mapper are identical except for what MappingNetwork points to, can we unify?
 
 
 class StyleGAN3Mapper(MauaMapper):
