@@ -43,7 +43,7 @@ def transfer_multires(
             content_video=content_video,
             style_imgs=style_imgs,
             init_video=video,
-            init_type="prev_warped" if size == sizes[0] else "init_video",
+            init_type="content" if size == sizes[0] else "init_video",
             match_hist=match_hist,
             size=size,
             parameterization=parameterization,

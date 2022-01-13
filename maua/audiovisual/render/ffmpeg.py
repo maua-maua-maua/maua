@@ -42,7 +42,7 @@ class FFMPEG(Renderer):
             self.ffmpeg_preset,
         ) as video:
             for batch in tqdm(loader):
-                frame = synthesizer(**batch)
+                frame = synthesizer(**batch).add(1).div(2)
                 frame = postprocess(frame)
                 video.write(tensor2bytes(frame.squeeze()).tobytes())
 
