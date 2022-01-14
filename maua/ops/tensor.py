@@ -33,14 +33,14 @@ def img2tensor(pil_image):
     return to_tensor(pil_image).unsqueeze(0)
 
 
-def tensor2img(tensor):
+def tensor2img(tensor, format: str = "RGB"):
     return fromarray(
-        tensor.squeeze(0).permute(1, 2, 0).clamp(0, 1).mul(255).round().detach().cpu().numpy().astype(np.uint8)
+        tensor.squeeze(0).permute(1, 2, 0).clamp(0, 1).mul(255).round().byte().detach().cpu().numpy(), format
     )
 
 
 def tensor2bytes(tensor: torch.Tensor) -> np.ndarray:
-    """Converts a PyTorch [C,H,W] tensor to bytes (e.g. for passing to FFMPEG)
+    """Converts a PyTorch [1,C,H,W] tensor to bytes (e.g. for passing to FFMPEG)
 
     Args:
         tensor (torch.Tensor): Image tensor to convert to UINT8 bytes
@@ -48,7 +48,7 @@ def tensor2bytes(tensor: torch.Tensor) -> np.ndarray:
     Returns:
         np.ndarray
     """
-    return tensor.permute(1, 2, 0).clamp(0, 1).mul(255).cpu().numpy().astype(np.uint8)
+    return tensor.squeeze(0).permute(1, 2, 0).clamp(0, 1).mul(255).round().byte().detach().cpu().numpy().tobytes()
 
 
 def tensor2imgs(tensor: torch.Tensor, format: str = "RGB") -> List[Image]:
@@ -61,5 +61,4 @@ def tensor2imgs(tensor: torch.Tensor, format: str = "RGB") -> List[Image]:
     Returns:
         PIL.Image
     """
-    return [fromarray(tensor2bytes(img), format) for img in tensor]
-
+    return [tensor2img(img, format) for img in tensor]

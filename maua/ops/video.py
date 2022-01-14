@@ -1,8 +1,12 @@
+from math import ceil
+from typing import Union
+
 import ffmpeg
-from .tensor import tensor2bytes
 import numpy as np
 import torch
-from typing import Union
+
+from .image import resample
+from .tensor import tensor2bytes
 
 
 class VideoWriter:
@@ -14,18 +18,21 @@ class VideoWriter:
         audio_file=None,
         audio_offset=0,
         audio_duration=None,
-        ffmpeg_preset="slow",
+        ffmpeg_preset="veryslow",
     ):
         self.output_file = output_file
-        self.output_size = f"{output_size[0]}x{output_size[1]}"
+        self.output_size = f"{2*ceil(output_size[0]/2)}x{2*ceil(output_size[1]/2)}"
         self.fps = fps
         self.audio_file = audio_file
         self.audio_offset = audio_offset
         self.audio_duration = audio_duration
         self.ffmpeg_preset = ffmpeg_preset
 
-    def write(self, bytes):
-        self.ffmpeg_proc.stdin.write(bytes)
+    def write(self, tensor):
+        _, _, h, w = tensor.shape
+        if h % 2 or w % 2:
+            tensor = resample(tensor, (2 * ceil(h / 2), 2 * ceil(w / 2)))
+        self.ffmpeg_proc.stdin.write(tensor2bytes(tensor))
 
     def __enter__(self):
         if self.audio_file is not None:
@@ -39,7 +46,6 @@ class VideoWriter:
                     audio,
                     self.output_file,
                     framerate=self.fps,
-                    vcodec="libx264",
                     pix_fmt="yuv420p",
                     preset=self.ffmpeg_preset,
                     audio_bitrate="320K",
@@ -56,7 +62,6 @@ class VideoWriter:
                 .output(
                     self.output_file,
                     framerate=self.fps,
-                    vcodec="libx264",
                     pix_fmt="yuv420p",
                     preset=self.ffmpeg_preset,
                     v="warning",
@@ -92,4 +97,4 @@ def write_video(
     with VideoWriter(output_file, (w, h), fps, audio_file, audio_offset, audio_duration, ffmpeg_preset) as video:
         for frame in tensor:
             frame = frame if isinstance(frame, torch.Tensor) else torch.from_numpy(frame.copy())
-            video.write(tensor2bytes(frame).tobytes())
+            video.write(frame)

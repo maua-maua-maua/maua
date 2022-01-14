@@ -3,6 +3,12 @@ import torch
 from ... import audioreactive as ar
 from ...patches.base.stylegan2 import StyleGAN2Patch
 
+# audio input | filtering | feature | GAN input
+# ----------- | --------- | ------- | ----------
+# vocal       | low       | chroma  | latent
+# drums       | high      | onsets  | latent
+# bass        | not       | volume  | truncation
+
 
 class ExampleSG2Patch(StyleGAN2Patch):
     def process_audio(self):
@@ -37,4 +43,6 @@ class ExampleSG2Patch(StyleGAN2Patch):
             "latent_w_plus": latent_w_plus,
             "translation": torch.zeros((self.n_frames, 2)),
             "rotation": torch.zeros(self.n_frames),
+            "noise": None,
+            "truncation": None,
         }

@@ -22,8 +22,8 @@ def upscale(video_file, model_name, device, out_dir):
         fps=fps,
     ) as video:
         frames = (torch.from_numpy(vr[i].asnumpy()).permute(2, 0, 1).unsqueeze(0).div(255) for i in range(len(vr)))
-        for large in tqdm(upscale_images(frames, model_name, device), total=len(vr)):
-            video.write(np.asarray(large).tobytes())
+        for frame in tqdm(upscale_images(frames, model_name, device), total=len(vr)):
+            video.write(frame)
 
 
 def main(args):

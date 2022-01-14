@@ -43,4 +43,7 @@ def load_model(model_name="pbaylies-hr-paintings", device=torch.device("cuda" if
 @torch.inference_mode()
 def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
     for img in images:
-        yield Image.fromarray(model.enhance(load_image(img).squeeze().permute(1, 2, 0).mul(255).numpy())[0])
+        input = load_image(img).squeeze().permute(1, 2, 0).mul(255).numpy()
+        large = model.enhance(input)[0]
+        large = torch.from_numpy(large).permute(2, 0, 1).unsqueeze(0).div(255)
+        yield large

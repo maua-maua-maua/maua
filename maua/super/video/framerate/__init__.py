@@ -1,4 +1,6 @@
 import argparse
+import os
+import warnings
 from pathlib import Path
 from typing import Generator
 
@@ -56,13 +58,14 @@ def main(args):
         fps = vr.get_avg_fps()
         h, w, _ = vr[0].shape
 
-        with VideoWriter(
-            output_file=f"{args.out_dir}/{Path(video_file).stem}_{args.model_name}.mp4",
-            output_size=(w, h),
-            fps=fps * (args.factor / args.slow_factor),
-        ) as video:
+        out_file = f"{args.out_dir}/{Path(video_file).stem}_{args.model_name}.mp4"
+        if os.path.exists(out_file):
+            print(f"Skipping {Path(video_file).stem}, output {Path(out_file).stem} already exists!")
+            continue
+
+        with VideoWriter(output_file=out_file, output_size=(w, h), fps=fps * (args.factor / args.slow_factor)) as video:
             for frame in interpolate(video_file, args.model_name, args.factor, not args.no_fp16, args.device):
-                video.write(frame.mul(255).round().byte().numpy().tobytes())
+                video.write(frame)
 
 
 def argument_parser():

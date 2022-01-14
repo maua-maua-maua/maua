@@ -16,11 +16,11 @@ from maua.utility import download
 URLS = {
     "RIFE-1.0": "1U2AGFY00hafsPmm94-6deeM-9feGN-qg",
     "RIFE-1.1": "1wsQIhHZ3Eg4_AfCXItFKqqyDMB4NS0Yd",
-    "RIFE-2.0": "https://share.marqt40.com/s/pCAf6E8fp8JBKY3/download/RIFE_trained_model_v2.0_HDv2.zip",
-    "RIFE-2.1": "https://share.marqt40.com/s/a4M3Dnf2XTnQdtH/download/RIFE_trained_model_v2.1_HDv2.zip",
-    "RIFE-2.2": "https://share.marqt40.com/s/ijYCrMzkimTMNrJ/download/RIFE_trained_model_v2.2_HDv2.zip",
-    "RIFE-2.3": "https://share.marqt40.com/s/qDsFyLNJcFpM79z/download/RIFE_trained_model_v2.3_HDv2.zip",
-    "RIFE-2.4": "https://share.marqt40.com/s/AdQC3ffS68CL2m8/download/RIFE_trained_model_v2.4_HDv2.zip",
+    "RIFE-2.0": "https://share.marqt40.com/s/EcFxbqQACRqNS8j/download/RIFE_trained_model_v2.1_HDv2.zip",
+    "RIFE-2.1": "https://share.marqt40.com/s/ecdb6LqfZkSrXkf/download/RIFE_trained_model_v2.1_HDv2.zip",
+    "RIFE-2.2": "https://share.marqt40.com/s/3QxKteqQMPs79J7/download/RIFE_trained_model_v2.2_HDv2.zip",
+    "RIFE-2.3": "https://share.marqt40.com/s/78y3Aqd4PGryqYk/download/RIFE_trained_model_v2.3_HDv2.zip",
+    "RIFE-2.4": "https://share.marqt40.com/s/Rri2JHmk8YAYxsB/download/RIFE_trained_model_v2.4_HDv2.zip",
     "RIFE-3.0": "1JmwH8L3pdy49NroCVwracDW5UM43AAqd",
     "RIFE-3.1": "1xn4R3TQyFhtMXN2pa3lRB8cd4E1zckQe",
     "RIFE-3.2": "13x77FcKwqoCv8ZalPP7f95G3UJNYCJov",
@@ -114,4 +114,4 @@ def interpolate(
 
         intermediate_frames = recursive_inference(model, frame1, frame2, factor)
         for frame in intermediate_frames:
-            yield frame.squeeze().permute(1, 2, 0).clamp(0, 1).float().cpu()[:h, :w]
+            yield frame[..., :h, :w].cpu().float()

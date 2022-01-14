@@ -4,6 +4,7 @@ from time import time
 
 import torch
 from tqdm import tqdm
+from maua.ops.tensor import tensor2img
 
 from maua.super.image.single import MODEL_MODULES, MODEL_NAMES
 
@@ -20,7 +21,7 @@ def main(args):
         )
         t = time()
         for img, path in zip(module.upscale(args.images, model), args.images):
-            img.save(f"{args.out_dir}/{Path(path).stem}_{model_name}.png")
+            tensor2img(img).save(f"{args.out_dir}/{Path(path).stem}_{model_name}.png")
         times[model_name] = (time() - t) / len(args.images)
 
     print("Average time taken:")

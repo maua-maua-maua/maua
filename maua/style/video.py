@@ -2,6 +2,7 @@ import os
 import shutil
 from pathlib import Path
 from typing import List, Tuple, Union
+from math import ceil
 
 import numpy as np
 import torch
@@ -29,7 +30,7 @@ def scaled_height_width(h, w, size):
     requested_new_short = size
     new_short, new_long = requested_new_short, int(requested_new_short * long / short)
     w, h = (new_short, new_long) if w <= h else (new_long, new_short)
-    return h, w
+    return ceil(h / 2.0) * 2, ceil(w / 2.0) * 2
 
 
 def flow_warp_map(raw_flow: np.ndarray, size: Union[int, Tuple[int, int]]) -> torch.Tensor:

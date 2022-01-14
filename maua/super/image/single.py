@@ -6,6 +6,8 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
+from maua.ops.tensor import tensor2img
+
 from .models import bsrgan, latent_diffusion, realesrgan, swinir, waifu
 
 MODEL_MODULES = {
@@ -36,7 +38,7 @@ MODEL_NAMES = list(MODEL_MODULES.keys())
 
 def upscale(
     images, model_name, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
-) -> Generator[Image.Image, None, None]:
+) -> Generator[torch.Tensor, None, None]:
 
     module = MODEL_MODULES[model_name]
     model = module.load_model(
@@ -53,7 +55,7 @@ def main(args):
         torch.device(args.device),
     )
     for img, path in tqdm(zip(module.upscale(args.images, model), args.images), total=len(args.images)):
-        img.save(f"{args.out_dir}/{Path(path).stem}_{args.model_name}.png")
+        tensor2img(img).save(f"{args.out_dir}/{Path(path).stem}_{args.model_name}.png")
 
 
 def argument_parser():

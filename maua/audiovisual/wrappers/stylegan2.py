@@ -121,6 +121,9 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
     def apply_rotation(self, layer, rotation):
         pass
 
+    def apply_zoom(self, layer, rotation):
+        pass
+
 
 def get_hook(layer_size, target_size, strategy, add_noise=True):
     target_size = np.flip(target_size)  # W,H --> H,W

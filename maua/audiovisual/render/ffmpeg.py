@@ -3,7 +3,6 @@ from decord import VideoReader
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
-from maua.ops.tensor import tensor2bytes
 from maua.ops.video import VideoWriter
 
 from . import Renderer
@@ -44,6 +43,6 @@ class FFMPEG(Renderer):
             for batch in tqdm(loader):
                 frame = synthesizer(**batch).add(1).div(2)
                 frame = postprocess(frame)
-                video.write(tensor2bytes(frame.squeeze()).tobytes())
+                video.write(frame)
 
         return VideoReader(self.output_file)

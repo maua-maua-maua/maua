@@ -90,5 +90,5 @@ def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
                 100, batch_size=z.shape[0], shape=z.shape[1:], conditioning=c, eta=1.0, verbose=False
             )
         sample = model.decode_first_stage(sample)
-        sample = sample.clamp(-1, 1).add(1).div(2).mul(255).squeeze().permute(1, 2, 0).cpu()
-        yield Image.fromarray(sample.numpy().round().astype(np.uint8))
+        sample = sample.clamp(-1, 1).add(1).div(2)
+        yield sample.cpu().float()

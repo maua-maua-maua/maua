@@ -78,6 +78,4 @@ def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
 
         output = model(img_lq)
         output = output[..., : h_old * 4, : w_old * 4]
-        output = np.uint8((output.data.squeeze().permute(1, 2, 0).float().cpu().clamp_(0, 1).numpy() * 255.0).round())
-
-        yield Image.fromarray(output)
+        yield output.cpu().float()
