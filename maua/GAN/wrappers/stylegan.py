@@ -1,9 +1,7 @@
 import numpy as np
 import torch
 
-from maua.GAN.src.utils import legacy
-from maua.GAN.src.utils.style_ops import dnnlib
-
+from ..load import load_network
 from . import MauaMapper
 
 
@@ -40,8 +38,7 @@ class StyleGANMapper(MauaMapper):
         if model_file is None or model_file == "None":
             self.G_map = self.MappingNetwork(z_dim=512, c_dim=0, w_dim=512, num_ws=18)
         else:
-            with dnnlib.util.open_url(model_file) as f:
-                self.G_map: self.MappingNetwork = legacy.load_network_pkl(f)["G_ema"].mapping
+            self.G_map: self.MappingNetwork = load_network(model_file).mapping
 
         self.z_dim, self.c_dim = self.G_map.z_dim, self.G_map.c_dim
 

@@ -25,11 +25,6 @@ def set_SMF(smf):
     SMF = smf
 
 
-# ====================================================================================
-# ==================================== signal ops ====================================
-# ====================================================================================
-
-
 def hash(tensor_array_int_obj):
     if isinstance(tensor_array_int_obj, (np.ndarray, torch.Tensor)):
         if isinstance(tensor_array_int_obj, torch.Tensor):
@@ -61,6 +56,11 @@ def cache_to_workspace(name):
         return wrapper
 
     return decorator
+
+
+# ====================================================================================
+# ==================================== signal ops ====================================
+# ====================================================================================
 
 
 @cache_to_workspace("unmixed")
@@ -121,6 +121,21 @@ def onsets(audio, sr, n_frames, margin=8, fmin=20, fmax=8000, smooth=1, clip=100
     return onset
 
 
+@cache_to_workspace("low_passed")
+def low_pass(audio, sr, fmax=200, db_per_octave=12):
+    return signal.sosfilt(signal.butter(db_per_octave, fmax, "low", fs=sr, output="sos"), audio)
+
+
+@cache_to_workspace("high_passed")
+def high_pass(audio, sr, fmin=3000, db_per_octave=12):
+    return signal.sosfilt(signal.butter(db_per_octave, fmin, "high", fs=sr, output="sos"), audio)
+
+
+@cache_to_workspace("band_passed")
+def band_pass(audio, sr, fmin=200, fmax=3000, db_per_octave=12):
+    return signal.sosfilt(signal.butter(db_per_octave, [fmin, fmax], "band", fs=sr, output="sos"), audio)
+
+
 @cache_to_workspace("rms")
 def rms(audio, sr, n_frames, fmin=20, fmax=8000, smooth=180, clip=50, power=6):
     """Creates RMS envelope from audio
@@ -138,7 +153,7 @@ def rms(audio, sr, n_frames, fmin=20, fmax=8000, smooth=180, clip=50, power=6):
     Returns:
         torch.tensor, shape=(n_frames,): RMS envelope
     """
-    audio_filt = signal.sosfilt(signal.butter(12, [fmin, fmax], "bp", fs=sr, output="sos"), audio)
+    audio_filt = signal.sosfilt(signal.butter(12, [fmin, fmax], "band", fs=sr, output="sos"), audio)
     rms = rosa.feature.rms(S=np.abs(rosa.stft(y=audio_filt, hop_length=512)))[0]
     rms = np.clip(signal.resample(rms, n_frames), rms.min(), rms.max())
     rms = torch.from_numpy(rms).float()

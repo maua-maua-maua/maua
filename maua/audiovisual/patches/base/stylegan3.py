@@ -1,4 +1,4 @@
-from ...wrappers.stylegan3 import StyleGAN3, StyleGAN3Mapper, StyleGAN3Synthesizer
+from maua.GAN.wrappers.stylegan3 import StyleGAN3, StyleGAN3Mapper, StyleGAN3Synthesizer
 from . import MauaPatch
 
 

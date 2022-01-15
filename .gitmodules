@@ -56,7 +56,7 @@
 	path = maua/audio
 	url = https://github.com/maua-maua-maua/audio
 [submodule "maua/GAN"]
-	path = maua/GAN
+	path = maua/GAN/studio
 	url = https://github.com/maua-maua-maua/GAN
 [submodule "maua/submodules/RIFE"]
 	path = maua/submodules/RIFE

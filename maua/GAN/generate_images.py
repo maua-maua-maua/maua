@@ -32,6 +32,7 @@ def generate_images(
     G_map = mapper(model_file).to(device)
     G_synth = synthesizer(model_file, out_size, resize_strategy, resize_layer).to(device)
 
+    # TODO similar abstraction as in generate_audiovisual
     for seed in tqdm(seeds):
         latent_z = torch.from_numpy(np.random.RandomState(seed).randn(1, G_map.z_dim)).to(device)
         class_conditioning = one_hot(class_idx, num_classes=G_map.c_dim).to(device) if class_idx is not None else None

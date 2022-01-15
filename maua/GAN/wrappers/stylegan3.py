@@ -5,12 +5,10 @@ import numpy as np
 import torch
 from torch.nn.functional import interpolate, pad
 
-from maua.audiovisual.wrappers.stylegan import StyleGAN, StyleGANMapper
-from maua.GAN.src.models import stylegan3
-from maua.GAN.src.utils import legacy
-from maua.GAN.src.utils.style_ops import dnnlib
-
+from ..load import load_network
+from ..studio.src.models import stylegan3
 from . import MauaSynthesizer
+from .stylegan import StyleGAN, StyleGANMapper
 
 layer_multipliers = {
     1024: {0: 64, 1: 64, 2: 64, 3: 32, 4: 32, 5: 16, 6: 8, 7: 8, 8: 4, 9: 4, 10: 2, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1},
@@ -34,8 +32,7 @@ class StyleGAN3Synthesizer(MauaSynthesizer):
         if model_file is None or model_file == "None":
             self.G_synth = stylegan3.SynthesisNetwork(w_dim=512, img_resolution=1024, img_channels=3)
         else:
-            with dnnlib.util.open_url(model_file) as f:
-                self.G_synth: stylegan3.SynthesisNetwork = legacy.load_network_pkl(f)["G_ema"].synthesis
+            self.G_synth: stylegan3.SynthesisNetwork = load_network(model_file).synthesis
 
         self.w_dim, self.num_ws = self.G_synth.w_dim, self.G_synth.num_ws
 
