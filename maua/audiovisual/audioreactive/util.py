@@ -6,7 +6,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .signal import raw_chroma
+from .features import chroma
 
 # ====================================================================================
 # ==================================== utilities =====================================
@@ -92,7 +92,7 @@ def plot_chroma_comparison(audio, sr):
     fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(16, 9))
     for col, types in enumerate([["cens", "cqt"], ["deep", "clp"], ["stft"]]):
         for row, type in enumerate(types):
-            ch = raw_chroma(audio, sr, type=type)
+            ch = chroma(audio, sr, type=type)
             if ch.shape[1] == 12:
                 ch = ch.T
             librosa.display.specshow(ch, y_axis="chroma", x_axis="time", ax=ax[row, col])

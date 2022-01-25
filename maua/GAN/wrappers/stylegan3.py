@@ -18,7 +18,9 @@ layer_multipliers = {
 
 
 class StyleGAN3(StyleGAN):
-    pass
+    def __init__(self, mapper, synthesizer) -> None:
+        super().__init__(mapper, synthesizer)
+        self.synthesizer.avg_shift = self.synthesizer.input.affine(self.mapper.w_avg.unsqueeze(0)).squeeze(0)
 
 
 class StyleGAN3Mapper(StyleGANMapper):
@@ -49,8 +51,8 @@ class StyleGAN3Synthesizer(MauaSynthesizer):
         self,
         latent_w: torch.Tensor = None,
         latent_w_plus: torch.Tensor = None,
-        translation: torch.Tensor = torch.zeros(1, 2),
-        rotation: torch.Tensor = torch.zeros(1, 1),
+        translation: torch.Tensor = None,
+        rotation: torch.Tensor = None,
     ) -> torch.Tensor:
         if latent_w is None and latent_w_plus is None:
             raise Exception("One of latent_w or latent_w_plus inputs must be supplied!")
@@ -59,6 +61,10 @@ class StyleGAN3Synthesizer(MauaSynthesizer):
 
         if not (translation is None or rotation is None):
             self.G_synth.input.transform.copy_(make_transform_mat(translation, rotation))
+        else:
+            # stabilization trick by @RiversHaveWings and @nshepperd1
+            self.G_synth.input.affine.bias.data.add_(self.avg_shift)
+            self.G_synth.input.affine.weight.data.zero_()
 
         if latent_w_plus is None:
             latent_w_plus = torch.tile(latent_w[:, None, :], (1, self.G_synth.num_ws, 1))
@@ -93,7 +99,7 @@ def make_transform_mat(translate: Tuple[float, float], angle: float) -> torch.Te
         m = np.linalg.inv(m)
     except np.linalg.LinAlgError:
         warnings.warn(
-            f"Singular transform matrix, continuing with pseudo-inverse of transform matrix which might not give expected results!"
+            f"Singular transform matrix, continuing with pseudo-inverse of transform matrix which might not give expected results! (If you want no translation or rotation, set them to None rather than 0)"
         )
         m = np.linalg.pinv(m)
     return torch.from_numpy(m)

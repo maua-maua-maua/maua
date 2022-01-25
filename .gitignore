@@ -7,6 +7,7 @@ workspace/audio_cache/*
 maua/audiovisual/patches/*
 !maua/audiovisual/patches/examples/
 !maua/audiovisual/patches/base/
+!maua/audiovisual/patches/primitives/
 !workspace/.gitkeep
 !workspace/Wavefunk - Dwelling in the Kelp.mp3
 !workspace/Wavefunk - Tau Ceti Alpha.mp3
