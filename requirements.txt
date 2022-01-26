@@ -3,6 +3,7 @@ av
 basicsr
 black
 click
+cupy-cuda113==9.6
 decord
 effortless_config
 einops

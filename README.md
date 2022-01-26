@@ -18,7 +18,6 @@ cd maua
 conda create -n maua python=3.8 pytorch torchvision torchaudio cudatoolkit=11.3 cudatoolkit-dev=11.3 cudnn mpi4py Cython pip=21.3.1 -c nvidia -c pytorch -c conda-forge
 conda activate maua
 pip install -r requirements.txt
-pip install cupy-cuda113==9.6
 ```
 
 Currently installation has only been tested on a Ubuntu 20.04 machine with NVIDIA GPUs. Other configurations are also be possible but might be more involved. If you're running into problems, feel free to open an issue!
