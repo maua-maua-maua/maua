@@ -15,7 +15,11 @@ class LoopLatents(torch.nn.Module):
 
         latent_selection = latent_selection.cpu()
 
-        if type == "spline":
+        if loop_len == 1 or type == "constant":
+            latents = latent_selection[[0]]  # constant latent vector!
+            loop_len = 1
+
+        elif type == "spline":
             latent_selection = np.concatenate([latent_selection, latent_selection[[0]]])
             x = np.linspace(0, 1, loop_len)
             latents = np.zeros((loop_len, *latent_selection.shape[1:]))
@@ -39,18 +43,18 @@ class LoopLatents(torch.nn.Module):
                             )
                         )
                     )
-            t, n, l = latents.shape
+            T, N, L = latents.shape
             latents = torch.stack(latents)
             latents = (
-                F.interpolate(latents.permute(2, 1, 0)[None], (n, loop_len), mode="linear").squeeze().permute(2, 1, 0)
+                F.interpolate(latents.permute(2, 1, 0)[None], (N, loop_len), mode="linear").squeeze().permute(2, 1, 0)
             )
             latents = gaussian_filter(latents, 1)
 
         elif type == "gaussian":
             latents = torch.cat([lat.tile(round(loop_len / len(latent_selection)), 1, 1) for lat in latent_selection])
-            t, n, l = latents.shape
+            T, N, L = latents.shape
             latents = (
-                F.interpolate(latents.permute(2, 1, 0)[None], (n, loop_len), mode="linear").squeeze().permute(2, 1, 0)
+                F.interpolate(latents.permute(2, 1, 0)[None], (N, loop_len), mode="linear").squeeze().permute(2, 1, 0)
             )
             latents = gaussian_filter(latents, smooth)
 
@@ -64,16 +68,39 @@ class LoopLatents(torch.nn.Module):
 
 
 class TempoLoopLatents(LoopLatents):
-    def __init__(self, latent_selection, tempo, n_bars, fps, **loop_latents_kwargs):
-        loop_len = n_bars * fps * 60 / (tempo / 4)
+    def __init__(self, tempo, latent_selection, n_bars, fps, **loop_latents_kwargs):
+        if len(latent_selection) == 1:
+            loop_len = 1
+        else:
+            loop_len = n_bars * fps * 60 / (tempo / 4)
         super().__init__(latent_selection, loop_len, **loop_latents_kwargs)
 
 
+class PitchTrackLatents(torch.nn.Module):
+    def __init__(self, pitch_track, latent_selection):
+        super().__init__()
+
+        low, high = np.percentile(pitch_track, 25), np.percentile(pitch_track, 75)
+        pitch_track -= low
+        pitch_track /= high
+        pitch_track *= len(latent_selection)
+        pitch_track %= len(latent_selection)
+
+        self.latent_selection = latent_selection
+        self.pitch_track = pitch_track
+        self.index = 0
+
+    def forward(self):
+        latent = self.latent_selection[self.pitch_track[self.index].round().astype(int)]
+        self.index += 1
+        return latent
+
+
 class TonalLatents(torch.nn.Module):
-    def __init__(self, latent_selction, chroma_or_tonnetz):
+    def __init__(self, chroma_or_tonnetz, latent_selection):
         super().__init__()
         chroma_or_tonnetz /= chroma_or_tonnetz.sum(0)
-        self.register_buffer("latents", (chroma_or_tonnetz[..., None, None, None] * latent_selction[:, None]).sum(0))
+        self.register_buffer("latents", chroma_or_tonnetz[..., None, None, None] @ latent_selection[:, None])
         self.index = 0
 
     def forward(self):

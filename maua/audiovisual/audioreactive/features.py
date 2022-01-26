@@ -1,3 +1,5 @@
+from functools import wraps
+
 import librosa as rosa
 import madmom as mm
 import matplotlib.patches as patches
@@ -6,12 +8,27 @@ import numpy as np
 import scipy
 import scipy.stats
 import sklearn.cluster
+import torch
+from scipy.signal import resample
 
 from . import cache_to_workspace
 from .audio import harmonic, percussive
 from .postprocess import percentile_clip
 
 
+def resample_to_fps(function):  # TODO think of a better way of doing this
+    @wraps(function)
+    def wrapper(audio, sr, fps=None, *args, **kwargs):
+        result = function(audio, sr, *args, **kwargs)
+        if fps is None:
+            return result
+        axis = np.argmax(result.shape)
+        return resample(result, round(len(audio) / sr * fps), axis=axis)
+
+    return wrapper
+
+
+@resample_to_fps
 @cache_to_workspace("onsets")
 def onsets(audio, sr, type="mm", prepercussive=4):
     """Creates onset envelope from audio
@@ -33,7 +50,7 @@ def onsets(audio, sr, type="mm", prepercussive=4):
 
     elif type == "mm":
         sig = mm.audio.signal.Signal(audio, num_channels=1, sample_rate=sr)
-        sig_frames = mm.audio.signal.FramedSignal(sig, frame_size=2048, hop_size=441)
+        sig_frames = mm.audio.signal.FramedSignal(sig, frame_size=2048, hop_length=441)
         stft = mm.audio.stft.ShortTimeFourierTransform(sig_frames, circular_shift=True)
         spec = mm.audio.spectrogram.Spectrogram(stft, circular_shift=True)
         filt_spec = mm.audio.spectrogram.FilteredSpectrogram(spec, num_bands=24)
@@ -55,13 +72,14 @@ def onsets(audio, sr, type="mm", prepercussive=4):
             axis=0,
         )
 
-    onset = percentile_clip(onset, 95)
+    onset = percentile_clip(torch.from_numpy(onset), 95).numpy()
 
-    return onset
+    return onset.squeeze().astype(np.float32)
 
 
+@resample_to_fps
 @cache_to_workspace("volume")
-def volume(audio):
+def volume(audio, sr):
     """Creates RMS envelope from audio
 
     Args:
@@ -73,9 +91,10 @@ def volume(audio):
     vol = rosa.feature.rms(audio)
     vol -= vol.min()
     vol /= vol.max()
-    return vol
+    return vol.squeeze().astype(np.float32)
 
 
+@resample_to_fps
 @cache_to_workspace("chroma")
 def chroma(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4):
     """Creates chromagram for the harmonic component of the audio
@@ -112,46 +131,56 @@ def chroma(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4):
     if nearest_neighbor:
         ch = np.minimum(ch, rosa.decompose.nn_filter(ch, aggregate=np.median, metric="cosine"))
 
-    return ch
+    ch -= ch.min()
+    ch /= ch.max()
+    return ch.squeeze().astype(np.float32)
 
 
+@resample_to_fps
 @cache_to_workspace("tonnetz")
-def tonnetz(audio, sr, preharmonic=4):
-    if preharmonic:
-        audio = harmonic(audio, sr, preharmonic)
-    return rosa.feature.tonnetz(y=audio, sr=sr)
+def tonnetz(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4):
+    ch = chroma(audio, sr, type=type, nearest_neighbor=nearest_neighbor, preharmonic=preharmonic)
+    fps = ch.shape[1] / (len(audio) / sr)
+    ton = rosa.feature.tonnetz(chroma=ch, sr=fps)
+    ton -= ton.min()
+    ton /= ton.max()
+    return ton.squeeze().astype(np.float32)
 
 
+@resample_to_fps
 @cache_to_workspace("pitch_track")
 def pitch_track(audio, sr, preharmonic=4):
     if preharmonic:
         audio = harmonic(audio, sr, preharmonic)
     pitches, magnitudes = rosa.piptrack(y=audio, sr=sr)
     average_pitch = np.average(pitches, axis=0, weights=magnitudes + 1e-8)
-    return average_pitch
+    return average_pitch.squeeze().astype(np.float32)
 
 
+@resample_to_fps
 @cache_to_workspace("spectral_max")
 def spectral_max(audio, sr, n_mels=512):
     spectrum = rosa.feature.melspectrogram(y=audio, sr=sr, n_mels=n_mels)
     spectrum = np.amax(spectrum, axis=0)
     spectrum -= spectrum.min()
     spectrum /= spectrum.max()
-    return spectrum
+    return spectrum.squeeze().astype(np.float32)
 
 
 @cache_to_workspace("pitch_dominance")
-def pitch_dominance(audio, sr, preharmonic=4):
-    chromagram = chroma(audio, sr, preharmonic)
+def pitch_dominance(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4):
+    chromagram = chroma(audio, sr, type=type, nearest_neighbor=nearest_neighbor, preharmonic=preharmonic)
     chromagram_norm = chromagram / chromagram.sum(axis=0, keepdims=1)
     chromagram_sum = np.sum(chromagram_norm, axis=1)
     pitches_sorted = np.argsort(chromagram_sum)[::-1]
     return pitches_sorted
 
 
+@resample_to_fps
 @cache_to_workspace("pulse")
-def pulse(audio, sr, prior="lognorm", prepercussive=4):
-    onset_env = onsets(audio, sr, prepercussive)
+def pulse(audio, sr, prior="lognorm", type="mm", prepercussive=4):
+    onset_env = onsets(audio, sr, type=type, prepercussive=prepercussive)
+    fps = len(onset_env) / (len(audio) / sr)
 
     if prior == "uniform":
         prior = scipy.stats.uniform(30, 300)
@@ -160,28 +189,42 @@ def pulse(audio, sr, prior="lognorm", prepercussive=4):
     else:
         prior = None
 
-    return rosa.util.normalize(rosa.beat.plp(onset_envelope=onset_env, sr=sr, prior=prior))
+    pul = rosa.beat.plp(onset_envelope=onset_env, sr=fps, prior=prior)
+    pul = rosa.util.normalize(pul)
+    return pul.squeeze().astype(np.float32)
+
+
+def round_to_nearest_half(number):
+    return round(number * 2) / 2
 
 
 @cache_to_workspace("tempo")
-def tempo(audio, sr, prior="lognorm", prepercussive=4):
-    onset_env = onsets(audio, sr, prepercussive)
+def tempo(audio, sr, prior="uniform", type="mm", prepercussive=4):
+    onset_env = onsets(audio, sr, type=type, prepercussive=prepercussive)
 
     if prior == "uniform":
-        prior = scipy.stats.uniform(30, 300)
+        prior = scipy.stats.uniform(60, 200)
     elif prior == "lognorm":
-        prior = scipy.stats.lognorm(loc=np.log(120), scale=120, s=1)
+        prior = scipy.stats.lognorm(loc=np.log(120), scale=60, s=1)
     else:
         prior = None
 
-    tempogram = rosa.feature.tempogram(onset_envelope=onset_env, sr=sr).mean(1)
-    fourier_tempogram = rosa.feature.fourier_tempogram(onset_envelope=onset_env, sr=sr).mean(1)
+    ac_global = rosa.autocorrelate(onset_env, max_size=512)
+    ac_global = rosa.util.normalize(ac_global)
 
-    tempos = -np.partition(-tempogram, 3)[:3]
-    fourier_tempos = -np.partition(-fourier_tempogram, 3)[:3]
-    tempo = rosa.beat.tempo(onset_envelope=onset_env, sr=sr, prior=prior)
+    peaks = torch.topk(torch.from_numpy(ac_global), 10).indices.numpy()
+    peaks = peaks[np.greater(peaks, 3)]
+    peaks = peaks[np.less(peaks, len(ac_global))]
+    tempos_ac = rosa.tempo_frequencies(512)[peaks]
+    for t in range(len(tempos_ac)):
+        while tempos_ac[t] < 80:
+            tempos_ac[t] *= 2
+        while tempos_ac[t] > 200:
+            tempos_ac[t] /= 2
 
-    return (tempo, *tempos, *fourier_tempos)
+    tempo = rosa.beat.tempo(onset_envelope=onset_env, prior=prior).squeeze()
+
+    return [round_to_nearest_half(bpm) for bpm in (tempo, *tempos_ac)]
 
 
 @cache_to_workspace("segmentation")

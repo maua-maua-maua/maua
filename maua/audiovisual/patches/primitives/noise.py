@@ -26,7 +26,9 @@ class TonalNoise(torch.nn.Module):
         super().__init__()
         chroma_or_tonnetz /= chroma_or_tonnetz.sum(0)
         noises = torch.randn(chroma_or_tonnetz.shape[0], 1, 1, size, size)
-        self.register_buffer("noise", torch.sum(chroma_or_tonnetz[..., None, None, None] * noises, dim=0))
+        print(chroma_or_tonnetz[..., None, None, None].shape, noises.shape)
+        print(chroma_or_tonnetz[..., None, None, None] @ noises)
+        self.register_buffer("noise", chroma_or_tonnetz[..., None, None, None] @ noises)
         self.index = 0
 
     def forward(self):
@@ -36,10 +38,13 @@ class TonalNoise(torch.nn.Module):
 
 
 class ModulatedNoise(torch.nn.Module):
-    def __init__(self, modulation, base_noise):
+    def __init__(self, modulation, base_noise=None, size=None):
         super().__init__()
         self.modulation = modulation
-        self.base_noise = base_noise
+        if base_noise is not None:
+            self.base_noise = base_noise
+        else:
+            self.base_noise = LoopNoise(len(modulation), size, 1)
         self.index = 0
 
     def forward(self):
@@ -48,6 +53,6 @@ class ModulatedNoise(torch.nn.Module):
         return noise
 
 
-class CosSinNoise(torch.nn.Modules):
+class CosSinNoise(torch.nn.Module):
     def __init__(self, n_frames):
         pass

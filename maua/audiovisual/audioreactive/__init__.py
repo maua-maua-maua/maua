@@ -1,12 +1,7 @@
 import os
 
 import joblib
-
-from .audio import *
-from .features import *
-from .inputs import *
-from .merge import *
-from .postprocess import *
+from functools import wraps
 
 
 def hash(tensor_array_int_obj):
@@ -27,6 +22,7 @@ def hash(tensor_array_int_obj):
 
 def cache_to_workspace(name):
     def decorator(function):
+        @wraps(function)
         def wrapper(*args, **kwargs):
             arghash = "_".join([hash(a) for a in [*args, *kwargs.values()]])
             cache_file = f"workspace/audio_cache/{name}_{arghash}.npy"
@@ -40,3 +36,9 @@ def cache_to_workspace(name):
         return wrapper
 
     return decorator
+
+
+from .audio import *
+from .features import *
+from .inputs import *
+from .postprocess import *

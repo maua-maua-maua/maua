@@ -30,12 +30,12 @@ def percentile(signal, p):
     return signal.view(-1).kthvalue(k).values.item()
 
 
-def percentile_clip(signal, p):
+def percentile_clip(signal, percent):
     """Normalize signal between 0 and 1, clipping peak values above given percentile
 
     Args:
         signal (torch.tensor): Signal to normalize
-        p (int): [0-100]. Percentile to clip to
+        percent (int): [0-100]. Percentile to clip to
 
     Returns:
         torch.tensor: Clipped signal
@@ -49,7 +49,7 @@ def percentile_clip(signal, p):
     peaks &= torch.gt(main, plus)
     peaks &= torch.gt(main, minus)
 
-    signal = signal.clamp(0, percentile(signal[peaks], p))
+    signal = signal.clamp(0, percentile(signal[peaks], percent))
     signal /= signal.max()
     return signal
 

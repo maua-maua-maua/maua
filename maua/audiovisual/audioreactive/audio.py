@@ -50,13 +50,21 @@ def load_audio(audio_file, offset=0, duration=-1, cache=True):
 
 
 @cache_to_workspace("unmixed")
-def unmixed(audio, sr, stem="all"):
-    vocals, drums, bass, other = separate(resample(audio, sr, 44100), rate=44100, niter=3, device="cpu").values()
+def unmix(audio, sr):
+    vocals, drums, bass, instruments = separate(
+        resample(torch.from_numpy(audio), sr, 44100), rate=44100, niter=3, device="cpu"
+    ).values()
 
-    vocals = vocals.squeeze().mean(0).cpu().numpy()
-    drums = drums.squeeze().mean(0).cpu().numpy()
-    bass = bass.squeeze().mean(0).cpu().numpy()
-    other = other.squeeze().mean(0).cpu().numpy()
+    vocals = resample(vocals, 44100, sr).squeeze().mean(0).cpu().numpy()
+    drums = resample(drums, 44100, sr).squeeze().mean(0).cpu().numpy()
+    bass = resample(bass, 44100, sr).squeeze().mean(0).cpu().numpy()
+    instruments = resample(instruments, 44100, sr).squeeze().mean(0).cpu().numpy()
+
+    return vocals, drums, bass, instruments
+
+
+def unmixed(audio, sr, stem="all"):
+    vocals, drums, bass, instruments = unmix(audio, sr)
 
     if stem == "vocals":
         return vocals
@@ -64,10 +72,10 @@ def unmixed(audio, sr, stem="all"):
         return drums
     if stem == "bass":
         return bass
-    if stem == "other":
-        return other
+    if stem == "instruments":
+        return instruments
 
-    return vocals, drums, bass, other
+    return vocals, drums, bass, instruments
 
 
 @cache_to_workspace("spleeted")
