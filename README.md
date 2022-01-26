@@ -18,7 +18,6 @@ cd maua
 conda create -n maua python=3.8 pytorch torchvision torchaudio cudatoolkit=11.3 cudatoolkit-dev=11.3 cudnn mpi4py Cython pip=21.3.1 -c nvidia -c pytorch -c conda-forge
 conda activate maua
 pip install -r requirements.txt
-pip install -r audio/requirements.txt
 pip install cupy-cuda113==9.6
 ```
 
@@ -49,7 +48,7 @@ python -m maua dalle ru finetune --input_dir /path/to/directory/of/images/
 
 Upscale images using RealESRGAN:
 ```bash
-python -m maua super /path/to/image.png /path/to/image2.png /path/to/image3.png --model_name RealESRGAN-pbaylies-hr-paintings
+python -m maua super image upscale /path/to/image.png /path/to/image2.png /path/to/image3.png --model_name RealESRGAN-pbaylies-hr-paintings
 ```
 
 ### Python
@@ -65,7 +64,7 @@ from maua.diffusion.guided import guided_diffusion as diffusion
 # from maua.diffusion.cfg import classifier_free as diffusion
 # or 
 # from maua.diffusion.v import v_diffusion as diffusion
-from maua.super import upscale
+from maua.super.image import upscale
 
 images = [diffusion("A street art mural of a dapper turtle with wings") for i in range(5)]
 

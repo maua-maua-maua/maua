@@ -27,7 +27,7 @@ optimizer_choices = {
     "FusedNovoGrad": timm_optim.optim_factory.FusedNovoGrad,
     "Lamb": more_optim.Lamb,
     "NAdam": optim.NAdam,
-    "NovoGrad": timm_optim.NovoGrad,
+    "NovoGrad": more_optim.NovoGrad,
     "NvNovoGrad": timm_optim.NvNovoGrad,
     "PID": more_optim.PID,
     "QHAdam": more_optim.QHAdam,
