@@ -1,5 +1,3 @@
-from functools import wraps
-
 import librosa as rosa
 import madmom as mm
 import matplotlib.patches as patches
@@ -9,26 +7,12 @@ import scipy
 import scipy.stats
 import sklearn.cluster
 import torch
-from scipy.signal import resample
 
 from . import cache_to_workspace
 from .audio import harmonic, percussive
 from .postprocess import percentile_clip
 
 
-def resample_to_fps(function):  # TODO think of a better way of doing this
-    @wraps(function)
-    def wrapper(audio, sr, fps=None, *args, **kwargs):
-        result = function(audio, sr, *args, **kwargs)
-        if fps is None:
-            return result
-        axis = np.argmax(result.shape)
-        return resample(result, round(len(audio) / sr * fps), axis=axis)
-
-    return wrapper
-
-
-@resample_to_fps
 @cache_to_workspace("onsets")
 def onsets(audio, sr, type="mm", prepercussive=4):
     """Creates onset envelope from audio
@@ -77,7 +61,6 @@ def onsets(audio, sr, type="mm", prepercussive=4):
     return onset.squeeze().astype(np.float32)
 
 
-@resample_to_fps
 @cache_to_workspace("volume")
 def volume(audio, sr):
     """Creates RMS envelope from audio
@@ -94,7 +77,6 @@ def volume(audio, sr):
     return vol.squeeze().astype(np.float32)
 
 
-@resample_to_fps
 @cache_to_workspace("chroma")
 def chroma(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4):
     """Creates chromagram for the harmonic component of the audio
@@ -113,20 +95,20 @@ def chroma(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4):
         audio = harmonic(audio, sr, preharmonic)
 
     if type == "cens":
-        ch = rosa.feature.chroma_cens(y=audio, sr=sr)
+        ch = np.rollaxis(rosa.feature.chroma_cens(y=audio, sr=sr), 1, 0)
     elif type == "cqt":
-        ch = rosa.feature.chroma_cqt(y=audio, sr=sr)
+        ch = np.rollaxis(rosa.feature.chroma_cqt(y=audio, sr=sr), 1, 0)
     elif type == "stft":
-        ch = rosa.feature.chroma_stft(y=audio, sr=sr)
+        ch = np.rollaxis(rosa.feature.chroma_stft(y=audio, sr=sr), 1, 0)
     elif type == "deep":
         sig = mm.audio.signal.Signal(audio, num_channels=1, sample_rate=sr)
-        ch = mm.audio.chroma.DeepChromaProcessor().process(sig).T
+        ch = mm.audio.chroma.DeepChromaProcessor().process(sig)
     elif type == "clp":
         sig = mm.audio.signal.Signal(audio, num_channels=1, sample_rate=sr)
-        ch = mm.audio.chroma.CLPChromaProcessor().process(sig).T
+        ch = mm.audio.chroma.CLPChromaProcessor().process(sig)
     else:
         print("chroma type not recognized, options are: [cens, cqt, deep, clp, or stft]. defaulting to cens...")
-        ch = rosa.feature.chroma_cens(y=audio, sr=sr)
+        ch = np.rollaxis(rosa.feature.chroma_cens(y=audio, sr=sr), 1, 0)
 
     if nearest_neighbor:
         ch = np.minimum(ch, rosa.decompose.nn_filter(ch, aggregate=np.median, metric="cosine"))
@@ -136,18 +118,16 @@ def chroma(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4):
     return ch.squeeze().astype(np.float32)
 
 
-@resample_to_fps
 @cache_to_workspace("tonnetz")
 def tonnetz(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4):
     ch = chroma(audio, sr, type=type, nearest_neighbor=nearest_neighbor, preharmonic=preharmonic)
     fps = ch.shape[1] / (len(audio) / sr)
-    ton = rosa.feature.tonnetz(chroma=ch, sr=fps)
+    ton = np.rollaxis(rosa.feature.tonnetz(chroma=np.rollaxis(ch, 1, 0), sr=fps), 1, 0)
     ton -= ton.min()
     ton /= ton.max()
     return ton.squeeze().astype(np.float32)
 
 
-@resample_to_fps
 @cache_to_workspace("pitch_track")
 def pitch_track(audio, sr, preharmonic=4):
     if preharmonic:
@@ -157,7 +137,6 @@ def pitch_track(audio, sr, preharmonic=4):
     return average_pitch.squeeze().astype(np.float32)
 
 
-@resample_to_fps
 @cache_to_workspace("spectral_max")
 def spectral_max(audio, sr, n_mels=512):
     spectrum = rosa.feature.melspectrogram(y=audio, sr=sr, n_mels=n_mels)
@@ -170,13 +149,12 @@ def spectral_max(audio, sr, n_mels=512):
 @cache_to_workspace("pitch_dominance")
 def pitch_dominance(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4):
     chromagram = chroma(audio, sr, type=type, nearest_neighbor=nearest_neighbor, preharmonic=preharmonic)
-    chromagram_norm = chromagram / chromagram.sum(axis=0, keepdims=1)
-    chromagram_sum = np.sum(chromagram_norm, axis=1)
+    chromagram_norm = chromagram / chromagram.sum(axis=1, keepdims=1)
+    chromagram_sum = np.sum(chromagram_norm, axis=0)
     pitches_sorted = np.argsort(chromagram_sum)[::-1]
     return pitches_sorted
 
 
-@resample_to_fps
 @cache_to_workspace("pulse")
 def pulse(audio, sr, prior="lognorm", type="mm", prepercussive=4):
     onset_env = onsets(audio, sr, type=type, prepercussive=prepercussive)

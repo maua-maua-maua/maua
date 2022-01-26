@@ -43,18 +43,16 @@ class LoopLatents(torch.nn.Module):
                             )
                         )
                     )
-            T, N, L = latents.shape
-            latents = torch.stack(latents)
-            latents = (
-                F.interpolate(latents.permute(2, 1, 0)[None], (N, loop_len), mode="linear").squeeze().permute(2, 1, 0)
+            latents = torch.stack(latents).unsqueeze(1).tile(1, 18, 1)
+            latents = F.interpolate(latents.permute(2, 1, 0), loop_len, mode="linear", align_corners=False).permute(
+                2, 1, 0
             )
             latents = gaussian_filter(latents, 1)
 
         elif type == "gaussian":
             latents = torch.cat([lat.tile(round(loop_len / len(latent_selection)), 1, 1) for lat in latent_selection])
-            T, N, L = latents.shape
-            latents = (
-                F.interpolate(latents.permute(2, 1, 0)[None], (N, loop_len), mode="linear").squeeze().permute(2, 1, 0)
+            latents = F.interpolate(latents.permute(2, 1, 0), loop_len, mode="linear", align_corners=False).permute(
+                2, 1, 0
             )
             latents = gaussian_filter(latents, smooth)
 
@@ -72,7 +70,7 @@ class TempoLoopLatents(LoopLatents):
         if len(latent_selection) == 1:
             loop_len = 1
         else:
-            loop_len = n_bars * fps * 60 / (tempo / 4)
+            loop_len = round(n_bars * fps * 60 / (tempo / 4))
         super().__init__(latent_selection, loop_len, **loop_latents_kwargs)
 
 
@@ -91,7 +89,7 @@ class PitchTrackLatents(torch.nn.Module):
         self.index = 0
 
     def forward(self):
-        latent = self.latent_selection[self.pitch_track[self.index].round().astype(int)]
+        latent = self.latent_selection[[self.pitch_track[self.index].round().long().item()]]
         self.index += 1
         return latent
 
@@ -99,8 +97,13 @@ class PitchTrackLatents(torch.nn.Module):
 class TonalLatents(torch.nn.Module):
     def __init__(self, chroma_or_tonnetz, latent_selection):
         super().__init__()
-        chroma_or_tonnetz /= chroma_or_tonnetz.sum(0)
-        self.register_buffer("latents", chroma_or_tonnetz[..., None, None, None] @ latent_selection[:, None])
+        chroma_or_tonnetz /= chroma_or_tonnetz.sum(1)[:, None]
+        latents = torch.einsum(
+            "Atwl,Atwl->twl",
+            chroma_or_tonnetz.permute(1, 0)[..., None, None],
+            latent_selection[: chroma_or_tonnetz.shape[1], None],
+        )
+        self.register_buffer("latents", latents)
         self.index = 0
 
     def forward(self):
@@ -109,7 +112,7 @@ class TonalLatents(torch.nn.Module):
         return latents
 
 
-class ModulatedLatents(torch.nn.Module):
+class LazyModulatedLatents(torch.nn.Module):
     def __init__(self, modulation, base_latents):
         super().__init__()
         self.modulation = modulation
@@ -118,6 +121,18 @@ class ModulatedLatents(torch.nn.Module):
 
     def forward(self):
         latents = self.modulation[self.index] * self.base_latents.forward()
+        self.index += 1
+        return latents
+
+
+class ModulatedLatents(torch.nn.Module):
+    def __init__(self, modulation, base_latents):
+        super().__init__()
+        self.register_buffer("latents", modulation[:, None, None] * base_latents[[0]])
+        self.index = 0
+
+    def forward(self):
+        latents = self.latents[[self.index]]
         self.index += 1
         return latents
 

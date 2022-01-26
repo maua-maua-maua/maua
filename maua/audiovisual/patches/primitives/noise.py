@@ -17,18 +17,17 @@ class LoopNoise(torch.nn.Module):
 
 class TempoLoopNoise(LoopNoise):
     def __init__(self, tempo, n_bars, fps, **loop_noise_kwargs):
-        loop_len = n_bars * fps * 60 / (tempo / 4)
+        loop_len = round(n_bars * fps * 60 / (tempo / 4))
         super().__init__(loop_len, **loop_noise_kwargs)
 
 
 class TonalNoise(torch.nn.Module):
     def __init__(self, chroma_or_tonnetz, size):
         super().__init__()
-        chroma_or_tonnetz /= chroma_or_tonnetz.sum(0)
-        noises = torch.randn(chroma_or_tonnetz.shape[0], 1, 1, size, size)
-        print(chroma_or_tonnetz[..., None, None, None].shape, noises.shape)
-        print(chroma_or_tonnetz[..., None, None, None] @ noises)
-        self.register_buffer("noise", chroma_or_tonnetz[..., None, None, None] @ noises)
+        chroma_or_tonnetz /= chroma_or_tonnetz.sum(1)[:, None]
+        noises = torch.randn(chroma_or_tonnetz.shape[1], 1, 1, size, size)
+        noise = torch.einsum("Atchw,Atchw->tchw", chroma_or_tonnetz.permute(1, 0)[..., None, None, None], noises)
+        self.register_buffer("noise", noise)
         self.index = 0
 
     def forward(self):

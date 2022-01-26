@@ -22,8 +22,8 @@ def chroma_weighted(latents, chroma):
     Returns:
         torch.tensor: Chromagram weighted latent sequence
     """
-    chroma /= chroma.sum(0)
-    return (chroma.permute(1, 0)[..., None, None] * latents[None]).sum(1)
+    chroma /= chroma.sum(1)
+    return (chroma[..., None, None] * latents[None]).sum(1)
 
 
 @cache_to_workspace("pitch_tracking")

@@ -40,18 +40,23 @@ def percentile_clip(signal, percent):
     Returns:
         torch.tensor: Clipped signal
     """
-    locs = torch.arange(0, signal.shape[0])
-    peaks = torch.ones(signal.shape, dtype=bool)
-    main = signal.take(locs)
+    result = []
+    if len(signal.shape) < 2:
+        signal = signal.unsqueeze(1)
+    for sig in signal.unbind(1):
+        locs = torch.arange(0, sig.shape[0])
+        peaks = torch.ones(sig.shape, dtype=bool)
+        main = sig.take(locs)
 
-    plus = signal.take((locs + 1).clamp(0, signal.shape[0] - 1))
-    minus = signal.take((locs - 1).clamp(0, signal.shape[0] - 1))
-    peaks &= torch.gt(main, plus)
-    peaks &= torch.gt(main, minus)
+        plus = sig.take((locs + 1).clamp(0, sig.shape[0] - 1))
+        minus = sig.take((locs - 1).clamp(0, sig.shape[0] - 1))
+        peaks &= torch.gt(main, plus)
+        peaks &= torch.gt(main, minus)
 
-    signal = signal.clamp(0, percentile(signal[peaks], percent))
-    signal /= signal.max()
-    return signal
+        sig = sig.clamp(0, percentile(sig[peaks], percent))
+        sig /= sig.max()
+        result.append(sig)
+    return torch.stack(result, dim=1)
 
 
 def compress(signal, threshold, ratio, invert=False):
