@@ -37,9 +37,9 @@ class LoopLatents(torch.nn.Module):
                     latents.append(
                         torch.from_numpy(
                             slerp(
-                                val,
                                 latent_selection[n % len(latent_selection)][0],
                                 latent_selection[(n + 1) % len(latent_selection)][0],
+                                val,
                             )
                         )
                     )
@@ -82,14 +82,16 @@ class PitchTrackLatents(torch.nn.Module):
         pitch_track -= low
         pitch_track /= high
         pitch_track *= len(latent_selection)
-        pitch_track %= len(latent_selection)
+        print(pitch_track.min(), pitch_track.mean(), pitch_track.max())
+        pitch_track = pitch_track.round().long().numpy()
+        pitch_track = pitch_track % len(latent_selection)
 
-        self.latent_selection = latent_selection
-        self.pitch_track = pitch_track
+        latents = torch.from_numpy(latent_selection.numpy()[pitch_track])
+        self.register_buffer("latents", latents)
         self.index = 0
 
     def forward(self):
-        latent = self.latent_selection[[self.pitch_track[self.index].round().long().item()]]
+        latent = self.latents[[self.index]]
         self.index += 1
         return latent
 
@@ -112,19 +114,6 @@ class TonalLatents(torch.nn.Module):
         return latents
 
 
-class LazyModulatedLatents(torch.nn.Module):
-    def __init__(self, modulation, base_latents):
-        super().__init__()
-        self.modulation = modulation
-        self.base_latents = base_latents
-        self.index = 0
-
-    def forward(self):
-        latents = self.modulation[self.index] * self.base_latents.forward()
-        self.index += 1
-        return latents
-
-
 class ModulatedLatents(torch.nn.Module):
     def __init__(self, modulation, base_latents):
         super().__init__()
@@ -139,3 +128,17 @@ class ModulatedLatents(torch.nn.Module):
 
 class LucidSonicDreamLatents(torch.nn.Module):
     pass
+
+
+class LazyModulatedLatents(torch.nn.Module):
+    pass
+    # def __init__(self, modulation, base_latents):
+    #     super().__init__()
+    #     self.modulation = modulation
+    #     self.base_latents = base_latents
+    #     self.index = 0
+
+    # def forward(self):
+    #     latents = self.modulation[self.index] * self.base_latents.forward()
+    #     self.index += 1
+    #     return latents

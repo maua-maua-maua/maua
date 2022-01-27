@@ -28,6 +28,7 @@ class TonalNoise(torch.nn.Module):
         noises = torch.randn(chroma_or_tonnetz.shape[1], 1, 1, size, size)
         noise = torch.einsum("Atchw,Atchw->tchw", chroma_or_tonnetz.permute(1, 0)[..., None, None, None], noises)
         self.register_buffer("noise", noise)
+        self.noise /= gaussian_filter(self.noise.std((1, 2, 3)), 10).reshape(-1, 1, 1, 1)
         self.index = 0
 
     def forward(self):

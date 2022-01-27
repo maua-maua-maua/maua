@@ -47,23 +47,43 @@ def loops(latents, n_frames, fps, tempo, type="spline"):
         return slerp_loops(latents, n_frames, n_loops)
 
 
-def slerp(val, low, high):
+def eerp(a, b, t):
+    return a ** (1 - t) * b ** t
+
+
+def copeerp(a, b, t):
+    return a ** t * (1 - b ** t) / (1 - a ** t + b ** t)
+
+
+def slerp(a, b, t):
+    a = a / a.norm(dim=-1, keepdim=True)
+    b = b / b.norm(dim=-1, keepdim=True)
+    d = (a * b).sum(dim=-1, keepdim=True)
+    p = t * torch.acos(d)
+    c = b - d * a
+    c = c / c.norm(dim=-1, keepdim=True)
+    d = a * torch.cos(p) + c * torch.sin(p)
+    d = d / d.norm(dim=-1, keepdim=True)
+    return d
+
+
+def slerp(a, b, t):
     """Interpolation along geodesic of n-dimensional unit sphere
     from https://github.com/soumith/dcgan.torch/issues/14#issuecomment-200025792
 
     Args:
-        val (float): Value between 0 and 1 representing fraction of interpolation completed
-        low (float): Starting value
-        high (float): Ending value
+        a (float): Starting value
+        b (float): Ending value
+        t (float): Value between 0 and 1 representing fraction of interpolation completed
 
     Returns:
         float: Interpolated value
     """
-    omega = np.arccos(np.clip(np.dot(low / np.linalg.norm(low), high / np.linalg.norm(high)), -1, 1))
+    omega = np.arccos(np.clip(np.dot(a / np.linalg.norm(a), b / np.linalg.norm(b)), -1, 1))
     so = np.sin(omega)
     if so == 0:
-        return (1.0 - val) * low + val * high  # L'Hopital's rule/LERP
-    return np.sin((1.0 - val) * omega) / so * low + np.sin(val * omega) / so * high
+        return (1.0 - t) * a + t * b  # L'Hopital's rule/LERP
+    return np.sin((1.0 - t) * omega) / so * a + np.sin(t * omega) / so * b
 
 
 @cache_to_workspace("slerp_loops")
@@ -88,9 +108,9 @@ def slerp_loops(latent_selection, n_frames, n_loops):
             base_latents.append(
                 torch.from_numpy(
                     slerp(
-                        val,
                         latent_selection[n % len(latent_selection)][0],
                         latent_selection[(n + 1) % len(latent_selection)][0],
+                        val,
                     )
                 )
             )
