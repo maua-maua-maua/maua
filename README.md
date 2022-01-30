@@ -1,4 +1,6 @@
 # Maua
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fmaua-maua-maua%2Fmaua.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fmaua-maua-maua%2Fmaua?ref=badge_shield)
+
 
 ## 👷 ⛏️ WIP 🛠️ 👷
 
@@ -88,3 +90,6 @@ The main license for this repository is GPL-v3. However, due to the wide variety
 The code is provided free of charge for the purpose of enabling people to make art and explore deep learning synthesis. Due to the aformentioned licensing, commercial use of Maua may be tricky. You will need to make sure that you are adhering to the licensing terms of all the submodules!
 
 In general, output does not fall under the license of the code. Copyrights of model weights and model outputs are still a major gray area so use these commercially at your own risk! As a rule of thumb, try to consider if what you are making really is transformative. If you've simply scraped someone's social media page and trained a model to mimic them, you need to give them credit and should not use the model or outputs commercially without discussing with them.
+
+
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fmaua-maua-maua%2Fmaua.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fmaua-maua-maua%2Fmaua?ref=badge_large)
