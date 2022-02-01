@@ -15,9 +15,13 @@ Deep learning is very compute hungry, this means that a decent GPU is practicall
 ```bash
 git clone --recursive https://github.com/maua-maua-maua/maua.git
 cd maua
-conda create -n maua python=3.8 pytorch torchvision torchaudio cudatoolkit=11.3 cudatoolkit-dev=11.3 cudnn mpi4py Cython pip=21.3.1 -c nvidia -c pytorch -c conda-forge
+conda create -n maua python=3.8 pytorch torchvision torchaudio cudatoolkit=11.3 cudatoolkit-dev=11.3 cudnn mpi4py boost Cython pip=21.3.1 -c nvidia -c pytorch -c conda-forge
 conda activate maua
 pip install -r requirements.txt
+
+python maua/submodules/pycuda/configure.py --cuda-enable-gl
+mv siteconf.py maua/submodules/pycuda
+pip install -e maua/submodules/pycuda
 ```
 
 Currently installation has only been tested on a Ubuntu 20.04 machine with NVIDIA GPUs. Other configurations are also be possible but might be more involved. If you're running into problems, feel free to open an issue!

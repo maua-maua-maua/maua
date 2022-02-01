@@ -64,3 +64,6 @@
 [submodule "maua/GAN/nv"]
 	path = maua/GAN/nv
 	url = https://github.com/maua-maua-maua/nvGAN
+[submodule "maua/submodules/pycuda"]
+	path = maua/submodules/pycuda
+	url = https://github.com/inducer/pycuda.git
