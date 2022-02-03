@@ -6,7 +6,7 @@ import torch
 
 sys.path.append(os.path.dirname(__file__) + "/nv/")
 from .nv import dnnlib, legacy
-from .nv.inference.stylegan2 import Generator
+from .wrappers.inference.stylegan2 import Generator
 
 
 def load_rosinality2ada(path, blur_scale=4, for_inference=False):

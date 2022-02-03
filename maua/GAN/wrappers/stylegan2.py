@@ -9,9 +9,8 @@ import torch
 from torch import Tensor
 from torch.nn.functional import interpolate, pad
 
-sys.path.append(os.path.dirname(__file__) + "/../nv")
 from ..load import load_network
-from ..nv.inference import stylegan2
+from .inference import stylegan2
 from . import MauaSynthesizer
 from .stylegan import StyleGAN, StyleGANMapper
 
