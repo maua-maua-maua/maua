@@ -5,8 +5,12 @@ import numpy as np
 import torch
 from torch.nn.functional import interpolate, pad
 
+import sys
+import os
+
+sys.path.append(os.path.dirname(__file__) + "/../nv")
 from ..load import load_network
-from ..studio.src.models import stylegan3
+from ..nv.networks import stylegan3
 from . import MauaSynthesizer
 from .stylegan import StyleGAN, StyleGANMapper
 

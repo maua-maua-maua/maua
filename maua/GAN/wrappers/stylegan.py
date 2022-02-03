@@ -1,5 +1,8 @@
+from typing import Optional
+
 import numpy as np
 import torch
+from torch import Tensor
 
 from ..load import load_network
 from . import MauaMapper
@@ -38,7 +41,7 @@ class StyleGANMapper(MauaMapper):
         if model_file is None or model_file == "None":
             self.G_map = self.MappingNetwork(z_dim=512, c_dim=0, w_dim=512, num_ws=18)
         else:
-            self.G_map: self.MappingNetwork = load_network(model_file).mapping
+            self.G_map = load_network(model_file).mapping
 
         self.z_dim, self.c_dim = self.G_map.z_dim, self.G_map.c_dim
 
@@ -51,8 +54,8 @@ class StyleGANMapper(MauaMapper):
 
     def forward(
         self,
-        latent_z: torch.Tensor,
-        class_conditioning: torch.Tensor = None,
-        truncation: torch.Tensor = torch.ones(1, 1),
+        latent_z: Tensor,
+        # class_conditioning: Optional[Tensor] = None,
+        # truncation: float = 1.0,
     ):
-        return self.G_map.forward(latent_z, class_conditioning, truncation_psi=truncation)
+        return self.G_map.forward(latent_z, None, truncation_psi=1.0)
