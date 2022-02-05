@@ -147,10 +147,10 @@ class RealtimeModule(torch.nn.Module):
         self.motion_signs[latent + self.motion_react >= 2 * self.truncation] = -1
 
         # Re-initialize randomness factors every 4 seconds
-        if self.i % (24 * 4) == 0:
-            new_factors = torch.ones_like(self.rand_factors)
-            new_factors[torch.rand_like(self.rand_factors) > 0.5] -= 0.5
-            self.rand_factors.set_(new_factors.data)
+        # if self.i % (24 * 4) == 0:
+        #     new_factors = torch.ones_like(self.rand_factors)
+        #     new_factors[torch.rand_like(self.rand_factors) > 0.5] -= 0.5
+        #     self.rand_factors.set_(new_factors.data)
 
         motion_noise = self.motion_react * self.motion_signs * self.rand_factors
 
@@ -228,61 +228,83 @@ def convert_as_constant(ctx):
 if __name__ == "__main__":
     with torch.inference_mode():
 
-        class SimpleModConv(torch.nn.Module):
-            def __init__(self) -> None:
-                super().__init__()
-                self.lw = torch.nn.Parameter(torch.randn(512, 512))
-                self.lb = torch.nn.Parameter(torch.randn(512))
-                self.w = torch.nn.Parameter(torch.randn(512, 512, 3, 3))
-                self.gain = sqrt(2)
+        # class SimpleModConv(torch.nn.Module):
+        #     def __init__(self) -> None:
+        #         super().__init__()
+        #         self.lw = torch.nn.Parameter(torch.randn(512, 512))
+        #         self.lb = torch.nn.Parameter(torch.randn(512))
+        #         self.w = torch.nn.Parameter(torch.randn(512, 512, 3, 3))
+        #         self.gain = sqrt(2)
 
-            def forward(self, x, z):
-                B, xc, xh, xw = x.shape
-                wco, wci, kh, kw = self.w.shape
+        #     def forward(self, x, z):
+        #         B, xc, xh, xw = x.shape
+        #         wco, wci, kh, kw = self.w.shape
 
-                # normalize w by input elements and L-infinity norm
-                numin = sqrt(wci * kh * kw)
-                linf = torch.max(torch.max(torch.max(torch.abs(self.w), dim=1).values, dim=1).values, dim=1).values
-                w = self.w / (numin * linf).reshape(wco, 1, 1, 1)
+        #         # normalize w by input elements and L-infinity norm
+        #         numin = sqrt(wci * kh * kw)
+        #         linf = torch.max(torch.max(torch.max(torch.abs(self.w), dim=1).values, dim=1).values, dim=1).values
+        #         w = self.w / (numin * linf).reshape(wco, 1, 1, 1)
 
-                # affine transform of latent vector
-                styles = torch.nn.functional.linear(z, self.gain * self.lw, self.gain * self.lb)
+        #         # affine transform of latent vector
+        #         styles = torch.nn.functional.linear(z, self.gain * self.lw, self.gain * self.lb)
 
-                # modulate weight by style per instance
-                w = w.reshape(1, wco, wci, kh, kw) * styles.reshape(B, 1, wci, 1, 1)
+        #         # modulate weight by style per instance
+        #         w = w.reshape(1, wco, wci, kh, kw) * styles.reshape(B, 1, wci, 1, 1)
 
-                # normalize weights to ensure unit scaling
-                w = w / ((w * w).sum((2, 3, 4)) + 1e-8).sqrt().reshape(B, wco, 1, 1, 1)
+        #         # normalize weights to ensure unit scaling
+        #         w = w / ((w * w).sum((2, 3, 4)) + 1e-8).sqrt().reshape(B, wco, 1, 1, 1)
 
-                # reshape and perform convolution with separate weights per instance (fused in one op by groups)
-                x = x.reshape(1, B * xc, xh, xw)
-                w = w.reshape(B * wco, wci, kh, kw)
-                x = torch.nn.functional.conv2d(x, w, padding=(1, 1), groups=B)
-                x = x.reshape(B, wco, xh, xw)
+        #         # reshape and perform convolution with separate weights per instance (fused in one op by groups)
+        #         x = x.reshape(1, B * xc, xh, xw)
+        #         w = w.reshape(B * wco, wci, kh, kw)
+        #         x = torch.nn.functional.conv2d(x, w, padding=(1, 1), groups=B)
+        #         x = x.reshape(B, wco, xh, xw)
 
-                # add a little noise
-                return x + torch.randn_like(x)
+        #         # add a little noise
+        #         return x + torch.randn_like(x)
 
-        module = SimpleModConv().cuda()
-        simple_mod_conv = torch2trt.torch2trt(
-            module=module,
-            inputs=[torch.randn(3, 512, 128, 128).cuda(), torch.randn(3, 512).cuda()],
-            input_names=["x", "z"],
-            output_names=["y"],
-            log_level=trt.Logger.INFO,
-            max_batch_size=3,
-            fp16_mode=True,
-            max_workspace_size=1 << 33,
-        )
+        # class StupidSimple(torch.nn.Module):
+        #     def forward(self, x, z):
+        #         w = torch.ones((x.shape[1], x.shape[1], 3, 3), device=x.device, dtype=x.dtype)
 
-        x, z = torch.randn(3, 512, 128, 128).cuda(), torch.randn(3, 512).cuda()
-        xth = module(x, z)
-        xtrt = simple_mod_conv(x, z)
+        #         wco, wci, kh, kw = w.shape
+        #         B, xc, xh, xw = x.shape
 
-        print(torch.abs(xtrt - xth).sum())
-        assert torch.allclose(xtrt, xth)
+        #         w = w.reshape(1, *w.shape) * z.reshape(*z.shape, 1, 1, 1)
 
-        exit()
+        #         x = x.reshape(1, B * xc, xh, xw)
+        #         w = w.reshape(B * wco, wci, kh, kw)
+        #         x = torch.nn.functional.conv2d(x, w, padding=(1, 1), groups=B)
+        #         x = x.reshape(B, wco, xh, xw) + 0 * z.reshape(*z.shape, 1, 1)
+        #         return x
+
+        # x, z = torch.randn(3, 512, 128, 128).cuda(), torch.randn(3, 512).cuda()
+
+        # module = StupidSimple().cuda()
+        # simple_mod_conv = torch2trt.torch2trt(
+        #     module=module,
+        #     inputs=[x, z],
+        #     input_names=["x", "z"],
+        #     output_names=["y"],
+        #     log_level=trt.Logger.INFO,
+        #     max_batch_size=3,
+        #     fp16_mode=True,
+        #     max_workspace_size=1 << 33,
+        # )
+
+        # xth = module(x, z)
+        # xtrt = simple_mod_conv(x, z)
+        # print(torch.abs(xtrt - xth).sum())
+
+        # z2 = torch.randn(3, 512).cuda()
+        # xth2 = module(x, z2)
+        # xtrt2 = simple_mod_conv(x, z2)
+        # print(torch.abs(xtrt2 - xth2).sum())
+
+        # assert torch.allclose(xtrt, xth)
+        # assert torch.allclose(xtrt2, xth2)
+
+        # exit()
         B = 3
         w, h = 1920, 1024
         model_file = None  # "/home/hans/modelzoo/wavefunk/diffuseSWA/diffuse-gamma1e-4-001000_diffuse-gamma1e-4-007500_diffuse-gamma1e-6-001000_diffuse-007500_bad_diffuse-gamma1e-4-001500_diffuse-gamma1e-5-006000_diffus-1024-randomSWA.pt"
@@ -311,6 +333,8 @@ if __name__ == "__main__":
             dtype,
         )
         next_frame = next_frame.eval().half().to(device)
+        next_frame = torch.jit.trace(next_frame, latents_z)
+        next_frame = torch.jit.optimize_for_inference(next_frame)
         next_frame(latents_z)
 
         next_frame.G_map = torch2trt.torch2trt(

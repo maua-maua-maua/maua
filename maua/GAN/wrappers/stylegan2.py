@@ -143,11 +143,11 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
                 noise_layer = getattr(getattr(self.G_synth.bs, b), c)
 
                 def noise_adjust(mod, input: Tuple[Tensor, Tensor, str, bool, float]) -> None:
-                    _, _, h, w = input[0].shape
-                    nh, nw = mod.noise_const.shape[-2:]
-                    if (h, w) != (nh, nw):
+                    if not mod.noise_adjusted:
+                        _, _, h, w = input[0].shape
                         dev, dtype = mod.noise_const.device, mod.noise_const.dtype
                         mod.noise_const = torch.randn((1, 1, h * mod.up, w * mod.up), device=dev, dtype=dtype)
+                        mod.noise_adjusted = True
 
                 self._hook_handles.append(noise_layer.register_forward_pre_hook(noise_adjust))
 

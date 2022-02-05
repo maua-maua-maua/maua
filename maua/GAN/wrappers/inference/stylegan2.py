@@ -15,57 +15,15 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from .ops import activation_funcs, bias_act, conv2d_resample, setup_filter, upsample2d
-
-
-def normalize_2nd_moment(x, dim: int = 1, eps: float = 1e-8):
-    return x / ((x * x).mean(dim=dim, keepdim=True) + eps).sqrt()
-
-
-def modulated_conv2d(
-    x: Tensor,  # Input tensor of shape [batch_size, in_channels, in_height, in_width].
-    weight: Tensor,  # Weight tensor of shape [out_channels, in_channels, kernel_height, kernel_width].
-    styles: Tensor,  # Modulation coefficients of shape [batch_size, in_channels].
-    noise: Optional[Tensor] = None,  # Optional noise tensor to add to the output activations.
-    up: int = 1,  # Integer upsampling factor.
-    down: int = 1,  # Integer downsampling factor.
-    padding: int = 0,  # Padding with respect to the upsampled image.
-    resample_filter: Optional[Tensor] = None,  # Low-pass filter to apply when resampling activations.
-    demodulate: bool = True,  # Apply weight demodulation?
-):
-    B, xc, xh, xw = x.shape
-    wco, wci, kh, kw = weight.shape
-
-    # Pre-normalize inputs to avoid FP16 overflow.
-    if x.dtype == torch.float16 and demodulate:
-        weight = weight / (
-            torch.max(torch.max(torch.max(torch.abs(weight), dim=1).values, dim=1).values, dim=1).values.reshape(
-                weight.shape[0], 1, 1, 1
-            )
-            * sqrt(wci * kh * kw)
-        )
-        styles = styles / torch.max(torch.abs(styles), dim=1).values.unsqueeze(1)
-
-    # Calculate per-sample weights and demodulation coefficients.
-    w = weight.unsqueeze(0) * styles.unsqueeze(1).unsqueeze(-1).unsqueeze(-1)
-    if demodulate:
-        denom = ((w * w).sum((2, 3, 4)) + 1e-8).sqrt()
-        w = w / denom.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-
-    # Execute as one fused op using grouped convolution.
-    x = conv2d_resample(
-        x=x.reshape(1, B * xc, xh, xw),
-        w=w.reshape(B * wco, wci, kh, kw),
-        f=resample_filter,
-        up=up,
-        down=down,
-        padding=padding,
-        groups=B,
-    )
-    x = x.reshape(B, wco, xh * up, xw * up)
-    if noise is not None:
-        x = x + noise
-    return x
+from .ops import (
+    activation_funcs,
+    bias_act,
+    conv2d_resample,
+    setup_filter,
+    upsample2d,
+    normalize_2nd_moment,
+    modulated_conv2d,
+)
 
 
 class FullyConnectedLayer(torch.nn.Module):
@@ -265,6 +223,7 @@ class SynthesisLayer(torch.nn.Module):
         self.weight = torch.nn.Parameter(torch.randn([out_channels, in_channels, kernel_size, kernel_size]))
         if use_noise:
             self.register_buffer("noise_const", torch.randn([resolution, resolution]))
+        self.noise_adjusted = False
         self.bias = torch.nn.Parameter(torch.zeros([out_channels]))
 
     def forward(self, x: Tensor, w: Tensor, noise_mode: str = "const", gain: float = 1.0):
