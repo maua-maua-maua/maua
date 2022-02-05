@@ -7,16 +7,15 @@ import kornia.geometry.transform as kT
 import numpy as np
 import torch
 from torch import Tensor
-from torch.nn.functional import interpolate, pad
 
 from ..load import load_network
 from .inference import stylegan2
 from . import MauaSynthesizer
 from .stylegan import StyleGAN, StyleGANMapper
 
-SynthesisLayerInputType = Tuple[Tensor, Tensor, str, bool, float]
-SynthesisBlockInputType = Tuple[Optional[Tensor], Optional[Tensor], Tensor, str, Optional[bool], bool, float]
-ToRGBInputType = Tuple[Tensor, Tensor, bool]
+SynthesisLayerInputType = Tuple[Tensor, Tensor, str, float]
+SynthesisBlockInputType = Tuple[Optional[Tensor], Optional[Tensor], Tensor, str]
+ToRGBInputType = Tuple[Tensor, Tensor]
 
 
 class StyleGAN2(StyleGAN):
@@ -56,57 +55,57 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
 
     def forward(
         self,
-        latent_w: Tensor,
-        # translation: Optional[Tensor] = None,
-        # translation_layer: int = 7,
-        # zoom: Optional[Tensor] = None,
-        # zoom_layer: int = 7,
-        # zoom_center: Optional[int] = None,
-        # rotation: Optional[Tensor] = None,
-        # rotation_layer: int = 7,
-        # rotation_center: Optional[int] = None,
-        # noise: Optional[Dict[str, Tensor]] = None,
+        latents: Tensor,
+        translation: Optional[Tensor] = None,
+        translation_layer: int = 7,
+        zoom: Optional[Tensor] = None,
+        zoom_layer: int = 7,
+        zoom_center: Optional[int] = None,
+        rotation: Optional[Tensor] = None,
+        rotation_layer: int = 7,
+        rotation_center: Optional[int] = None,
+        noise: Optional[Dict[str, Tensor]] = None,
     ) -> Tensor:
-        # if translation is not None:
-        #     self.apply_translation(translation_layer, translation)
-        # if zoom is not None:
-        #     self.apply_zoom(zoom_layer, zoom, zoom_center)
-        # if rotation is not None:
-        #     self.apply_rotation(rotation_layer, rotation, rotation_center)
+        if translation is not None:
+            self.apply_translation(translation_layer, translation)
+        if zoom is not None:
+            self.apply_zoom(zoom_layer, zoom, zoom_center)
+        if rotation is not None:
+            self.apply_rotation(rotation_layer, rotation, rotation_center)
 
-        # if noise is not None:
-        #     noises, l = list(noise.values()), 1
-        #     for block in self.G_synth.bs[1:]:
-        #         noise_l = noises[l].to(block.conv0.noise_const.device, non_blocking=True)
-        #         if (noise_l.shape[-2], noise_l.shape[-1]) != (
-        #             block.conv0.noise_const.shape[-2],
-        #             block.conv0.noise_const.shape[-1],
-        #         ):
-        #             warnings.warn(
-        #                 f"Supplied noise for SynthesisLayer {l} has shape {noise_l.shape} while the expected "
-        #                 f"shape is {block.conv0.noise_const.shape}. Resizing the supplied noise to match..."
-        #             )
-        #             h, w = block.conv0.noise_const.shape[-2], block.conv0.noise_const.shape[-1]
-        #             noise_l = interpolate(noise_l, (h, w), mode="bicubic", align_corners=False)
-        #         block.conv0.noise_const.set_(noise_l)
-        #         l += 1
+        if noise is not None:
+            noises, l = list(noise.values()), 1
+            for block in self.G_synth.bs[1:]:
+                noise_l = noises[l].to(block.conv0.noise_const.device, non_blocking=True)
+                if (noise_l.shape[-2], noise_l.shape[-1]) != (
+                    block.conv0.noise_const.shape[-2],
+                    block.conv0.noise_const.shape[-1],
+                ):
+                    warnings.warn(
+                        f"Supplied noise for SynthesisLayer {l} has shape {noise_l.shape} while the expected "
+                        f"shape is {block.conv0.noise_const.shape}. Resizing the supplied noise to match..."
+                    )
+                    h, w = block.conv0.noise_const.shape[-2], block.conv0.noise_const.shape[-1]
+                    noise_l = torch.nn.functional.interpolate(noise_l, (h, w), mode="bicubic", align_corners=False)
+                block.conv0.noise_const.set_(noise_l)
+                l += 1
 
-        #         # repeated to appease torch.jit...
-        #         noise_l = noises[l].to(block.conv1.noise_const.device, non_blocking=True)
-        #         if (noise_l.shape[-2], noise_l.shape[-1]) != (
-        #             block.conv1.noise_const.shape[-2],
-        #             block.conv1.noise_const.shape[-1],
-        #         ):
-        #             warnings.warn(
-        #                 f"Supplied noise for SynthesisLayer {l} has shape {noise_l.shape} while the expected "
-        #                 f"shape is {block.conv0.noise_const.shape}. Resizing the supplied noise to match..."
-        #             )
-        #             h, w = block.conv1.noise_const.shape[-2], block.conv1.noise_const.shape[-1]
-        #             noise_l = interpolate(noise_l, (h, w), mode="bicubic", align_corners=False)
-        #         block.conv1.noise_const.set_(noise_l)
-        #         l += 1
+                # repeated to appease torch.jit...
+                noise_l = noises[l].to(block.conv1.noise_const.device, non_blocking=True)
+                if (noise_l.shape[-2], noise_l.shape[-1]) != (
+                    block.conv1.noise_const.shape[-2],
+                    block.conv1.noise_const.shape[-1],
+                ):
+                    warnings.warn(
+                        f"Supplied noise for SynthesisLayer {l} has shape {noise_l.shape} while the expected "
+                        f"shape is {block.conv0.noise_const.shape}. Resizing the supplied noise to match..."
+                    )
+                    h, w = block.conv1.noise_const.shape[-2], block.conv1.noise_const.shape[-1]
+                    noise_l = torch.nn.functional.interpolate(noise_l, (h, w), mode="bicubic", align_corners=False)
+                block.conv1.noise_const.set_(noise_l)
+                l += 1
 
-        return self.G_synth.forward(latent_w, noise_mode="const")
+        return self.G_synth.forward(latents, noise_mode="const")
 
     def change_output_resolution(self, output_size: Tuple[int, int], strategy: str, layer: int):
         self.refresh_model_hooks()
@@ -144,11 +143,11 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
                 noise_layer = getattr(getattr(self.G_synth.bs, b), c)
 
                 def noise_adjust(mod, input: Tuple[Tensor, Tensor, str, bool, float]) -> None:
-                    if not mod.noise_adjusted:
-                        x = input[0]
-                        (_, _, h, w), dev, dtype = x.shape, x.device, mod.noise_const.dtype
-                        mod.noise_const.set_(torch.randn(1, 1, h * mod.up, w * mod.up, device=dev, dtype=dtype).data)
-                        mod.noise_adjusted.set_(torch.tensor(1).data)
+                    _, _, h, w = input[0].shape
+                    nh, nw = mod.noise_const.shape[-2:]
+                    if (h, w) != (nh, nw):
+                        dev, dtype = mod.noise_const.device, mod.noise_const.dtype
+                        mod.noise_const = torch.randn((1, 1, h * mod.up, w * mod.up), device=dev, dtype=dtype)
 
                 self._hook_handles.append(noise_layer.register_forward_pre_hook(noise_adjust))
 
@@ -206,24 +205,27 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
             block, conv = layer.split(".")
             synth_layer = getattr(getattr(self.G_synth.bs, block), conv)
             h, w = synth_layer.noise_const.shape[-2], synth_layer.noise_const.shape[-1]
-            noises[f"noise{l}"] = interpolate(noise, (h, w), mode="bicubic", align_corners=False)
+            noises[f"noise{l}"] = torch.nn.functional.interpolate(noise, (h, w), mode="bicubic", align_corners=False)
         return noises
 
 
-def get_hook(layer_size, target_size, strategy, add_noise=True, pre=False):
+def get_hook(layer_size, target_size, strategy, add_noise=False, pre=False):
     target_size = np.flip(target_size)  # W,H --> H,W
 
     if strategy == "stretch":
-        if add_noise:
-            noise = torch.ones((1, 1, target_size[0], target_size[1])).cuda() * float("nan")
+        noise = torch.ones((1, 1, target_size[0], target_size[1])).cuda() * float("nan") if add_noise else None
 
         def resize(
-            x: Tensor, feat: bool = False, target_size: Tuple[int, int] = tuple(target_size), noise: Tensor = noise
+            x: Tensor,
+            feat: bool = False,
+            target_size: Tuple[int, int] = tuple(target_size),
+            noise: Tensor = noise,
+            add_noise: bool = add_noise,
         ):
 
-            x = interpolate(x, target_size, mode="bicubic", align_corners=False)
+            x = torch.nn.functional.interpolate(x, target_size, mode="bicubic", align_corners=False)
 
-            if feat:
+            if feat and add_noise:
                 if noise.isnan().any():
                     h, w = target_size
                     channel_noises = [
@@ -242,7 +244,7 @@ def get_hook(layer_size, target_size, strategy, add_noise=True, pre=False):
             return x
 
         def inverse(x: Tensor, layer_size: int = layer_size):
-            return interpolate(x, (layer_size, layer_size), mode="bicubic", align_corners=False)
+            return torch.nn.functional.interpolate(x, (layer_size, layer_size), mode="bicubic", align_corners=False)
 
     elif strategy.startswith("pad"):
         _, how, where = strategy.split("-")
@@ -280,7 +282,7 @@ def get_hook(layer_size, target_size, strategy, add_noise=True, pre=False):
             target_size: Tuple[int, int] = tuple(target_size),
             noise: Tensor = noise,
         ):
-            x = pad(x, padding, mode=how, value=value)
+            x = torch.nn.functional.pad(x, padding, mode=how, value=value)
 
             if feat:
                 if noise.isnan().any():

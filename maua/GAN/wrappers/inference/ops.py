@@ -3,7 +3,6 @@ from typing import List, Optional, Tuple
 
 import torch
 from torch import Tensor
-from torch.nn.functional import conv2d, conv_transpose2d
 
 
 # fmt:off
@@ -93,6 +92,71 @@ def repeat4(padding: int) -> Tuple[int, int, int, int]:
     return padding, padding, padding, padding
 
 
+def zero_pad(x, padding):
+    if sum(padding) == 0:
+        return x
+
+    if len(padding) == 4:
+        b, bb, one, two = x.shape
+        one1, one2, two1, two2 = padding
+
+        tensors = []
+        if one1 > 0:
+            x1 = torch.zeros((b, bb, one1, two), dtype=x.dtype, device=x.device)
+            tensors.append(x1)
+        tensors.append(x)
+        if one2 > 0:
+            x2 = torch.zeros((b, bb, one2, two), dtype=x.dtype, device=x.device)
+            tensors.append(x2)
+        x = torch.cat(tensors, dim=2)
+
+        tensors = []
+        if two1 > 0:
+            x3 = torch.zeros((b, bb, one + one1 + one2, two1), dtype=x.dtype, device=x.device)
+            tensors.append(x3)
+        tensors.append(x)
+        if two2 > 0:
+            x4 = torch.zeros((b, bb, one + one1 + one2, two2), dtype=x.dtype, device=x.device)
+            tensors.append(x4)
+        x = torch.cat(tensors, dim=3)
+
+    if len(padding) == 6:
+        b, bb, bbb, one, two, thr = x.shape
+        one1, one2, two1, two2, thr1, thr2 = padding
+
+        tensors = []
+        if one1 > 0:
+            x1 = torch.zeros((b, bb, bbb, one1, two, thr), dtype=x.dtype, device=x.device)
+            tensors.append(x1)
+        tensors.append(x)
+        if one2 > 0:
+            x2 = torch.zeros((b, bb, bbb, one2, two, thr), dtype=x.dtype, device=x.device)
+            tensors.append(x2)
+        x = torch.cat(tensors, dim=3)
+
+        tensors = []
+        if two1 > 0:
+            x3 = torch.zeros((b, bb, bbb, one + one1 + one2, two1, thr), dtype=x.dtype, device=x.device)
+            tensors.append(x3)
+        tensors.append(x)
+        if two2 > 0:
+            x4 = torch.zeros((b, bb, bbb, one + one1 + one2, two2, thr), dtype=x.dtype, device=x.device)
+            tensors.append(x4)
+        x = torch.cat(tensors, dim=4)
+
+        tensors = []
+        if thr1 > 0:
+            x5 = torch.zeros((b, bb, bbb, one + one1 + one2, two + two1 + two2, thr1), dtype=x.dtype, device=x.device)
+            tensors.append(x5)
+        tensors.append(x)
+        if thr2 > 0:
+            x6 = torch.zeros((b, bb, bbb, one + one1 + one2, two + two1 + two2, thr2), dtype=x.dtype, device=x.device)
+            tensors.append(x6)
+        x = torch.cat(tensors, dim=5)
+
+    return x
+
+
 def upfirdn2d(
     x: Tensor,
     f: Optional[Tensor],
@@ -108,17 +172,18 @@ def upfirdn2d(
     downx, downy = repeat2(down)
     padx0, padx1, pady0, pady1 = padding
     x = x.reshape([batch_size, num_channels, in_height, 1, in_width, 1])
-    x = torch.nn.functional.pad(x, [0, upx - 1, 0, 0, 0, upy - 1])
+    x = zero_pad(x, [0, upx - 1, 0, 0, 0, upy - 1])
     x = x.reshape([batch_size, num_channels, in_height * upy, in_width * upx])
-    x = torch.nn.functional.pad(x, [max(padx0, 0), max(padx1, 0), max(pady0, 0), max(pady1, 0)])
+    x = zero_pad(x, [max(padx0, 0), max(padx1, 0), max(pady0, 0), max(pady1, 0)])
     x = x[:, :, max(-pady0, 0) : x.shape[2] - max(-pady1, 0), max(-padx0, 0) : x.shape[3] - max(-padx1, 0)]
     f = f * (gain ** (f.ndim / 2))
-    f = f[None, None].repeat(num_channels, 1, 1, 1)
+    f = f.unsqueeze(0).unsqueeze(0)
+    f = f * torch.tensor([1] * num_channels, dtype=f.dtype, device=f.device).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
     if f.ndim == 4:
-        x = conv2d(input=x, weight=f, groups=num_channels)
+        x = torch.nn.functional.conv2d(input=x, weight=f, groups=num_channels)
     else:
-        x = conv2d(input=x, weight=f.unsqueeze(2), groups=num_channels)
-        x = conv2d(input=x, weight=f.unsqueeze(3), groups=num_channels)
+        x = torch.nn.functional.conv2d(input=x, weight=f.unsqueeze(2), groups=num_channels)
+        x = torch.nn.functional.conv2d(input=x, weight=f.unsqueeze(3), groups=num_channels)
     x = x[:, :, ::downy, ::downx]
     return x
 
@@ -166,10 +231,10 @@ def conv2d_resample(
         py1 += (fh - down) // 2
     if up > 1:
         if groups == 1:
-            w = w.transpose(0, 1)
+            w = w.permute(1, 0, 2, 3, 4)
         else:
             w = w.reshape(groups, out_channels // groups, in_channels_per_group, kh, kw)
-            w = w.transpose(1, 2)
+            w = w.permute(0, 2, 1, 3, 4)
             w = w.reshape(groups * in_channels_per_group, out_channels // groups, kh, kw)
         px0 -= kw - 1
         px1 -= kw - up
@@ -177,14 +242,14 @@ def conv2d_resample(
         py1 -= kh - up
         pxt = max(min(-px0, -px1), 0)
         pyt = max(min(-py0, -py1), 0)
-        x = conv_transpose2d(x, w, stride=up, padding=(pyt, pxt), groups=groups)
+        x = torch.nn.functional.conv_transpose2d(x, w, stride=up, padding=(pyt, pxt), groups=groups)
         x = upfirdn2d(x=x, f=f, padding=(px0 + pxt, px1 + pxt, py0 + pyt, py1 + pyt), gain=up ** 2)
         if down > 1:
             x = upfirdn2d(x=x, f=f, down=down)
         return x
     if up == 1 and down == 1:
         if px0 == px1 and py0 == py1 and px0 >= 0 and py0 >= 0:
-            return conv2d(x, w, padding=(py0, px0), groups=groups)
+            return torch.nn.functional.conv2d(x, w, padding=(py0, px0), groups=groups)
     assert False, "Something weird is going on..."
     return x  # THIS PATH IS NEVER TAKEN!
 

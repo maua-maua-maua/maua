@@ -23,7 +23,8 @@ def load_rosinality2ada(path, blur_scale=4, for_inference=False):
     state_nv[f"synthesis.{nv_key}.conv1.bias"] = state_ros[f"conv1.activate.bias"]
     state_nv[f"synthesis.{nv_key}.conv1.affine.weight"] = state_ros[f"conv1.conv.modulation.weight"]
     state_nv[f"synthesis.{nv_key}.conv1.affine.bias"] = state_ros[f"conv1.conv.modulation.bias"]
-    state_nv[f"synthesis.{nv_key}.conv1.noise_strength"] = state_ros[f"conv1.noise.weight"].squeeze(0)
+    if not for_inference:
+        state_nv[f"synthesis.{nv_key}.conv1.noise_strength"] = state_ros[f"conv1.noise.weight"].squeeze(0)
 
     state_nv[f"synthesis.{nv_key}.torgb.weight"] = state_ros[f"to_rgb1.conv.weight"].squeeze(0)
     state_nv[f"synthesis.{nv_key}.torgb.bias"] = state_ros[f"to_rgb1.bias"].squeeze(-1).squeeze(-1).squeeze(0)
@@ -66,7 +67,7 @@ def load_rosinality2ada(path, blur_scale=4, for_inference=False):
                 state_nv[f"{nv_block}.conv{n % 2}.affine.weight"] = state_ros[f"convs.{n}.conv.modulation.weight"]
             elif ros_name == "conv.modulation.bias":
                 state_nv[f"{nv_block}.conv{n % 2}.affine.bias"] = state_ros[f"convs.{n}.conv.modulation.bias"]
-            elif ros_name == "noise.weight":
+            elif ros_name == "noise.weight" and not for_inference:
                 state_nv[f"{nv_block}.conv{n % 2}.noise_strength"] = state_ros[f"convs.{n}.noise.weight"].squeeze(0)
             elif ros_name == "conv.blur.kernel":
                 state_nv[f"{nv_block}.conv0.resample_filter"] = state_ros[f"convs.{n}.conv.blur.kernel"] / blur_scale
