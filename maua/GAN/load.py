@@ -6,10 +6,11 @@ import torch
 
 sys.path.append(os.path.dirname(__file__) + "/nv/")
 from .nv import dnnlib, legacy
-from .wrappers.inference.stylegan2 import Generator
+from .wrappers.inference import stylegan2 as stylegan2_inference
+from .nv.networks import stylegan2 as stylegan2_train
 
 
-def load_rosinality2ada(path, blur_scale=4, for_inference=False):
+def load_rosinality2ada(path, blur_scale=4.0, for_inference=False):
     state_dict = torch.load(path)
     state_ros = state_dict["g_ema"]
     state_nv = {}
@@ -107,13 +108,15 @@ def load_rosinality2ada(path, blur_scale=4, for_inference=False):
     c_dim = 0  # TODO
     chnls = 3  # TODO
 
-    G = Generator(z_dim, c_dim, w_dim, max_res, chnls, mapping_kwargs=dict(num_layers=num_map))
+    G = (stylegan2_inference if for_inference else stylegan2_train).Generator(
+        z_dim, c_dim, w_dim, max_res, chnls, mapping_kwargs=dict(num_layers=num_map)
+    )
     G.load_state_dict(state_nv)
 
     return G
 
 
-def load_nvidia(path):
+def load_nvidia(path, for_inference=None):
     with dnnlib.util.open_url(path) as f:
         G_persistence = legacy.load_network_pkl(f)["G_ema"]
 
@@ -132,7 +135,7 @@ def load_nvidia(path):
     return G
 
 
-def load_network(path):
+def load_network(path, for_inference=False):
     errors = {}
 
     for name, loader in [
@@ -141,7 +144,7 @@ def load_network(path):
         ("Rosinality StyleGAN2 to Inference converter", partial(load_rosinality2ada, for_inference=True)),
     ]:
         try:
-            return loader(path)
+            return loader(path, for_inference=for_inference)
         except Exception as e:
             errors[name] = e
 

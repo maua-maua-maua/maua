@@ -35,13 +35,13 @@ class StyleGAN:
 class StyleGANMapper(MauaMapper):
     MappingNetwork = None
 
-    def __init__(self, model_file: str) -> None:
+    def __init__(self, model_file: str, inference: bool) -> None:
         super().__init__()
 
         if model_file is None or model_file == "None":
-            self.G_map = self.MappingNetwork(z_dim=512, c_dim=0, w_dim=512, num_ws=18)
+            self.G_map = self.__class__.MappingNetwork(inference)(z_dim=512, c_dim=0, w_dim=512, num_ws=18)
         else:
-            self.G_map = load_network(model_file).mapping
+            self.G_map = load_network(model_file, inference).mapping
 
         self.z_dim, self.c_dim = self.G_map.z_dim, self.G_map.c_dim
 

@@ -28,11 +28,13 @@ class StyleGAN3(StyleGAN):
 
 
 class StyleGAN3Mapper(StyleGANMapper):
-    MappingNetwork = stylegan3.MappingNetwork
+    MappingNetwork = lambda inference: stylegan3.MappingNetwork
 
 
 class StyleGAN3Synthesizer(MauaSynthesizer):
-    def __init__(self, model_file: str, output_size: Tuple[int, int], strategy: str, layer: int) -> None:
+    def __init__(
+        self, model_file: str, inference: bool, output_size: Tuple[int, int], strategy: str, layer: int
+    ) -> None:
         super().__init__()
 
         if model_file is None or model_file == "None":

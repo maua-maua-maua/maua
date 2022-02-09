@@ -9,7 +9,8 @@ import torch
 from torch import Tensor
 
 from ..load import load_network
-from .inference import stylegan2
+from ..nv.networks import stylegan2 as stylegan2_train
+from .inference import stylegan2 as stylegan2_inference
 from . import MauaSynthesizer
 from .stylegan import StyleGAN, StyleGANMapper
 
@@ -23,19 +24,29 @@ class StyleGAN2(StyleGAN):
 
 
 class StyleGAN2Mapper(StyleGANMapper):
-    MappingNetwork = stylegan2.MappingNetwork
+    MappingNetwork = lambda inference: (stylegan2_inference if inference else stylegan2_train).MappingNetwork
 
 
 class StyleGAN2Synthesizer(MauaSynthesizer):
     __constants__ = ["w_dim", "num_ws", "layer_names"]
 
-    def __init__(self, model_file: str, output_size: Tuple[int, int], strategy: str, layer: int) -> None:
+    def __init__(
+        self, model_file: str, inference: bool, output_size: Tuple[int, int], strategy: str, layer: int
+    ) -> None:
         super().__init__()
 
         if model_file is None or model_file == "None":
-            self.G_synth = stylegan2.SynthesisNetwork(w_dim=512, img_resolution=1024, img_channels=3)
+            self.G_synth = (stylegan2_inference if inference else stylegan2_train).SynthesisNetwork(
+                w_dim=512, img_resolution=1024, img_channels=3
+            )
         else:
-            self.G_synth: stylegan2.SynthesisNetwork = load_network(model_file).synthesis
+            self.G_synth: (stylegan2_inference if inference else stylegan2_train).SynthesisNetwork = load_network(
+                model_file, inference
+            ).synthesis
+        if not hasattr(self.G_synth, "bs"):
+            self.G_synth.bs = []
+            for res in self.G_synth.block_resolutions:
+                self.G_synth.bs.append(getattr(self.G_synth, f"b{res}"))
 
         self.w_dim, self.num_ws = self.G_synth.w_dim, self.G_synth.num_ws
         self.layer_names = [
@@ -113,7 +124,7 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
         if output_size != (self.G_synth.img_resolution, self.G_synth.img_resolution):
             _, block, conv = self.layer_names[layer].split(".")
 
-            synth_block = getattr(self.G_synth.bs, block)
+            synth_block = self.G_synth.bs[int(block)]
             synth_layer = getattr(synth_block, conv)
             torgb_layer = getattr(synth_block, "torgb")
 
@@ -140,10 +151,10 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
 
             for l in range(layer + 1, len(self.layer_names)):
                 _, b, c = self.layer_names[l].split(".")
-                noise_layer = getattr(getattr(self.G_synth.bs, b), c)
+                noise_layer = getattr(self.G_synth.bs[int(b)], c)
 
                 def noise_adjust(mod, input: Tuple[Tensor, Tensor, str, bool, float]) -> None:
-                    if not mod.noise_adjusted:
+                    if not hasattr(mod, "noise_adjusted") or not mod.noise_adjusted:
                         _, _, h, w = input[0].shape
                         dev, dtype = mod.noise_const.device, mod.noise_const.dtype
                         mod.noise_const = torch.randn((1, 1, h * mod.up, w * mod.up), device=dev, dtype=dtype)
@@ -155,7 +166,7 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
 
     def apply_translation(self, layer, translation):
         _, block, conv = self.layer_names[layer].split(".")
-        synth_layer = getattr(getattr(self.G_synth.bs, block), conv)
+        synth_layer = getattr(self.G_synth.bs[int(block)], conv)
 
         def translate_hook(
             module, input: Tuple[Tensor, Tensor, str, bool, float], output: Tuple[Tensor]
@@ -172,7 +183,7 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
 
     def apply_rotation(self, layer, angle, center):
         _, block, conv = self.layer_names[layer].split(".")
-        synth_layer = getattr(getattr(self.G_synth.bs, block), conv)
+        synth_layer = getattr(self.G_synth.bs[int(block)], conv)
 
         def rotation_hook(
             module, input: Tuple[Tensor, Tensor, str, bool, float], output: Tuple[Tensor]
@@ -186,7 +197,7 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
 
     def apply_zoom(self, layer, zoom, center):
         _, block, conv = self.layer_names[layer].split(".")
-        synth_layer = getattr(getattr(self.G_synth.bs, block), conv)
+        synth_layer = getattr(self.G_synth.bs[int(block)], conv)
 
         def zoom_hook(module, input: Tuple[Tensor, Tensor, str, bool, float], output: Tuple[Tensor]) -> Tuple[Tensor]:
             output = kT.scale(output, zoom.squeeze(), center, padding_mode="reflection")
@@ -203,7 +214,7 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
             if l > layer_limit:
                 continue
             block, conv = layer.split(".")
-            synth_layer = getattr(getattr(self.G_synth.bs, block), conv)
+            synth_layer = getattr(self.G_synth.bs[int(block)], conv)
             h, w = synth_layer.noise_const.shape[-2], synth_layer.noise_const.shape[-1]
             noises[f"noise{l}"] = torch.nn.functional.interpolate(noise, (h, w), mode="bicubic", align_corners=False)
         return noises
