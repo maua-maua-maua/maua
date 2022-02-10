@@ -15,7 +15,7 @@ Deep learning is very compute hungry, this means that a decent GPU is practicall
 ```bash
 git clone --recursive https://github.com/maua-maua-maua/maua.git
 cd maua
-conda create -n maua python=3.8 pytorch torchvision torchaudio cudatoolkit=11.3 cudatoolkit-dev=11.3 cudnn mpi4py Cython pip=21.3.1 -c nvidia -c pytorch -c conda-forge
+conda create -n maua python=3.9 pytorch torchvision torchaudio cudatoolkit=11.3 cudatoolkit-dev=11.3 cudnn mpi4py Cython pip=21.3.1 -c nvidia -c pytorch -c conda-forge
 conda activate maua
 pip install -r requirements.txt
 ```
