@@ -1,4 +1,5 @@
 import torch
+import traceback
 
 
 class ModulationSum(torch.nn.Module):
@@ -7,7 +8,7 @@ class ModulationSum(torch.nn.Module):
         self.modulated_modules = modulated_modules
 
     def forward(self):
-        average, weight = None, 0
+        average, weight = None, torch.zeros([1])
         for mod in self.modulated_modules:
             try:
                 weight += mod.modulation[mod.index % len(mod.modulation)]
@@ -16,8 +17,11 @@ class ModulationSum(torch.nn.Module):
                 else:
                     average += mod.forward().squeeze()
             except Exception as e:
-                print(e)
                 print()
-                print(mod.__class__.__name__)
+                print(f"ERROR '{e}' from {mod.__class__.__name__}")
+                traceback.print_exc()
                 exit()
-        return (average / weight).unsqueeze(0)
+        try:
+            return (average / weight).float().unsqueeze(0)
+        except:
+            return None

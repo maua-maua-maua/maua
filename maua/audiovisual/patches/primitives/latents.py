@@ -100,10 +100,14 @@ class TonalLatents(torch.nn.Module):
     def __init__(self, chroma_or_tonnetz, latent_selection):
         super().__init__()
         chroma_or_tonnetz /= chroma_or_tonnetz.sum(1)[:, None]
+        print(
+            chroma_or_tonnetz.permute(1, 0)[..., None, None].shape,
+            latent_selection[torch.arange(chroma_or_tonnetz.shape[1]) % len(latent_selection), None].shape,
+        )
         latents = torch.einsum(
             "Atwl,Atwl->twl",
             chroma_or_tonnetz.permute(1, 0)[..., None, None],
-            latent_selection[: chroma_or_tonnetz.shape[1], None],
+            latent_selection[torch.arange(chroma_or_tonnetz.shape[1]) % len(latent_selection), None],
         )
         self.register_buffer("latents", latents)
         self.index = 0

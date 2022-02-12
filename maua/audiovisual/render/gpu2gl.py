@@ -199,6 +199,22 @@ if __name__ == "__main__":
                 pass
             b.conv1.resample_filter = b.conv1.resample_filter.float()
 
+        torch.onnx.export(
+            next_frame,
+            latents_z,
+            "next_frame.onnx",
+            input_names=["latents"],
+            output_names=["images"],
+            opset_version=14,
+            do_constant_folding=True,
+        )
+        import onnx
+
+        model = onnx.load("next_frame.onnx")
+        onnx.checker.check_model(model)
+        print(onnx.helper.printable_graph(model.graph))
+        exit()
+
         # next_frame = torch.jit.trace(next_frame, latents_z)
         # next_frame = torch.jit.optimize_for_inference(next_frame)
         # next_frame(latents_z)

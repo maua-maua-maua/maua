@@ -114,7 +114,7 @@ def chroma(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4):
         ch = np.minimum(ch, rosa.decompose.nn_filter(ch, aggregate=np.median, metric="cosine"))
 
     ch -= ch.min()
-    ch /= ch.max()
+    ch /= ch.max() + 1e-8
     return ch.squeeze().astype(np.float32)
 
 

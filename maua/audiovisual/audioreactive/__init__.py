@@ -1,7 +1,8 @@
 import os
+from copy import deepcopy
+from functools import wraps
 
 import joblib
-from functools import wraps
 
 
 def hash(tensor_array_int_obj):
@@ -10,6 +11,7 @@ def hash(tensor_array_int_obj):
             array = tensor_array_int_obj.detach().cpu().numpy()
         else:
             array = tensor_array_int_obj
+        array = deepcopy(array)
         byte_tensor = (normalize(array) * 255).ravel().astype(np.uint8)
         hash = 0
         for ch in byte_tensor[:1024:4]:

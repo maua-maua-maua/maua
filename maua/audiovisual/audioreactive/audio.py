@@ -1,10 +1,10 @@
 import os
-import warnings
 from pathlib import Path
 
 import joblib
 import librosa as rosa
 import torch
+import torchaudio
 from openunmix.predict import separate
 from scipy import signal
 from torchaudio.functional import resample
@@ -39,9 +39,8 @@ def load_audio(audio_file, offset=0, duration=-1, cache=True):
         + ".npy"
     )
     if cache and not os.path.exists(cache_file):
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message="PySoundFile failed. Trying audioread instead.")
-            audio, sr = rosa.load(audio_file, offset=offset, duration=duration)
+        audio, sr = torchaudio.load(audio_file)
+        audio = audio[:, int(offset * sr) : int((offset + duration) * sr)].mean(0).numpy()
         joblib.dump((audio, sr), cache_file)
     else:
         audio, sr = joblib.load(cache_file)
@@ -51,9 +50,13 @@ def load_audio(audio_file, offset=0, duration=-1, cache=True):
 
 @cache_to_workspace("unmixed")
 def unmix(audio, sr):
-    vocals, drums, bass, instruments = separate(
-        resample(torch.from_numpy(audio), sr, 44100), rate=44100, niter=3, device="cpu"
-    ).values()
+    a = resample(torch.from_numpy(audio).add(1).div(2), sr, 44100).mul(2).add(-1).clamp(-1, 1)
+    print("separate", a.min(), a.mean(), a.max(), a.shape)
+    vocals, drums, bass, instruments = separate(a, rate=44100, niter=3, device="cpu").values()
+    print("vocals", vocals.min(), vocals.mean(), vocals.max(), vocals.shape)
+    print("drums", drums.min(), drums.mean(), drums.max(), drums.shape)
+    print("bass", bass.min(), bass.mean(), bass.max(), bass.shape)
+    print("instruments", instruments.min(), instruments.mean(), instruments.max(), instruments.shape)
 
     vocals = resample(vocals, 44100, sr).squeeze().mean(0).cpu().numpy()
     drums = resample(drums, 44100, sr).squeeze().mean(0).cpu().numpy()
@@ -67,12 +70,16 @@ def unmixed(audio, sr, stem="all"):
     vocals, drums, bass, instruments = unmix(audio, sr)
 
     if stem == "vocals":
+        print("vocals", vocals.min(), vocals.mean(), vocals.max())
         return vocals
     if stem == "drums":
+        print("drums", drums.min(), drums.mean(), drums.max())
         return drums
     if stem == "bass":
+        print("bass", bass.min(), bass.mean(), bass.max())
         return bass
     if stem == "instruments":
+        print("instruments", instruments.min(), instruments.mean(), instruments.max())
         return instruments
 
     return vocals, drums, bass, instruments
@@ -85,24 +92,35 @@ def spleeted(audio, sr):
 
 @cache_to_workspace("harmonic")
 def harmonic(audio, sr, margin=8):
-    return rosa.effects.harmonic(y=audio, margin=margin)
+    y = rosa.effects.harmonic(y=audio, margin=margin)
+    return y
 
 
 @cache_to_workspace("percussive")
 def percussive(audio, sr, margin=8):
-    return rosa.effects.percussive(y=audio, margin=margin)
+    y = rosa.effects.percussive(y=audio, margin=margin)
+    return y
 
 
 @cache_to_workspace("low_passed")
 def low_pass(audio, sr, fmax=200, db_per_octave=12):
-    return signal.sosfilt(signal.butter(db_per_octave, fmax, "low", fs=sr, output="sos"), audio)
+    print("low_pass", audio.min(), audio.mean(), audio.max())
+    y = signal.sosfilt(signal.butter(db_per_octave, fmax, "low", fs=sr, output="sos"), audio)
+    print("low_pass", y.min(), y.mean(), y.max())
+    return y
 
 
 @cache_to_workspace("high_passed")
 def high_pass(audio, sr, fmin=3000, db_per_octave=12):
-    return signal.sosfilt(signal.butter(db_per_octave, fmin, "high", fs=sr, output="sos"), audio)
+    print("high_pass", audio.min(), audio.mean(), audio.max())
+    y = signal.sosfilt(signal.butter(db_per_octave, fmin, "high", fs=sr, output="sos"), audio)
+    print("high_pass", y.min(), y.mean(), y.max())
+    return y
 
 
 @cache_to_workspace("band_passed")
 def band_pass(audio, sr, fmin=200, fmax=3000, db_per_octave=12):
-    return signal.sosfilt(signal.butter(db_per_octave, [fmin, fmax], "band", fs=sr, output="sos"), audio)
+    print("band_pass", audio.min(), audio.mean(), audio.max())
+    y = signal.sosfilt(signal.butter(db_per_octave, [fmin, fmax], "band", fs=sr, output="sos"), audio)
+    print("band_pass", y.min(), y.mean(), y.max())
+    return y
