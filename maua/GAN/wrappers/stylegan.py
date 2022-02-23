@@ -52,10 +52,5 @@ class StyleGANMapper(MauaMapper):
         if self.c_dim > 0:
             self.modulation_targets["class_conditioning"] = (self.c_dim,)
 
-    def forward(
-        self,
-        latent_z: Tensor,
-        # class_conditioning: Optional[Tensor] = None,
-        # truncation: float = 1.0,
-    ):
-        return self.G_map.forward(latent_z, None, truncation_psi=1.0)
+    def forward(self, latent_z: Tensor, class_conditioning: Optional[Tensor] = None, truncation: float = 1.0):
+        return self.G_map.forward(latent_z, class_conditioning, truncation_psi=truncation)

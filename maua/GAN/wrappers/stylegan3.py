@@ -55,27 +55,17 @@ class StyleGAN3Synthesizer(MauaSynthesizer):
 
     def forward(
         self,
-        latent_w: torch.Tensor = None,
-        latent_w_plus: torch.Tensor = None,
+        latents: torch.Tensor = None,
         translation: torch.Tensor = None,
         rotation: torch.Tensor = None,
     ) -> torch.Tensor:
-        if latent_w is None and latent_w_plus is None:
-            raise Exception("One of latent_w or latent_w_plus inputs must be supplied!")
-        if latent_w is not None and latent_w_plus is not None:
-            warnings.warn("Both latent_w and latent_w_plus supplied, using latent_w_plus input...")
-
         if not (translation is None or rotation is None):
             self.G_synth.input.transform.copy_(make_transform_mat(translation, rotation))
         else:
             # stabilization trick by @RiversHaveWings and @nshepperd1
             self.G_synth.input.affine.bias.data.add_(self.avg_shift)
             self.G_synth.input.affine.weight.data.zero_()
-
-        if latent_w_plus is None:
-            latent_w_plus = torch.tile(latent_w[:, None, :], (1, self.G_synth.num_ws, 1))
-
-        return self.G_synth.forward(latent_w_plus)
+        return self.G_synth.forward(latents)
 
     def change_output_resolution(self, output_size: Tuple[int, int], strategy: str, layer: int):
         self.refresh_model_hooks()

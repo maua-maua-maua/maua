@@ -97,4 +97,4 @@ def write_video(
     with VideoWriter(output_file, (w, h), fps, audio_file, audio_offset, audio_duration, ffmpeg_preset) as video:
         for frame in tensor:
             frame = frame if isinstance(frame, torch.Tensor) else torch.from_numpy(frame.copy())
-            video.write(frame)
+            video.write(frame[None])

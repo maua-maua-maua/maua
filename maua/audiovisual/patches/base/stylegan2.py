@@ -1,4 +1,6 @@
+import torch
 from maua.GAN.wrappers.stylegan2 import StyleGAN2, StyleGAN2Mapper, StyleGAN2Synthesizer
+
 from . import MauaPatch
 
 
@@ -30,7 +32,7 @@ class StyleGAN2Patch(MauaPatch):
             "class_conditioning" : [description]
         }
         """
-        return {}
+        return {"latent_z": torch.randn((1, 512))}
 
     def process_synthesizer_inputs(self, latent_w):
         """

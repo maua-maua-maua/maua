@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 
 
-def normalize(signal):
+def normalize(x):
     """Normalize signal between 0 and 1
 
     Args:
@@ -11,9 +11,9 @@ def normalize(signal):
     Returns:
         np.array/torch.tensor: Normalized signal
     """
-    signal -= signal.min()
-    signal /= signal.max()
-    return signal
+    y = x - x.min()
+    y = y / y.max()
+    return y
 
 
 def percentile(signal, p):
@@ -103,7 +103,7 @@ def gaussian_filter(x, sigma, causal=None, mode="circular"):
     channels = x.shape[1]
 
     kernel = torch.arange(-radius, radius + 1, dtype=torch.float32, device=x.device)
-    kernel = torch.exp(-0.5 / sigma ** 2 * kernel ** 2)
+    kernel = torch.exp(-0.5 / sigma**2 * kernel**2)
     if causal is not None:
         kernel[radius + 1 :] *= 0 if not isinstance(causal, float) else causal
     kernel = kernel / kernel.sum()

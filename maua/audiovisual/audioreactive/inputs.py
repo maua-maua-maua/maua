@@ -1,3 +1,6 @@
+import random
+from functools import reduce
+
 import numpy as np
 import torch
 from scipy import interpolate
@@ -22,7 +25,7 @@ def chroma_weighted(latents, chroma):
     Returns:
         torch.tensor: Chromagram weighted latent sequence
     """
-    chroma /= chroma.sum(1)
+    chroma /= chroma.sum(1)[:, None]
     return (chroma[..., None, None] * latents[None]).sum(1)
 
 
@@ -48,11 +51,11 @@ def loops(latents, n_frames, fps, tempo, type="spline"):
 
 
 def eerp(a, b, t):
-    return a ** (1 - t) * b ** t
+    return a ** (1 - t) * b**t
 
 
 def copeerp(a, b, t):
-    return a ** t * (1 - b ** t) / (1 - a ** t + b ** t)
+    return a**t * (1 - b**t) / (1 - a**t + b**t)
 
 
 def slerp(a, b, t):
@@ -157,6 +160,19 @@ def _perlinterpolant(t):
     return t * t * t * (t * (t * 6 - 15) + 10)
 
 
+def factors(n):
+    return np.array(list(set(reduce(list.__add__, ([i, n // i] for i in range(1, int(n**0.5) + 1) if n % i == 0)))))
+
+
+def round_to_closest_divisor(num, div):
+    options = factors(num)
+    best_idxs = np.argsort(np.abs(div - options))[:2]
+    if options[best_idxs[0]] == div:
+        return div
+    opt = options[best_idxs[random.choice([0, 1])]]
+    return opt
+
+
 def perlin_noise(shape, res, tileable=(True, False, False), interpolant=_perlinterpolant):
     """Generate a 3D tensor of perlin noise.
 
@@ -172,14 +188,15 @@ def perlin_noise(shape, res, tileable=(True, False, False), interpolant=_perlint
     Raises:
         ValueError: If shape is not a multiple of res.
     """
+    res = tuple(round_to_closest_divisor(shape[r], res[r]) for r in range(len(res)))
     delta = (res[0] / shape[0], res[1] / shape[1], res[2] / shape[2])
     d = (shape[0] // res[0], shape[1] // res[1], shape[2] // res[2])
-    grid = np.mgrid[0 : res[0] : delta[0], 0 : res[1] : delta[1], 0 : res[2] : delta[2]]
+    grid = np.mgrid[0 : res[0] : delta[0], 0 : res[1] : delta[1], 0 : res[2] : delta[2]].astype(np.float32)
     grid = grid.transpose(1, 2, 3, 0) % 1
     grid = torch.from_numpy(grid).cuda()
     # Gradients
-    theta = 2 * np.pi * np.random.rand(res[0] + 1, res[1] + 1, res[2] + 1)
-    phi = 2 * np.pi * np.random.rand(res[0] + 1, res[1] + 1, res[2] + 1)
+    theta = 2 * np.pi * np.random.rand(res[0] + 1, res[1] + 1, res[2] + 1).astype(np.float32)
+    phi = 2 * np.pi * np.random.rand(res[0] + 1, res[1] + 1, res[2] + 1).astype(np.float32)
     gradients = np.stack((np.sin(phi) * np.cos(theta), np.sin(phi) * np.sin(theta), np.cos(phi)), axis=3)
     if tileable[0]:
         gradients[-1, :, :] = gradients[0, :, :]
@@ -215,4 +232,5 @@ def perlin_noise(shape, res, tileable=(True, False, False), interpolant=_perlint
     n0 = (1 - t[:, :, :, 1]) * n00 + t[:, :, :, 1] * n10
     n1 = (1 - t[:, :, :, 1]) * n01 + t[:, :, :, 1] * n11
     perlin = (1 - t[:, :, :, 2]) * n0 + t[:, :, :, 2] * n1
-    return perlin * 2 - 1  # stretch from -1 to 1
+    perlin = perlin * 2 - 1  # stretch from -1 to 1
+    return perlin.cpu()

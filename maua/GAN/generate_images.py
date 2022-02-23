@@ -29,15 +29,15 @@ def generate_images(
 ) -> Generator[torch.Tensor, None, None]:
 
     mapper, synthesizer = get_generator_classes(architecture)
-    G_map = mapper(model_file).to(device)
-    G_synth = synthesizer(model_file, out_size, resize_strategy, resize_layer).to(device)
+    G_map = mapper(model_file, False).to(device)
+    G_synth = synthesizer(model_file, False, out_size, resize_strategy, resize_layer).to(device)
 
     # TODO similar abstraction as in generate_audiovisual
     for seed in tqdm(seeds):
         latent_z = torch.from_numpy(np.random.RandomState(seed).randn(1, G_map.z_dim)).to(device)
         class_conditioning = one_hot(class_idx, num_classes=G_map.c_dim).to(device) if class_idx is not None else None
-        latent_w_plus = G_map.forward(latent_z=latent_z, class_conditioning=class_conditioning, truncation=truncation)
-        img = G_synth.forward(latent_w_plus=latent_w_plus, translation=translation, rotation=rotation)
+        latent_w_plus = G_map.forward(latent_z, class_conditioning, truncation)
+        img = G_synth.forward(latent_w_plus, translation=translation, rotation=rotation)
         yield img.add(1).div(2).cpu()
 
 
@@ -49,8 +49,8 @@ if __name__ == "__main__":
     parser.add_argument("--seeds", default="42", type=str, help="Comma separated list of seeds to generate images for. Use a dash to specify a range: e.g. '1,3,5,6-10'")
     parser.add_argument("--class_idx", default=None, type=int, help="Index of class to generate (only applicable to conditional models)")
     parser.add_argument("--truncation", default=1.0, type=float, help="Latent truncation value. Lower values give higher quality with less diversity; higer values vice versa")
-    parser.add_argument("--translation", default="0,0", type=str, help="x,y offset values for StyleGAN3's input transformation matrix (translates image in latent space)")
-    parser.add_argument("--rotation", default=0.0, type=float, help="Rotation value for StyleGAN3's input transformation matrix (rotates image in latent space)")
+    parser.add_argument("--translation", default=None, type=str, help="x,y offset values for StyleGAN3's input transformation matrix (translates image in latent space)")
+    parser.add_argument("--rotation", default=None, type=float, help="Rotation value for StyleGAN3's input transformation matrix (rotates image in latent space)")
     parser.add_argument("--out_size", default="1024,1024", type=str, help="Desired width,height of output image: e.g. 1920,1080 or 720,1280")
     parser.add_argument("--resize_strategy", default="stretch", type=str, help="Strategy used to resize (in feature space) to achieve desired output resolution")
     parser.add_argument("--resize_layer", default=0, choices=list(range(18)), type=int, help="Which layer in the network to perform resizing at. Higher values are closer to resizing output pixels directly. Lower values have larger rounding increments (i.e. less flexible possible output sizes)")
@@ -58,8 +58,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     args.seeds = sum([([int(seed)] if not "-" in seed else list(range(int(seed.split("-")[0]), int(seed.split("-")[1])))) for seed in args.seeds.split(",")], [])
     args.truncation = torch.tensor([args.truncation])
-    args.translation = torch.tensor([float(s) for s in args.translation.split(",")])
-    args.rotation = torch.tensor(args.rotation)
+    args.translation = torch.tensor([float(s) for s in args.translation.split(",")]) if args.translation is not None else None
+    args.rotation = torch.tensor(args.rotation) if args.rotation is not None else None
     args.out_size = tuple(int(s) for s in args.out_size.split(","))
     # fmt: on
 

@@ -34,7 +34,7 @@ def onsets(audio, sr, type="mm", prepercussive=4):
 
     elif type == "mm":
         sig = mm.audio.signal.Signal(audio, num_channels=1, sample_rate=sr)
-        sig_frames = mm.audio.signal.FramedSignal(sig, frame_size=2048, hop_length=441)
+        sig_frames = mm.audio.signal.FramedSignal(sig, frame_size=2048, hop_length=512)
         stft = mm.audio.stft.ShortTimeFourierTransform(sig_frames, circular_shift=True)
         spec = mm.audio.spectrogram.Spectrogram(stft, circular_shift=True)
         filt_spec = mm.audio.spectrogram.FilteredSpectrogram(spec, num_bands=24)
@@ -58,7 +58,7 @@ def onsets(audio, sr, type="mm", prepercussive=4):
 
     onset = percentile_clip(torch.from_numpy(onset), 95).numpy()
 
-    return onset.squeeze().astype(np.float32)
+    return torch.from_numpy(onset.squeeze().astype(np.float32))
 
 
 @cache_to_workspace("volume")
@@ -74,11 +74,11 @@ def volume(audio, sr):
     vol = rosa.feature.rms(audio)
     vol -= vol.min()
     vol /= vol.max()
-    return vol.squeeze().astype(np.float32)
+    return torch.from_numpy(vol.squeeze().astype(np.float32))
 
 
 @cache_to_workspace("chroma")
-def chroma(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4):
+def chroma(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4, notes=12):
     """Creates chromagram for the harmonic component of the audio
 
     Args:
@@ -86,7 +86,8 @@ def chroma(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4):
         sr (int): Sampling rate of the audio
         type (str, optional): ["cens", "cqt", "stft", "deep", "clp"]. Which strategy to use to calculate the chromagram. Defaults to "cens".
         nearest_neighbor (bool, optional): Whether to post process using nearest neighbor smoothing. Defaults to True.
-        preharmonic (int, optional): For harmonic source separation, higher values create more extreme separations. Defaults to 16.
+        preharmonic (int, optional): For harmonic source separation, higher values create more extreme separations. Defaults to 4.
+        notes (int, optional): Use only the most prominent notes (returns a smaller chromagram).
 
     Returns:
         torch.tensor, shape=(n_frames, 12): Chromagram
@@ -113,6 +114,9 @@ def chroma(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4):
     if nearest_neighbor:
         ch = np.minimum(ch, rosa.decompose.nn_filter(ch, aggregate=np.median, metric="cosine"))
 
+    if notes < 12:
+        ch = ch[:, np.argsort(-ch.sum(0))[:notes]]
+
     ch -= ch.min()
     ch /= ch.max() + 1e-8
     return ch.squeeze().astype(np.float32)
@@ -125,7 +129,7 @@ def tonnetz(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4):
     ton = np.rollaxis(rosa.feature.tonnetz(chroma=np.rollaxis(ch, 1, 0), sr=fps), 1, 0)
     ton -= ton.min()
     ton /= ton.max()
-    return ton.squeeze().astype(np.float32)
+    return torch.from_numpy(ton.squeeze().astype(np.float32))
 
 
 @cache_to_workspace("pitch_track")
@@ -134,7 +138,7 @@ def pitch_track(audio, sr, preharmonic=4):
         audio = harmonic(audio, sr, preharmonic)
     pitches, magnitudes = rosa.piptrack(y=audio, sr=sr)
     average_pitch = np.average(pitches, axis=0, weights=magnitudes + 1e-8)
-    return average_pitch.squeeze().astype(np.float32)
+    return torch.from_numpy(average_pitch.squeeze().astype(np.float32))
 
 
 @cache_to_workspace("spectral_max")
@@ -143,7 +147,7 @@ def spectral_max(audio, sr, n_mels=512):
     spectrum = np.amax(spectrum, axis=0)
     spectrum -= spectrum.min()
     spectrum /= spectrum.max()
-    return spectrum.squeeze().astype(np.float32)
+    return torch.from_numpy(spectrum.squeeze().astype(np.float32))
 
 
 @cache_to_workspace("pitch_dominance")
@@ -152,7 +156,7 @@ def pitch_dominance(audio, sr, type="cens", nearest_neighbor=True, preharmonic=4
     chromagram_norm = chromagram / chromagram.sum(axis=1, keepdims=1)
     chromagram_sum = np.sum(chromagram_norm, axis=0)
     pitches_sorted = np.argsort(chromagram_sum)[::-1]
-    return pitches_sorted
+    return torch.from_numpy(pitches_sorted)
 
 
 @cache_to_workspace("pulse")
@@ -169,7 +173,7 @@ def pulse(audio, sr, prior="lognorm", type="mm", prepercussive=4):
 
     pul = rosa.beat.plp(onset_envelope=onset_env, sr=fps, prior=prior)
     pul = rosa.util.normalize(pul)
-    return pul.squeeze().astype(np.float32)
+    return torch.from_numpy(pul.squeeze().astype(np.float32))
 
 
 def round_to_nearest_half(number):
@@ -256,7 +260,7 @@ def laplacian_segmentation(audio, sr, k=5, plot=False):
     # median filter to smooth over small discontinuities
     evecs = scipy.ndimage.median_filter(evecs, size=(9, 1))
     # cumulative normalization for symmetric normalized laplacian eigenvectors
-    Cnorm = np.cumsum(evecs ** 2, axis=1) ** 0.5
+    Cnorm = np.cumsum(evecs**2, axis=1) ** 0.5
 
     X = evecs[:, :k] / Cnorm[:, k - 1 : k]
 

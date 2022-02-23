@@ -75,7 +75,7 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
         rotation: Optional[Tensor] = None,
         rotation_layer: int = 7,
         rotation_center: Optional[int] = None,
-        noise: Optional[Dict[str, Tensor]] = None,
+        **noise,
     ) -> Tensor:
         if translation is not None:
             self.apply_translation(translation_layer, translation)
@@ -87,6 +87,9 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
         if noise is not None:
             noises, l = list(noise.values()), 1
             for block in self.G_synth.bs[1:]:
+                if l >= len(noises):
+                    continue
+
                 noise_l = noises[l].to(block.conv0.noise_const.device, non_blocking=True)
                 if (noise_l.shape[-2], noise_l.shape[-1]) != (
                     block.conv0.noise_const.shape[-2],
@@ -101,7 +104,7 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
                 block.conv0.noise_const.set_(noise_l)
                 l += 1
 
-                # repeated to appease torch.jit...
+                # copy-pasted for conv1 to appease torch.jit...
                 noise_l = noises[l].to(block.conv1.noise_const.device, non_blocking=True)
                 if (noise_l.shape[-2], noise_l.shape[-1]) != (
                     block.conv1.noise_const.shape[-2],
@@ -158,6 +161,7 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
                         _, _, h, w = input[0].shape
                         dev, dtype = mod.noise_const.device, mod.noise_const.dtype
                         mod.noise_const = torch.randn((1, 1, h * mod.up, w * mod.up), device=dev, dtype=dtype)
+                        mod.noise_strength = 1
                         mod.noise_adjusted = True
 
                 self._hook_handles.append(noise_layer.register_forward_pre_hook(noise_adjust))
@@ -208,12 +212,12 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
         self.zoom_hook = synth_layer.register_forward_hook(zoom_hook)
 
     def make_noise_pyramid(self, noise, layer_limit=8):
-        self.forward(latent_w=torch.randn(1, 512))  # ensure that noise_adjust hooks have adjusted noise buffers
+        self.forward(latents=torch.randn(1, 18, 512))  # ensure that noise_adjust hooks have adjusted noise buffers
         noises = {}
         for l, layer in enumerate(self.layer_names[1:]):
             if l > layer_limit:
                 continue
-            block, conv = layer.split(".")
+            _, block, conv = layer.split(".")
             synth_layer = getattr(self.G_synth.bs[int(block)], conv)
             h, w = synth_layer.noise_const.shape[-2], synth_layer.noise_const.shape[-1]
             noises[f"noise{l}"] = torch.nn.functional.interpolate(noise, (h, w), mode="bicubic", align_corners=False)

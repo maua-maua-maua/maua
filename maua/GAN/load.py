@@ -16,7 +16,13 @@ def load_rosinality2ada(path, blur_scale=4.0, for_inference=False):
     state_nv = {}
 
     nv_key = "bs.0" if for_inference else "b4"
-    state_nv[f"synthesis.{nv_key}.const"] = state_ros[f"input.input"].squeeze(0)
+    if tuple(state_ros[f"input.input"].shape) != (1,):
+        state_nv[f"synthesis.{nv_key}.const"] = state_ros[f"input.input"].squeeze(0)
+        use_const = True
+    else:
+        state_nv[f"synthesis.{nv_key}.const.affine.weight"] = state_ros[f"input.linear.weight"].squeeze(0)
+        state_nv[f"synthesis.{nv_key}.const.affine.bias"] = state_ros[f"input.linear.bias"].squeeze(0)
+        use_const = False
 
     state_nv[f"synthesis.{nv_key}.conv1.noise_const"] = state_ros[f"noises.noise_0"].squeeze(0).squeeze(0)
 
@@ -109,7 +115,7 @@ def load_rosinality2ada(path, blur_scale=4.0, for_inference=False):
     chnls = 3  # TODO
 
     G = (stylegan2_inference if for_inference else stylegan2_train).Generator(
-        z_dim, c_dim, w_dim, max_res, chnls, mapping_kwargs=dict(num_layers=num_map)
+        z_dim, c_dim, w_dim, max_res, chnls, mapping_kwargs=dict(num_layers=num_map), use_const=use_const
     )
     G.load_state_dict(state_nv)
 
