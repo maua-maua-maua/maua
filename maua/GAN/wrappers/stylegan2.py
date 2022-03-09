@@ -85,39 +85,21 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
             self.apply_rotation(rotation_layer, rotation, rotation_center)
 
         if noise is not None:
-            noises, l = list(noise.values()), 1
-            for block in self.G_synth.bs[1:]:
+            noises, l = list(noise.values()), 0
+            for block in self.G_synth.bs:
                 if l >= len(noises):
                     continue
-
-                noise_l = noises[l].to(block.conv0.noise_const.device, non_blocking=True)
-                if (noise_l.shape[-2], noise_l.shape[-1]) != (
-                    block.conv0.noise_const.shape[-2],
-                    block.conv0.noise_const.shape[-1],
-                ):
-                    warnings.warn(
-                        f"Supplied noise for SynthesisLayer {l} has shape {noise_l.shape} while the expected "
-                        f"shape is {block.conv0.noise_const.shape}. Resizing the supplied noise to match..."
-                    )
-                    h, w = block.conv0.noise_const.shape[-2], block.conv0.noise_const.shape[-1]
-                    noise_l = torch.nn.functional.interpolate(noise_l, (h, w), mode="bicubic", align_corners=False)
-                block.conv0.noise_const.set_(noise_l)
-                l += 1
-
-                # copy-pasted for conv1 to appease torch.jit...
-                noise_l = noises[l].to(block.conv1.noise_const.device, non_blocking=True)
-                if (noise_l.shape[-2], noise_l.shape[-1]) != (
-                    block.conv1.noise_const.shape[-2],
-                    block.conv1.noise_const.shape[-1],
-                ):
-                    warnings.warn(
-                        f"Supplied noise for SynthesisLayer {l} has shape {noise_l.shape} while the expected "
-                        f"shape is {block.conv0.noise_const.shape}. Resizing the supplied noise to match..."
-                    )
-                    h, w = block.conv1.noise_const.shape[-2], block.conv1.noise_const.shape[-1]
-                    noise_l = torch.nn.functional.interpolate(noise_l, (h, w), mode="bicubic", align_corners=False)
-                block.conv1.noise_const.set_(noise_l)
-                l += 1
+                for c in ([block.conv0] if hasattr(block, "conv0") else []) + [block.conv1]:
+                    noise_l = noises[l].to(c.noise_const, non_blocking=True)
+                    if (noise_l.shape[-2], noise_l.shape[-1]) != (c.noise_const.shape[-2], c.noise_const.shape[-1]):
+                        warnings.warn(
+                            f"Supplied noise for SynthesisLayer {l} has shape {noise_l.shape} while the expected "
+                            f"shape is {c.noise_const.shape}. Resizing the supplied noise to match..."
+                        )
+                        h, w = c.noise_const.shape[-2], c.noise_const.shape[-1]
+                        noise_l = torch.nn.functional.interpolate(noise_l, (h, w), mode="bicubic", align_corners=False)
+                    c.noise_const.set_(noise_l)
+                    l += 1
 
         return self.G_synth.forward(latents, noise_mode="const")
 
@@ -161,7 +143,7 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
                         _, _, h, w = input[0].shape
                         dev, dtype = mod.noise_const.device, mod.noise_const.dtype
                         mod.noise_const = torch.randn((1, 1, h * mod.up, w * mod.up), device=dev, dtype=dtype)
-                        mod.noise_strength = 1
+                        # mod.noise_strength = torch.nn.Parameter(torch.ones((1)).to(input[0]))
                         mod.noise_adjusted = True
 
                 self._hook_handles.append(noise_layer.register_forward_pre_hook(noise_adjust))

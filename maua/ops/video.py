@@ -19,6 +19,7 @@ class VideoWriter:
         audio_offset=0,
         audio_duration=None,
         ffmpeg_preset="veryslow",
+        debug=False,
     ):
         self.output_file = output_file
         self.output_size = f"{2*ceil(output_size[0]/2)}x{2*ceil(output_size[1]/2)}"
@@ -27,6 +28,7 @@ class VideoWriter:
         self.audio_offset = audio_offset
         self.audio_duration = audio_duration
         self.ffmpeg_preset = ffmpeg_preset
+        self.debug = debug
 
     def write(self, tensor):
         _, _, h, w = tensor.shape
@@ -54,7 +56,7 @@ class VideoWriter:
                 )
                 .global_args("-hide_banner")
                 .overwrite_output()
-                .run_async(pipe_stdin=True, pipe_stderr=True)
+                .run_async(pipe_stdin=True, pipe_stderr=not self.debug)
             )
         else:
             self.ffmpeg_proc = (
@@ -68,7 +70,7 @@ class VideoWriter:
                 )
                 .global_args("-hide_banner")
                 .overwrite_output()
-                .run_async(pipe_stdin=True, pipe_stderr=True)
+                .run_async(pipe_stdin=True, pipe_stderr=not self.debug)
             )
         return self
 
@@ -85,6 +87,7 @@ def write_video(
     audio_offset=0,
     audio_duration=None,
     ffmpeg_preset="slow",
+    debug=False,
 ) -> None:
     """Write a tensor [T,C,H,W] to an mp4 file with FFMPEG.
 
@@ -94,7 +97,7 @@ def write_video(
         fps (float): Frames per second of output video
     """
     _, _, h, w = tensor.shape
-    with VideoWriter(output_file, (w, h), fps, audio_file, audio_offset, audio_duration, ffmpeg_preset) as video:
+    with VideoWriter(output_file, (w, h), fps, audio_file, audio_offset, audio_duration, ffmpeg_preset, debug) as video:
         for frame in tensor:
             frame = frame if isinstance(frame, torch.Tensor) else torch.from_numpy(frame.copy())
             video.write(frame[None])
