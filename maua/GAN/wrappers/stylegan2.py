@@ -98,7 +98,7 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
                         )
                         h, w = c.noise_const.shape[-2], c.noise_const.shape[-1]
                         noise_l = torch.nn.functional.interpolate(noise_l, (h, w), mode="bicubic", align_corners=False)
-                    c.noise_const.set_(noise_l)
+                    setattr(c, "noise_const", noise_l)
                     l += 1
 
         return self.G_synth.forward(latents, noise_mode="const")

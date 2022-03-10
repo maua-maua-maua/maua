@@ -63,7 +63,7 @@ if __name__ == "__main__":
     parser.add_argument("--patch_file", default="patches/examples/default.py", type=str, help="The file which defines the audio-reactive modulations of the GANs inputs")
     parser.add_argument("--patch_name", default=None, type=str, help="Which patch class to use (if there are multiple in the file)")
     parser.add_argument("--renderer", default="ffmpeg", type=str, help="The method used to render your video")
-    parser.add_argument("--ffmpeg_preset", default="slow", type=str, help="If rendering with FFMPEG, the preset for video encoding. Slower is higher quality and smaller file size. For options see: https://trac.ffmpeg.org/wiki/Encode/H.264")
+    parser.add_argument("--ffmpeg_preset", default="fast", type=str, help="If rendering with FFMPEG, the preset for video encoding. Slower is higher quality and smaller file size. For options see: https://trac.ffmpeg.org/wiki/Encode/H.264")
     parser.add_argument("--fps", default=24, type=float, help="Frames per second of output video")
     parser.add_argument("--out_size", default="1024,1024", type=str, help="Desired width,height of output image: e.g. 1920,1080 or 720,1280")
     parser.add_argument("--resize_strategy", default="pad-zero", type=str, help="Strategy used to resize (in feature space) to achieve desired output resolution")
