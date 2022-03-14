@@ -81,7 +81,7 @@ class Conv2dLayer(torch.nn.Module):
         self.conv_clamp = conv_clamp
         self.register_buffer("resample_filter", setup_filter(resample_filter))
         self.padding = kernel_size // 2
-        self.weight_gain = 1 / sqrt(in_channels * (kernel_size**2))
+        self.weight_gain = 1 / sqrt(in_channels * (kernel_size ** 2))
         self.act_gain = activation_funcs[activation]["def_gain"]
 
         weight = torch.randn([out_channels, in_channels, kernel_size, kernel_size])
@@ -263,7 +263,7 @@ class ToRGBLayer(torch.nn.Module):
         self.affine = FullyConnectedLayer(w_dim, in_channels, bias_init=1)
         self.weight = torch.nn.Parameter(torch.randn([out_channels, in_channels, kernel_size, kernel_size]))
         self.bias = torch.nn.Parameter(torch.zeros([out_channels]))
-        self.weight_gain = 1 / sqrt(in_channels * (kernel_size**2))
+        self.weight_gain = 1 / sqrt(in_channels * (kernel_size ** 2))
 
     def forward(self, x: Tensor, w: Tensor):
         styles = self.affine(w) * self.weight_gain
@@ -399,7 +399,7 @@ class SynthesisNetwork(torch.nn.Module):
         self.img_resolution_log2 = int(np.log2(img_resolution))
         self.img_channels = img_channels
         self.num_fp16_res = num_fp16_res
-        self.block_resolutions = [2**i for i in range(2, self.img_resolution_log2 + 1)]
+        self.block_resolutions = [2 ** i for i in range(2, self.img_resolution_log2 + 1)]
         channels_dict = {res: min(channel_base // res, channel_max) for res in self.block_resolutions}
         fp16_resolution = max(2 ** (self.img_resolution_log2 + 1 - num_fp16_res), 8)
 

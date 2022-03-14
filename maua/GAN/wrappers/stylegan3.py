@@ -23,7 +23,9 @@ layer_multipliers = {
 class StyleGAN3(StyleGAN):
     def __init__(self, mapper, synthesizer) -> None:
         super().__init__(mapper, synthesizer)
-        self.synthesizer.avg_shift = self.synthesizer.input.affine(self.mapper.w_avg.unsqueeze(0)).squeeze(0)
+        self.synthesizer.register_buffer(
+            "avg_shift", self.synthesizer.G_synth.input.affine(self.mapper.G_map.w_avg.unsqueeze(0)).squeeze(0)
+        )
 
 
 class StyleGAN3Mapper(StyleGANMapper):
@@ -53,17 +55,14 @@ class StyleGAN3Synthesizer(MauaSynthesizer):
         self.change_output_resolution(output_size, strategy, layer)
 
     def forward(
-        self,
-        latents: torch.Tensor = None,
-        translation: torch.Tensor = None,
-        rotation: torch.Tensor = None,
+        self, latents: torch.Tensor = None, translation: torch.Tensor = None, rotation: torch.Tensor = None
     ) -> torch.Tensor:
-        if not (translation is None or rotation is None):
-            self.G_synth.input.transform.copy_(make_transform_mat(translation, rotation))
-        else:
+        if translation == 0 and rotation == 0:
             # stabilization trick by @RiversHaveWings and @nshepperd1
             self.G_synth.input.affine.bias.data.add_(self.avg_shift)
             self.G_synth.input.affine.weight.data.zero_()
+        elif not (translation is None or rotation is None):
+            self.G_synth.input.transform.copy_(make_transform_mat(translation, rotation))
         return self.G_synth.forward(latents)
 
     def change_output_resolution(self, output_size: Tuple[int, int], strategy: str, layer: int):

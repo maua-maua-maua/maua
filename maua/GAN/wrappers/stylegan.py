@@ -8,8 +8,9 @@ from ..load import load_network
 from . import MauaMapper
 
 
-class StyleGAN:
+class StyleGAN(torch.nn.Module):
     def __init__(self, mapper, synthesizer) -> None:
+        super().__init__()
         self.mapper = mapper
         self.synthesizer = synthesizer
 
@@ -30,6 +31,9 @@ class StyleGAN:
         latent_z = self.get_z_latents(seeds)
         latent_w = self.mapper(latent_z, truncation=truncation)
         return latent_w
+
+    def forward(self, z):
+        return self.synthesizer(self.mapper(z))
 
 
 class StyleGANMapper(MauaMapper):

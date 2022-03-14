@@ -1,12 +1,16 @@
+from copy import deepcopy
 import os
 import sys
+import traceback
 from functools import partial
 
 import torch
 
 sys.path.append(os.path.dirname(__file__) + "/nv/")
+
 from .nv import dnnlib, legacy
 from .nv.networks import stylegan2 as stylegan2_train
+from .nv.networks import stylegan3
 from .wrappers.inference import stylegan2 as stylegan2_inference
 
 
@@ -127,15 +131,18 @@ def load_nvidia(path, for_inference=None):
         G_persistence = legacy.load_network_pkl(f)["G_ema"]
 
     # create new Generator class to avoid the uninformative errors from NVIDIA's persistence system
-    G = Generator(
-        G_persistence.mapping.z_dim,
-        G_persistence.mapping.c_dim,
-        G_persistence.mapping.w_dim,
-        G_persistence.img_resolution,
-        G_persistence.img_channels,
-        mapping_kwargs=dict(num_layers=G_persistence.mapping.num_layers),
-    )
-    G.load_state_dict(G_persistence.state_dict())
+    try:
+        G = stylegan3.Generator(
+            G_persistence.mapping.z_dim,
+            G_persistence.mapping.c_dim,
+            G_persistence.mapping.w_dim,
+            G_persistence.img_resolution,
+            G_persistence.img_channels,
+            mapping_kwargs=dict(num_layers=G_persistence.mapping.num_layers),
+        )
+        G.load_state_dict(G_persistence.state_dict())
+    except:
+        G = deepcopy(G_persistence)
 
     del G_persistence
     return G
@@ -151,8 +158,8 @@ def load_network(path, for_inference=False):
     ]:
         try:
             return loader(path, for_inference=for_inference)
-        except Exception as e:
-            errors[name] = e
+        except:
+            errors[name] = traceback.format_exc()
 
-    error_str = "\n".join([f"{k}: {v}" for k, v in errors.items()])
+    error_str = "\n".join([f"\n{k}:\n{e}\n" for k, e in errors.items()])
     raise Exception(f"Error loading checkpoint! None of the converters succeeded:\n{error_str}")

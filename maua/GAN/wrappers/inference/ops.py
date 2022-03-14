@@ -222,7 +222,7 @@ def conv2d_resample(
         pxt = torch.max(torch.min(-px0, -px1), 0)
         pyt = torch.max(torch.min(-py0, -py1), 0)
         x = torch.nn.functional.conv_transpose2d(x, w, stride=up, padding=(pyt, pxt), groups=groups)
-        x = upfirdn2d(x=x, f=f, padding=(px0 + pxt, px1 + pxt, py0 + pyt, py1 + pyt), gain=up**2)
+        x = upfirdn2d(x=x, f=f, padding=(px0 + pxt, px1 + pxt, py0 + pyt, py1 + pyt), gain=up ** 2)
         if down > 1:
             x = upfirdn2d(x=x, f=f, down=down)
         return x
