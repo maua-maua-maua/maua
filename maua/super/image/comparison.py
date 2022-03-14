@@ -4,8 +4,8 @@ from time import time
 
 import torch
 from tqdm import tqdm
-from maua.ops.tensor import tensor2img
 
+from maua.ops.tensor import tensor2img
 from maua.super.image.single import MODEL_MODULES, MODEL_NAMES
 
 

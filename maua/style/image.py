@@ -14,7 +14,7 @@ from tqdm import tqdm
 from maua.ops.image import match_histogram, resample
 from maua.ops.loss import tv_loss
 from maua.ops.tensor import load_images, tensor2img
-from maua.optimizers import load_optimizer, OPTIMIZERS
+from maua.optimizers import OPTIMIZERS, load_optimizer
 from maua.parameterizations import load_parameterization
 from maua.perceptors import load_perceptor
 

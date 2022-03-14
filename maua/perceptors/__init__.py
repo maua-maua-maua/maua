@@ -2,8 +2,9 @@ from functools import partial
 
 import torch
 import torch.nn as nn
-from maua.ops.loss import feature_loss, gram_matrix
 from nestedtensor import nested_tensor
+
+from maua.ops.loss import feature_loss, gram_matrix
 
 
 class Perceptor(nn.Module):

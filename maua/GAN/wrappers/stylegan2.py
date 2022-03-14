@@ -10,8 +10,8 @@ from torch import Tensor
 
 from ..load import load_network
 from ..nv.networks import stylegan2 as stylegan2_train
-from .inference import stylegan2 as stylegan2_inference
 from . import MauaSynthesizer
+from .inference import stylegan2 as stylegan2_inference
 from .stylegan import StyleGAN, StyleGANMapper
 
 SynthesisLayerInputType = Tuple[Tensor, Tensor, str, float]

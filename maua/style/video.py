@@ -1,8 +1,8 @@
 import os
 import shutil
+from math import ceil
 from pathlib import Path
 from typing import List, Tuple, Union
-from math import ceil
 
 import numpy as np
 import torch
@@ -20,7 +20,7 @@ from maua.ops.image import match_histogram, resample
 from maua.ops.loss import feature_loss, tv_loss
 from maua.ops.tensor import load_images
 from maua.ops.video import write_video
-from maua.optimizers import load_optimizer, OPTIMIZERS
+from maua.optimizers import OPTIMIZERS, load_optimizer
 from maua.parameterizations import load_parameterization
 from maua.perceptors import load_perceptor
 

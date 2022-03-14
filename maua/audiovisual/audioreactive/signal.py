@@ -2,6 +2,28 @@ import torch
 import torch.nn.functional as F
 
 
+def resample(x, size):
+    """Resample tensor along time (first) axis to specified size
+
+    Args:
+        x (torch.tensor): Tensor to be resampled
+        size (int): Size to resample to
+
+    Returns:
+        torch.tensor: Resampled tensor
+    """
+    y = x.squeeze()
+    if len(y.shape) == 1:
+        y = y[None, None]
+    elif len(y.shape) == 2:
+        y = y.permute(1, 0)[None]
+    elif len(y.shape) == 3:
+        y = y.permute(1, 2, 0)
+    out = F.interpolate(y, size=size, mode="linear", align_corners=False)
+    out = out.permute(2, 0, 1).squeeze()
+    return out
+
+
 def normalize(x):
     """Normalize signal between 0 and 1
 

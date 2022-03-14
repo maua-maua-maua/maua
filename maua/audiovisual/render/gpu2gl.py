@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+
 from maua.GAN.wrappers.stylegan2 import StyleGAN2Mapper, StyleGAN2Synthesizer
 
 torch.backends.cudnn.allow_tf32 = True

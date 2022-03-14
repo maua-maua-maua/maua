@@ -32,7 +32,11 @@ def cache_to_workspace(name):
                 result = function(*args, **kwargs)
                 joblib.dump(result, cache_file, compress=9)
             else:
-                result = joblib.load(cache_file)
+                try:
+                    result = joblib.load(cache_file)
+                except:
+                    result = function(*args, **kwargs)
+                    joblib.dump(result, cache_file, compress=9)
             return result
 
         return wrapper
@@ -41,7 +45,8 @@ def cache_to_workspace(name):
 
 
 from .audio import *
-from .features import *
-from .inputs import *
-from .postprocess import *
+from .mir import *
+from .latent import *
+from .noise import *
+from .signal import *
 from .util import *

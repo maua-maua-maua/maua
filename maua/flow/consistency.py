@@ -44,7 +44,7 @@ def check_consistency(flow1, flow2, edges_unreliable=False):
     # where the difference in position after flow1 and flow2 are applied is larger than a threshold there is likely an
     # occlusion. set values to -1 so the final gaussian blur will spread the value a couple pixels around this area
     squared_diff = np.sum((rewarp_coord - orig_coord) ** 2, axis=2)
-    threshold = 0.01 * np.sum(warp_coord_flow2 ** 2 + flow1 ** 2, axis=2) + 0.5
+    threshold = 0.01 * np.sum(warp_coord_flow2**2 + flow1**2, axis=2) + 0.5
     reliable_flow = np.where(squared_diff >= threshold, -0.75, 1)
 
     # areas mapping outside of the frame are also occluded (don't need extra region around these though, so set 0)
@@ -65,8 +65,8 @@ def check_consistency(flow1, flow2, edges_unreliable=False):
     # get derivative of flow, large changes in derivative => edge of moving object
     dx = np.diff(flow1, axis=1, append=0)
     dy = np.diff(flow1, axis=0, append=0)
-    motion_edge = np.sum(dx ** 2 + dy ** 2, axis=2)
-    motion_threshold = 0.01 * np.sum(flow1 ** 2, axis=2) + 0.002
+    motion_edge = np.sum(dx**2 + dy**2, axis=2)
+    motion_threshold = 0.01 * np.sum(flow1**2, axis=2) + 0.002
     reliable_flow = np.where(np.logical_and(motion_edge > motion_threshold, reliable_flow != -0.75), 0, reliable_flow)
 
     # blur and clip values between 0 and 1

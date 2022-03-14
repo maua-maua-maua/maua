@@ -1,6 +1,6 @@
 import argparse
 
-from . import finetune, generate, api
+from . import api, finetune, generate
 
 
 def argument_parser():

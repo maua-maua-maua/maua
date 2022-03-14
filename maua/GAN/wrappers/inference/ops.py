@@ -5,7 +5,6 @@ import torch
 from torch import Tensor
 from torch.nn.functional import pad
 
-
 # fmt:off
 activation_funcs = {
     'linear':   dict(func=lambda x, **_:        x,                                        def_alpha=torch.tensor(0.) , def_gain=torch.tensor(1.),           has_2nd_grad=False),
@@ -223,7 +222,7 @@ def conv2d_resample(
         pxt = torch.max(torch.min(-px0, -px1), 0)
         pyt = torch.max(torch.min(-py0, -py1), 0)
         x = torch.nn.functional.conv_transpose2d(x, w, stride=up, padding=(pyt, pxt), groups=groups)
-        x = upfirdn2d(x=x, f=f, padding=(px0 + pxt, px1 + pxt, py0 + pyt, py1 + pyt), gain=up ** 2)
+        x = upfirdn2d(x=x, f=f, padding=(px0 + pxt, px1 + pxt, py0 + pyt, py1 + pyt), gain=up**2)
         if down > 1:
             x = upfirdn2d(x=x, f=f, down=down)
         return x

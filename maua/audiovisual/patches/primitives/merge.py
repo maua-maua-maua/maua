@@ -1,5 +1,6 @@
-import torch
 import traceback
+
+import torch
 
 
 class ModulationSum(torch.nn.Module):

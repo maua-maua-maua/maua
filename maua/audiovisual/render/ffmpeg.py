@@ -1,9 +1,10 @@
 import torch
 from decord import VideoReader
-from maua.ops.video import VideoWriter
 from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data._utils.collate import default_collate
 from tqdm import tqdm
+
+from maua.ops.video import VideoWriter
 
 from . import Renderer
 

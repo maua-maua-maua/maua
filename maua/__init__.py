@@ -1,6 +1,6 @@
 import argparse
 
-from . import dalle, diffusion, super, style
+from . import dalle, diffusion, style, super
 
 
 def argument_parser():

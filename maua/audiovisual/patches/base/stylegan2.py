@@ -1,5 +1,7 @@
 import torch
-from maua.GAN.wrappers.stylegan2 import StyleGAN2, StyleGAN2Mapper, StyleGAN2Synthesizer
+
+from maua.GAN.wrappers.stylegan2 import (StyleGAN2, StyleGAN2Mapper,
+                                         StyleGAN2Synthesizer)
 
 from . import MauaPatch
 

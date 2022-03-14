@@ -10,7 +10,7 @@ import torch
 
 from . import cache_to_workspace
 from .audio import harmonic, percussive
-from .postprocess import percentile_clip
+from .signal import percentile_clip
 
 
 @cache_to_workspace("onsets")

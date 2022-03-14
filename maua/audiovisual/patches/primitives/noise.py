@@ -1,4 +1,5 @@
 import torch
+
 from ...audioreactive import gaussian_filter
 
 

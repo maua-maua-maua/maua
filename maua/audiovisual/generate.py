@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 from typing import Tuple
+from uuid import uuid4
 
 import torch
 
@@ -8,7 +9,6 @@ from maua.ops.video import write_video
 
 from .patches.base import get_patch_from_file
 from .render import get_output_class
-from uuid import uuid4
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

@@ -116,7 +116,7 @@ def flow_to_image(flow):
     maxv = max(maxv, np.max(v))
     minv = min(minv, np.min(v))
 
-    rad = np.sqrt(u ** 2 + v ** 2)
+    rad = np.sqrt(u**2 + v**2)
     maxrad = max(-1, np.max(rad))
 
     u = u / (maxrad + np.finfo(float).eps)
@@ -146,7 +146,7 @@ def compute_color(u, v):
     colorwheel = make_color_wheel()
     ncols = np.size(colorwheel, 0)
 
-    rad = np.sqrt(u ** 2 + v ** 2)
+    rad = np.sqrt(u**2 + v**2)
 
     a = np.arctan2(-v, -u) / np.pi
 
