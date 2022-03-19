@@ -10,8 +10,7 @@ from torch.nn.functional import interpolate, pad
 sys.path.append(os.path.dirname(__file__) + "/../nv")
 from ..load import load_network
 from ..nv.networks import stylegan3
-from . import MauaSynthesizer
-from .stylegan import StyleGAN, StyleGANMapper
+from .stylegan import StyleGAN, StyleGANMapper, StyleGANSynthesizer
 
 layer_multipliers = {
     1024: {0: 64, 1: 64, 2: 64, 3: 32, 4: 32, 5: 16, 6: 8, 7: 8, 8: 4, 9: 4, 10: 2, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1},
@@ -20,19 +19,11 @@ layer_multipliers = {
 }
 
 
-class StyleGAN3(StyleGAN):
-    def __init__(self, mapper, synthesizer) -> None:
-        super().__init__(mapper, synthesizer)
-        self.synthesizer.register_buffer(
-            "avg_shift", self.synthesizer.G_synth.input.affine(self.mapper.G_map.w_avg.unsqueeze(0)).squeeze(0)
-        )
-
-
 class StyleGAN3Mapper(StyleGANMapper):
-    MappingNetwork = lambda inference: stylegan3.MappingNetwork
+    MapperClsFn = lambda inference: stylegan3.MappingNetwork
 
 
-class StyleGAN3Synthesizer(MauaSynthesizer):
+class StyleGAN3Synthesizer(StyleGANSynthesizer):
     def __init__(
         self, model_file: str, inference: bool, output_size: Tuple[int, int], strategy: str, layer: int
     ) -> None:
@@ -121,3 +112,18 @@ def get_hook(G_synth, layer, size, strategy):
 
     else:
         raise Exception(f"Resize strategy not found: {strategy}")
+
+
+class StyleGAN3(StyleGAN):
+    SynthesizerCls = StyleGAN3Synthesizer
+    MapperCls = StyleGAN3Mapper
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.synthesizer.register_buffer(
+            "avg_shift", self.synthesizer.G_synth.input.affine(self.mapper.G_map.w_avg.unsqueeze(0)).squeeze(0)
+        )
+
+    def forward(self, z, c=None, truncation=1, translation=None, rotation=None):
+        w = self.mapper(z, c, truncation=truncation)
+        return self.synthesizer(w, translation=translation, rotation=rotation)

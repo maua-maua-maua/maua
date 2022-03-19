@@ -1,27 +1,19 @@
-from typing import Tuple
-
 import torch
 
 
 class MauaMapper(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
     def forward(self):
-        raise NotImplemented
+        raise NotImplementedError()
 
 
 class MauaSynthesizer(torch.nn.Module):
     _hook_handles = []
 
-    def __init__(self):
-        super().__init__()
-
     def forward(self):
-        raise NotImplemented
+        raise NotImplementedError()
 
     def change_output_resolution(self):
-        raise NotImplemented
+        raise NotImplementedError()
 
     def refresh_model_hooks(self):
         for handle in self._hook_handles:
@@ -29,14 +21,27 @@ class MauaSynthesizer(torch.nn.Module):
         self._hook_handles = []
 
 
-def get_generator_classes(architecture: str) -> Tuple[MauaMapper, MauaSynthesizer]:
+class MauaGenerator(torch.nn.Module):
+    MapperCls = None
+    SynthesizerCls = None
+
+    def __init__(self, mapper_kwargs={}, synthesizer_kwargs={}) -> None:
+        super().__init__()
+        self.mapper = self.__class__.MapperCls(**mapper_kwargs)
+        self.synthesizer = self.__class__.SynthesizerCls(**synthesizer_kwargs)
+
+    def forward(self):
+        raise NotImplementedError()
+
+
+def get_generator_class(architecture: str) -> MauaGenerator:
     if architecture == "stylegan3":
-        from .stylegan3 import StyleGAN3Mapper, StyleGAN3Synthesizer
+        from .stylegan3 import StyleGAN3
 
-        return StyleGAN3Mapper, StyleGAN3Synthesizer
+        return StyleGAN3
     if architecture == "stylegan2":
-        from .stylegan2 import StyleGAN2Mapper, StyleGAN2Synthesizer
+        from .stylegan2 import StyleGAN2
 
-        return StyleGAN2Mapper, StyleGAN2Synthesizer
+        return StyleGAN2
     else:
         raise Exception(f"Architecture not found: {architecture}")

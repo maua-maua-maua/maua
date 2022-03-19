@@ -10,24 +10,19 @@ from torch import Tensor
 
 from ..load import load_network
 from ..nv.networks import stylegan2 as stylegan2_train
-from . import MauaSynthesizer
 from .inference import stylegan2 as stylegan2_inference
-from .stylegan import StyleGAN, StyleGANMapper
+from .stylegan import StyleGAN, StyleGANMapper, StyleGANSynthesizer
 
 SynthesisLayerInputType = Tuple[Tensor, Tensor, str, float]
 SynthesisBlockInputType = Tuple[Optional[Tensor], Optional[Tensor], Tensor, str]
 ToRGBInputType = Tuple[Tensor, Tensor]
 
 
-class StyleGAN2(StyleGAN):
-    pass
-
-
 class StyleGAN2Mapper(StyleGANMapper):
-    MappingNetwork = lambda inference: (stylegan2_inference if inference else stylegan2_train).MappingNetwork
+    MapperClsFn = lambda inference: (stylegan2_inference if inference else stylegan2_train).MappingNetwork
 
 
-class StyleGAN2Synthesizer(MauaSynthesizer):
+class StyleGAN2Synthesizer(StyleGANSynthesizer):
     __constants__ = ["w_dim", "num_ws", "layer_names"]
 
     def __init__(
@@ -331,3 +326,8 @@ def get_hook(layer_size, target_size, strategy, add_noise=False, pre=False):
         return inverse(output)
 
     return feat_hook, img_hook, rgb_hook
+
+
+class StyleGAN2(StyleGAN):
+    SynthesizerCls = StyleGAN2Synthesizer
+    MapperCls = StyleGAN2Mapper

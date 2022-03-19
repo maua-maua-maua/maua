@@ -1,3 +1,4 @@
+from copy import deepcopy
 from pathlib import Path
 from typing import List, Union
 
@@ -62,3 +63,22 @@ def tensor2imgs(tensor: torch.Tensor, format: str = "RGB") -> List[Image]:
         PIL.Image
     """
     return [tensor2img(img, format) for img in tensor]
+
+
+def hash(tensor_array_int_obj):
+    if isinstance(tensor_array_int_obj, (np.ndarray, torch.Tensor)):
+        if isinstance(tensor_array_int_obj, torch.Tensor):
+            array = tensor_array_int_obj.detach().cpu().numpy()
+        else:
+            array = tensor_array_int_obj
+        array = deepcopy(array)
+        array = array - array.min()
+        array = array / array.max()
+        byte_tensor = (array * 255).ravel().astype(np.uint8)
+        hash = 0
+        for ch in byte_tensor[:1024:4]:
+            hash = (hash * 281 ^ ch * 997) & 0xFFFFFFFF
+        return str(hex(hash)[2:].upper().zfill(8))
+    if isinstance(tensor_array_int_obj, (float, int, str, bool)):
+        return str(tensor_array_int_obj)
+    return ""
