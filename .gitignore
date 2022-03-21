@@ -2,6 +2,8 @@ output/*
 !output/.gitkeep
 modelzoo/*
 !modelzoo/.gitkeep
+cache/*
+!cache/.gitkeep
 workspace/*
 workspace/audio_cache/*
 maua/audiovisual/patches/*

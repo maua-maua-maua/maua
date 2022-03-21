@@ -1,5 +1,5 @@
 from math import ceil
-from queue import Queue
+from queue import Queue, Empty
 from threading import Thread
 from time import sleep
 from typing import Union
@@ -75,11 +75,14 @@ class WriteWorker(Thread):
             )
 
         while not self.stopping:
-            tensor = self.Q.get(timeout=20)
-            _, _, h, w = tensor.shape
-            if h % 2 or w % 2:
-                tensor = resample(tensor, (2 * ceil(h / 2), 2 * ceil(w / 2)))
-            self.ffmpeg_proc.stdin.write(tensor2bytes(tensor))
+            try:
+                tensor = self.Q.get(timeout=20)
+                _, _, h, w = tensor.shape
+                if h % 2 or w % 2:
+                    tensor = resample(tensor, (2 * ceil(h / 2), 2 * ceil(w / 2)))
+                self.ffmpeg_proc.stdin.write(tensor2bytes(tensor))
+            except Empty:
+                break
 
     def stop(self):
         self.stopping = True

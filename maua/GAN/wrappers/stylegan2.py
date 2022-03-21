@@ -143,6 +143,8 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
 
                 self._hook_handles.append(noise_layer.register_forward_pre_hook(noise_adjust))
 
+            self.forward(torch.randn((1, 18, 512)))  # ensure that noise_adjust hooks have adjusted noise buffers
+
         self.output_size = output_size
 
     def apply_translation(self, layer, translation):
@@ -189,7 +191,6 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
         self.zoom_hook = synth_layer.register_forward_hook(zoom_hook)
 
     def make_noise_pyramid(self, noise, layer_limit=8):
-        self.forward(latents=torch.randn(1, 18, 512))  # ensure that noise_adjust hooks have adjusted noise buffers
         noises = {}
         for l, layer in enumerate(self.layer_names[1:]):
             if l > layer_limit:
