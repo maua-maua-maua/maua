@@ -57,6 +57,7 @@ class MauaGenerator(torch.nn.Module):
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         fp16=True,
         batched=True,
+        verbose=False,
     ) -> Generator[torch.Tensor, None, None]:
 
         dataset = TensorDataset(*(i.cpu().pin_memory(device) for i in inputs.values()))
@@ -84,7 +85,11 @@ class MauaGenerator(torch.nn.Module):
             # self.synthesizer = self.synthesizer.half()
             self.synthesizer = self.synthesizer.apply(force_half)
 
-        for batch in tqdm(loader, smoothing=0.8, unit_scale=batch_size, unit="f"):
+        if verbose:
+            pbar = tqdm(loader, smoothing=0.8, unit_scale=batch_size, unit="img")
+        else:
+            pbar = loader
+        for batch in pbar:
             frame_batch = self.synthesizer.forward(**batch).add(1).div(2)
             frame_batch = postprocess_fn(frame_batch)
             if batched:
