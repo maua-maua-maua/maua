@@ -67,3 +67,6 @@
 [submodule "maua/submodules/pycuda"]
 	path = maua/submodules/pycuda
 	url = https://github.com/inducer/pycuda.git
+[submodule "maua/submodules/butterfly"]
+	path = maua/submodules/butterfly
+	url = https://github.com/HazyResearch/butterfly

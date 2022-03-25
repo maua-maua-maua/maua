@@ -5,6 +5,7 @@ from glob import glob
 from math import ceil
 from random import choice
 
+import numpy as np
 import padl
 import PIL.Image
 import torch
@@ -64,13 +65,12 @@ image_prep
 file = choice(glob("/home/hans/datasets/diffuse/diffuse/all/*"))
 item = image_prep(file)
 print(item.min(), item.max(), item.shape, item.dtype)
-item = normalize(torch.from_numpy(item).float().permute(0, 3, 1, 2), [127.5] * 3, [127.5] * 3)
+item = normalize(torch.from_np(item).float().permute(0, 3, 1, 2), [127.5] * 3, [127.5] * 3)
 print(item.min(), item.max(), item.shape, item.dtype)
 
 
 #%%
 """We can define custom transforms by decorating functions or callable classes with `@padl.transform`. We can also wrap single functions as we do here with `PIL.Image.open`."""
-
 
 images = [f"{dataroot}/{x}" for x in os.listdir(dataroot)]
 
@@ -218,7 +218,7 @@ def generate_noise(dummy):
 def denormalize(x):
     rescaled = 255 * (x * 0.5 + 0.5)
     converted = rescaled.numpy()
-    return converted.astype(numpy.uint8)
+    return converted.astype(np.uint8)
 
 
 generator = (
@@ -317,7 +317,7 @@ possible to identical lines in the batches.
 def random_seed_init(i):
     torch.manual_seed(int(i))
     random.seed(int(i))
-    numpy.random.seed(int(i))
+    np.random.seed(int(i))
 
 
 optimizerD = torch.optim.Adam(netD.parameters(), lr=lr, betas=(beta1, 0.999))
