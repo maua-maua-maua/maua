@@ -1,6 +1,7 @@
 from typing import Tuple
 
 import numpy as np
+import pytorch_lightning as pl
 import torch
 from torch import nn
 from torch.nn.functional import interpolate
@@ -301,9 +302,9 @@ def downscale(x):
     return interpolate(x, scale_factor=0.5, mode="bilinear", align_corners=False)
 
 
-class StyleHyperMixerGenerator(nn.Module):
+class StyleHyperMixerFlyGenerator(nn.Module):
     def __init__(
-        self, z_dim=512, w_dim=512, n_map=8, img_resolution=1024, img_channels=3, channel_base=512, drop=0.1
+        self, z_dim=512, w_dim=512, n_map=8, img_resolution=1024, img_channels=3, channel_base=512, drop=0.1, **kwargs
     ) -> None:
         super().__init__()
         self.z_dim = z_dim
@@ -339,6 +340,13 @@ class StyleHyperMixerGenerator(nn.Module):
             [StyleGLU(w_dim, out_dim, out_dim, img_channels, drop, internal=False) for out_dim in n_channels[1:]]
         )
 
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = parent_parser.add_argument_group("StyleHyperMixerFlyGenerator")
+        parser.add_argument("--encoder_layers", type=int, default=12)
+        parser.add_argument("--data_path", type=str, default="/some/path")
+        return parent_parser
+
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         """
         Forward pass
@@ -368,7 +376,7 @@ class StyleHyperMixerGenerator(nn.Module):
         return img
 
 
-class HyperMixerDiscriminator(nn.Module):
+class HyperMixerFlyDiscriminator(nn.Module):
     def __init__(self, img_resolution=1024, img_channels=3, channel_base=512, drop=0.1) -> None:
         super().__init__()
         self.z_dim = z_dim
@@ -451,7 +459,7 @@ if __name__ == "__main__":
     batch_size, z_dim = 1, 128
     img_resolution, img_channels, channel_base = 64, 3, 128
 
-    G = StyleHyperMixerGenerator(
+    G = StyleHyperMixerFlyGenerator(
         z_dim=z_dim,
         w_dim=z_dim,
         img_resolution=img_resolution,

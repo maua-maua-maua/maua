@@ -65,7 +65,7 @@ image_prep
 file = choice(glob("/home/hans/datasets/diffuse/diffuse/all/*"))
 item = image_prep(file)
 print(item.min(), item.max(), item.shape, item.dtype)
-item = normalize(torch.from_np(item).float().permute(0, 3, 1, 2), [127.5] * 3, [127.5] * 3)
+item = normalize(torch.from_numpy(item).float().permute(0, 3, 1, 2), [127.5] * 3, [127.5] * 3)
 print(item.min(), item.max(), item.shape, item.dtype)
 
 
@@ -307,6 +307,7 @@ errD_fake.infer_apply(torch.randn(1, 3, 64, 64))
 errG = netD >> padl.identity + real_label >> criterion
 errG
 
+
 #%%
 """We can now create the optimizers and the iterators so that we can do some learning steps. Beware that
 PyTorch requires specifying how the seed is set in each worker using `init_worker_fn` -- otherwise it's
@@ -381,3 +382,89 @@ reloader = padl.load("finished.padl")
 """We can now try a few sample generations from the trained pipeline, to check we get what we expect."""
 
 reloader.infer_apply()
+
+
+#%%
+generator = (
+    generate_noise
+    >> padl.batch
+    >> netG
+    >> padl.unbatch
+    >> denormalize
+    >> padl.same.transpose(1, 2, 0)
+    >> padl.transform(PIL.Image.fromarray)
+)
+generator
+#%%
+errD_real = (
+    next_batch
+    >> padl.same.float()
+    >> vision.Normalize([127.5] * 3, [127.5] * 3)
+    >> netD
+    >> (padl.identity + real_label)
+    >> criterion
+    >> padl.same.backward()
+    >> padl.transform(lambda *args, **kwargs: optimizerD.step())
+)
+errD_real
+#%%
+make_fake_tensor = generator.pd_preprocess >> generator.pd_forward
+make_fake_tensor
+#%%
+errD_fake = padl.same.detach() >> netD >> padl.identity + fake_label >> criterion
+errD_fake
+#%%
+errG = netD >> padl.identity + real_label >> criterion
+errG
+#%%
+train_step = (make_fake_tensor >> (errG + errD_fake)) + errD_real
+train_step
+#%%
+G_step = make_fake_tensor >> errG
+
+
+@padl.transform
+def training_step(self, batch, batch_idx, optimizer_idx):
+    if optimizer_idx == 0:
+        return G_step(())
+
+    # train discriminator
+    if optimizer_idx == 1:
+        # Measure discriminator's ability to classify real from generated samples
+
+        # how well can it label as real?
+        valid = torch.ones(imgs.size(0), 1)
+        valid = valid.type_as(imgs)
+
+        real_loss = self.adversarial_loss(self.discriminator(imgs), valid)
+
+        # how well can it label as fake?
+        fake = torch.zeros(imgs.size(0), 1)
+        fake = fake.type_as(imgs)
+
+        fake_loss = self.adversarial_loss(self.discriminator(self(z).detach()), fake)
+
+        # discriminator loss is the average of these
+        d_loss = (real_loss + fake_loss) / 2
+        tqdm_dict = {"d_loss": d_loss}
+        output = OrderedDict({"loss": d_loss, "progress_bar": tqdm_dict, "log": tqdm_dict})
+        return output
+
+
+#%%
+fake_tensor = next(fake_generator)
+
+netD.zero_grad()
+ed_r = next(errD_real_generator)
+ed_r.backward()
+
+ed_f = errD_fake(fake_tensor)
+ed_f.backward()
+
+optimizerD.step()
+
+netG.zero_grad()
+eg = errG(fake_tensor)
+eg.backward()
+
+optimizerG.step()
