@@ -1,7 +1,8 @@
-from copy import deepcopy
 import os
 import sys
 import traceback
+import warnings
+from copy import deepcopy
 from functools import partial
 
 import torch
@@ -141,8 +142,23 @@ def load_nvidia(path, for_inference=None):
             mapping_kwargs=dict(num_layers=G_persistence.mapping.num_layers),
         )
         G.load_state_dict(G_persistence.state_dict())
+        try_stylegan2 = False
     except:
-        G = deepcopy(G_persistence)
+        try_stylegan2 = True
+
+    if try_stylegan2:
+        try:
+            G = (stylegan2_inference if for_inference else stylegan2_train).Generator(
+                G_persistence.mapping.z_dim,
+                G_persistence.mapping.c_dim,
+                G_persistence.mapping.w_dim,
+                G_persistence.img_resolution,
+                G_persistence.img_channels,
+                mapping_kwargs=dict(num_layers=G_persistence.mapping.num_layers),
+            )
+            G.load_state_dict(G_persistence.state_dict())
+        except:
+            G = deepcopy(G_persistence)
 
     del G_persistence
     return G
