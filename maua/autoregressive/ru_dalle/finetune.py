@@ -419,7 +419,7 @@ def main(args):
         save_dir=args.save_dir,
     )
 
-    from maua.dalle.ru.generate import generate
+    from maua.autoregressive.ru_dalle.generate import generate
 
     outputs = generate(
         model,

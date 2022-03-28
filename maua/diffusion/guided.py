@@ -10,7 +10,7 @@ from PIL import Image
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 
-from maua.dalle.ru.finetune import argument_parser
+from maua.autoregressive.ru_dalle.finetune import argument_parser
 from maua.ops.image import random_cutouts, resample
 from maua.ops.loss import range_loss, spherical_dist_loss, tv_loss
 from maua.utility import download, fetch
