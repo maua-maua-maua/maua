@@ -90,7 +90,7 @@ class MauaGenerator(torch.nn.Module):
         else:
             pbar = loader
         for batch in pbar:
-            frame_batch = self.synthesizer.forward(**batch).add(1).div(2)
+            frame_batch = self.synthesizer.forward(**batch).add(1).div(2).clamp(0, 1)
             frame_batch = postprocess_fn(frame_batch)
             if batched:
                 yield frame_batch
