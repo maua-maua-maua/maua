@@ -21,7 +21,21 @@ def pairwise_distances(x, y=None):
     y_norm = (y**2).sum(2).view(y.shape[0], 1, y.shape[1])
     dist = x_norm + y_norm - 2.0 * torch.bmm(x, y_t)
     dist[dist != dist] = 0  # replace nan values with 0
-    return torch.clamp(dist, 0.0, np.inf)[0]
+    return np.array(torch.clamp(dist, 0.0, np.inf)[0])
+
+
+def get_kth_value(unsorted, k, axis=-1):
+    """
+    Args:
+        unsorted: numpy.ndarray of any dimensionality.
+        k: int
+    Returns:
+        kth values along the designated axis.
+    """
+    indices = np.argpartition(unsorted, k, axis=axis)[..., :k]
+    k_smallests = np.take_along_axis(unsorted, indices, axis=axis)
+    kth_values = k_smallests.max(axis=axis)
+    return kth_values
 
 
 def nearest_neighbor_distances(input_features, nearest_k):
@@ -33,7 +47,7 @@ def nearest_neighbor_distances(input_features, nearest_k):
         Distances to kth nearest neighbours.
     """
     distances = pairwise_distances(input_features)
-    radii = torch.topk(distances, k=nearest_k + 1, axis=-1).values[:, -1]
+    radii = get_kth_value(distances, k=nearest_k + 1, axis=-1)
     return radii
 
 
@@ -49,9 +63,9 @@ def prdc(real_features, fake_features, nearest_k=5):
         precision, recall, density, and coverage.
     """
 
-    real_nearest_neighbour_distances = np.array(nearest_neighbor_distances(real_features, nearest_k))
-    fake_nearest_neighbour_distances = np.array(nearest_neighbor_distances(fake_features, nearest_k))
-    distance_real_fake = np.array(pairwise_distances(real_features, fake_features))
+    real_nearest_neighbour_distances = nearest_neighbor_distances(real_features, nearest_k)
+    fake_nearest_neighbour_distances = nearest_neighbor_distances(fake_features, nearest_k)
+    distance_real_fake = pairwise_distances(real_features, fake_features)
 
     precision = (distance_real_fake < np.expand_dims(real_nearest_neighbour_distances, axis=1)).any(axis=0).mean()
 

@@ -103,14 +103,15 @@ def compute(
     batch_size: int = 32,
     num_workers: int = torch.multiprocessing.cpu_count(),
     device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    ignore_cache: bool = False,
 ):
     extractor_model, size = get_extractor(extractor)
     extractor_model = extractor_model.eval().to(device)
 
     cache_file = f"cache/{'_'.join(real_samples.split('/')[-3:])}.npz"
-    real_already_cached = os.path.exists(cache_file)
+    use_cache = os.path.exists(cache_file) and not ignore_cache
 
-    if not real_already_cached:
+    if not use_cache:
         real_loader = DataLoader(
             FolderImages(real_samples, n_samples, size), batch_size=batch_size, num_workers=num_workers, pin_memory=True
         )
@@ -123,7 +124,7 @@ def compute(
     for real_batch, fake_batch in tqdm(
         zip(real_loader, fake_loader), total=n_samples // batch_size, unit_scale=batch_size, unit="images"
     ):
-        if not real_already_cached:
+        if not use_cache:
             real_batch = real_batch.to(device)
             fake_batch = fake_batch.squeeze().to(device)
             batch = torch.cat((real_batch, fake_batch))
@@ -132,7 +133,7 @@ def compute(
 
         feats = extractor_model(batch).cpu()
 
-        if not real_already_cached:
+        if not use_cache:
             real_feats, fake_feats = feats.chunk(2)
             real_features.append(real_feats)
             fake_features.append(fake_feats)
@@ -141,7 +142,7 @@ def compute(
 
     fake_features = torch.cat(fake_features)
 
-    if not real_already_cached:
+    if not use_cache:
         real_features = torch.cat(real_features)
         np.savez_compressed(cache_file, real_features=real_features.numpy())
     else:
@@ -173,18 +174,19 @@ if __name__ == "__main__":
     import argparse
     import json
 
+    # fmt: off
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", type=str, required=True)
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--n_samples", type=int, default=10_000)
     parser.add_argument("--extractor", type=str, default="SwAV", choices=["SwAV", "Inception"])
-    parser.add_argument(
-        "--metrics", type=str, nargs="+", default=["frechet", "kernel", "prdc"], choices=["frechet", "kernel", "prdc"]
-    )
+    parser.add_argument("--metrics", type=str, nargs="+", default=["frechet", "kernel", "prdc"], choices=["frechet", "kernel", "prdc"])
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--num_workers", type=int, default=torch.multiprocessing.cpu_count())
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--ignore_cache", action="store_true")
     args = parser.parse_args()
+    # fmt: on
 
     from maua.GAN.load import load_network
 
@@ -205,6 +207,7 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         device=args.device,
+        ignore_cache=args.ignore_cache,
     )
 
     print(json.dumps(metrics_dict, indent=4))
