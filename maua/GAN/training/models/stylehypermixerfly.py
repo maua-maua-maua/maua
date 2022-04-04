@@ -50,6 +50,68 @@ class GLU(nn.Module):
         return x
 
 
+class HyperMixer(nn.Module):
+    def __init__(self, in_dim: int, hidden_dim: int, drop: float = 0.0) -> None:
+        super().__init__()
+        self.mlp_1 = GLU(in_dim=in_dim, out_dim=hidden_dim, drop=drop)
+        self.mlp_2 = GLU(in_dim=in_dim, out_dim=hidden_dim, drop=drop)
+        self.drop = nn.Dropout(drop)
+        self.act = nn.GELU()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass
+        :param x (torch.Tensor): Input tensor of the shape [batch size, tokens, channels]
+        :return (torch.Tensor): Output tensor of the shape
+        """
+        # Compute weights
+        w_1 = self.mlp_1(x)
+        w_2 = self.mlp_2(x)
+        # Map input with weights and activate
+        x = self.drop(self.act(w_1.transpose(1, 2) @ x))
+        x = self.drop(w_2 @ x)
+        return x
+
+
+class HyperMixerBlock(nn.Module):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        mlp_ratio: Tuple[float, float] = (0.5, 2.0),
+        drop: float = 0.1,
+        drop_path: float = 0.1,
+    ) -> None:
+        """
+        Constructor method
+        :param in_dim (int): Input channel dimension
+        :param out_dim (int): Output channel dimension
+        :param mlp_ratio (Tuple[int, int]): Ratio of hidden dim. of the hyper mixer layer and MLP. Default = (0.5, 2.0)
+        :param drop (float): Dropout rate. Default = 0.1
+        :param drop_path (float): Dropout path rate. Default = 0.1
+        """
+        super().__init__()
+        tokens_dim, channels_dim = [int(x * in_dim) for x in mlp_ratio]
+        self.norm1 = nn.LayerNorm(in_dim, eps=1e-06)
+        self.mlp_tokens = HyperMixer(in_dim=in_dim, hidden_dim=tokens_dim, drop=drop)
+        self.drop_path = DropPath(drop_prob=drop_path)
+        self.norm2 = nn.LayerNorm(in_dim, eps=1e-06)
+        self.mlp_channels = GLU(in_dim=in_dim, hidden_dim=channels_dim, drop=drop)
+        self.mlp_reduce = GLU(in_dim=in_dim, out_dim=out_dim, drop=drop)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass
+        :param x (torch.Tensor): Input tensor of the shape [batch size, tokens, channels]
+        :return (torch.Tensor): Output tensor of the shape [batch size, tokens, channels]
+        """
+        x = self.norm1(x)
+        x = x + self.drop_path(self.mlp_tokens(x))
+        x = x + self.drop_path(self.mlp_channels(self.norm2(x)))
+        x = self.mlp_reduce(x)
+        return x
+
+
 class StyleGLU(nn.Module):
     def __init__(self, w_dim, in_dim, hidden_dim=None, out_dim=None, drop=0.0, internal=True):
         super().__init__()
@@ -84,109 +146,12 @@ class StyleGLU(nn.Module):
         return x
 
 
-class SPE2d(nn.Module):
-    """Sinusoidal Positional Embedding 1D or 2D (SPE/SPE2d).
-    This module is a modified from:
-    https://github.com/pytorch/fairseq/blob/master/fairseq/modules/sinusoidal_positional_embedding.py # noqa
-    Based on the original SPE in single dimension, we implement a 2D sinusoidal positional encodding (SPE2d), as
-    introduced in Positional Encoding as Spatial Inductive Bias in GANs, CVPR'2021.
-    Args:
-        embedding_dim (int): The number of dimensions for the positional encoding.
-        padding_idx (int | list[int]): The index for the padding contents. The padding positions will obtain an encoding
-            vector filling in zeros.
-        init_size (int, optional): The initial size of the positional buffer. Defaults to 1024.
-    """
-
-    def __init__(self, embedding_dim, init_size=16, padding_idx=0):
-        super().__init__()
-        self.embedding_dim = embedding_dim
-        self.padding_idx = padding_idx
-        self.weights = SPE2d.get_embedding(init_size, embedding_dim, padding_idx)
-        self.register_buffer("_float_tensor", torch.FloatTensor(1))
-
-    @staticmethod
-    def get_embedding(num_embeddings, embedding_dim, padding_idx=None):
-        half_dim = embedding_dim // 2
-        emb = np.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, dtype=torch.float) * -emb)
-        emb = torch.arange(num_embeddings, dtype=torch.float).unsqueeze(1) * emb.unsqueeze(0)
-        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1).view(num_embeddings, -1)
-        if padding_idx is not None:
-            emb[padding_idx, :] = 0
-        return emb
-
-    def make_positions(self, x, padding_idx):
-        mask = x.ne(padding_idx).int()
-        return (torch.cumsum(mask, dim=1).type_as(mask) * mask).long() + padding_idx
-
-    def one_dimensional_embedding(self, x):
-        b, seq_len = x.shape
-        max_pos = self.padding_idx + 1 + seq_len
-
-        if self.weights is None or max_pos > self.weights.size(0):
-            # recompute/expand embedding if needed
-            self.weights = SPE2d.get_embedding(max_pos, self.embedding_dim, self.padding_idx)
-        self.weights = self.weights.to(self._float_tensor)
-
-        positions = self.make_positions(x, self.padding_idx).to(self._float_tensor.device)
-
-        return self.weights.index_select(0, positions.view(-1)).view(b, seq_len, self.embedding_dim).detach()
-
-    def forward(self, x, **kwargs):
-        b, hw, c = x.shape
-        h = w = int(np.sqrt(hw))
-
-        # Note that the index is started from 1 since zero will be padding idx.
-        # axis -- (b, h or w)
-        x_axis = torch.arange(1, w + 1, device=x.device, dtype=x.dtype).unsqueeze(0).repeat(b, 1)
-        y_axis = torch.arange(1, h + 1, device=x.device, dtype=x.dtype).unsqueeze(0).repeat(b, 1)
-
-        # emb -- (b, emb_dim, h or w)
-        x_emb = self.one_dimensional_embedding(x_axis).transpose(1, 2)
-        y_emb = self.one_dimensional_embedding(y_axis).transpose(1, 2)
-
-        # make grid for x/y axis
-        # Note that repeat will copy data. If use learned emb, expand may be better.
-        x_grid = x_emb.unsqueeze(2).repeat(1, 1, h, 1)
-        y_grid = y_emb.unsqueeze(3).repeat(1, 1, 1, w)
-
-        # cat grid -- (b, 2 x emb_dim, h, w)
-        grid = torch.cat([x_grid, y_grid], dim=1)
-        grid = grid.flatten(2).transpose(2, 1)
-        return grid.detach()
-
-
-class HyperMixer(nn.Module):
-    def __init__(self, in_dim: int, hidden_dim: int, drop: float = 0.0) -> None:
-        super().__init__()
-        self.mlp_1 = GLU(in_dim=in_dim, out_dim=hidden_dim, drop=drop)
-        self.mlp_2 = GLU(in_dim=in_dim, out_dim=hidden_dim, drop=drop)
-        # self.pos_emb = SPE2d(in_dim // 2)
-        self.drop = nn.Dropout(drop)
-        self.act = nn.GELU()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass
-        :param x (torch.Tensor): Input tensor of the shape [batch size, tokens, channels]
-        :return (torch.Tensor): Output tensor of the shape
-        """
-        # Compute weights
-        w_1 = self.mlp_1(x)  # + self.pos_emb(x))
-        w_2 = self.mlp_2(x)  # + self.pos_emb(x))
-        # Map input with weights and activate
-        x = self.drop(self.act(w_1.transpose(1, 2) @ x))
-        x = self.drop(w_2 @ x)
-        return x
-
-
 class StyleHyperMixer(nn.Module):
     def __init__(self, w_dim: int, in_dim: int, hidden_dim: int, drop: float = 0.0) -> None:
         super().__init__()
         # Init modules
         self.mlp_1 = StyleGLU(w_dim=w_dim, in_dim=in_dim, out_dim=hidden_dim, drop=drop)
         self.mlp_2 = StyleGLU(w_dim=w_dim, in_dim=in_dim, out_dim=hidden_dim, drop=drop)
-        # self.pos_emb = SPE2d(in_dim // 2)
         self.drop = nn.Dropout(drop)
         self.act = nn.GELU()
 
@@ -197,50 +162,11 @@ class StyleHyperMixer(nn.Module):
         :return (torch.Tensor): Output tensor of the shape
         """
         # Compute weights
-        w_1 = self.mlp_1(x, w)  # + self.pos_emb(x))
-        w_2 = self.mlp_2(x, w)  # + self.pos_emb(x))
+        w_1 = self.mlp_1(x, w)
+        w_2 = self.mlp_2(x, w)
         # Map input with weights and activate
         x = self.drop(self.act(w_1.transpose(1, 2) @ x))
         x = self.drop(w_2 @ x)
-        return x
-
-
-class HyperMixerBlock(nn.Module):
-    def __init__(
-        self,
-        in_dim: int,
-        out_dim: int,
-        mlp_ratio: Tuple[float, float] = (0.5, 4.0),
-        drop: float = 0.1,
-        drop_path: float = 0.1,
-    ) -> None:
-        """
-        Constructor method
-        :param in_dim (int): Input channel dimension
-        :param out_dim (int): Output channel dimension
-        :param mlp_ratio (Tuple[int, int]): Ratio of hidden dim. of the hyper mixer layer and MLP. Default = (0.5, 4.0)
-        :param drop (float): Dropout rate. Default = 0.1
-        :param drop_path (float): Dropout path rate. Default = 0.1
-        """
-        super().__init__()
-        tokens_dim, channels_dim = [int(x * in_dim) for x in mlp_ratio]
-        self.norm1 = nn.LayerNorm(in_dim, eps=1e-06)
-        self.mlp_tokens = HyperMixer(in_dim=in_dim, hidden_dim=tokens_dim, drop=drop)
-        self.drop_path = DropPath(drop_prob=drop_path)
-        self.norm2 = nn.LayerNorm(in_dim, eps=1e-06)
-        self.mlp_channels = GLU(in_dim=in_dim, hidden_dim=channels_dim, drop=drop)
-        self.mlp_reduce = GLU(in_dim=in_dim, out_dim=out_dim, drop=drop)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass
-        :param x (torch.Tensor): Input tensor of the shape [batch size, tokens, channels]
-        :return (torch.Tensor): Output tensor of the shape [batch size, tokens, channels]
-        """
-        x = self.norm1(x)
-        x = x + self.drop_path(self.mlp_tokens(x))
-        x = x + self.drop_path(self.mlp_channels(self.norm2(x)))
-        x = self.mlp_reduce(x)
         return x
 
 
@@ -250,7 +176,7 @@ class StyleHyperMixerBlock(nn.Module):
         in_dim: int,
         out_dim: int,
         w_dim: int,
-        mlp_ratio: Tuple[float, float] = (0.5, 4.0),
+        mlp_ratio: Tuple[float, float] = (0.5, 2.0),
         drop: float = 0.1,
         drop_path: float = 0.1,
     ) -> None:
@@ -258,7 +184,7 @@ class StyleHyperMixerBlock(nn.Module):
         Constructor method
         :param in_dim (int): Input channel dimension
         :param out_dim (int): Output channel dimension
-        :param mlp_ratio (Tuple[int, int]): Ratio of hidden dim. of the hyper mixer layer and MLP. Default = (0.5, 4.0)
+        :param mlp_ratio (Tuple[int, int]): Ratio of hidden dim. of the hyper mixer layer and MLP. Default = (0.5, 2.0)
         :param drop (float): Dropout rate. Default = 0.1
         :param drop_path (float): Dropout path rate. Default = 0.1
         """
@@ -365,7 +291,7 @@ class StyleHyperMixerFlyGenerator(nn.Module):
             x = x.flatten(2).transpose(2, 1)
             x = block(x, w12)
             y = to_rgb(x, w3).transpose(2, 1).reshape(B, -1, H, W)
-            img = img.add_(y) if img is not None else y
+            img = img + y if img is not None else y
 
             if W != self.img_resolution:
                 x = x.transpose(2, 1).reshape(B, -1, H, W)
@@ -413,7 +339,6 @@ class HyperMixerFlyDiscriminator(nn.Module):
 
 
 if __name__ == "__main__":
-    import gc
 
     def print_model_summary(model, input):
         global total_params, already_allocated
@@ -456,83 +381,84 @@ if __name__ == "__main__":
         for handle in handles:
             handle.remove()
 
-    batch_size, z_dim = 1, 128
-    img_resolution, img_channels, channel_base = 64, 3, 128
+    batch_size, z_dim = 2, 512
+    img_resolution, img_channels, channel_base = 1024, 3, 512
 
     G = StyleHyperMixerFlyGenerator(
-        z_dim=z_dim,
-        w_dim=z_dim,
-        img_resolution=img_resolution,
-        img_channels=img_channels,
-        channel_base=channel_base,
-        drop=0,
+        z_dim=z_dim, w_dim=z_dim, img_resolution=img_resolution, img_channels=img_channels, channel_base=channel_base
     ).cuda()
-    D = HyperMixerDiscriminator(
-        img_resolution=img_resolution, img_channels=img_channels, channel_base=channel_base, drop=0
+    D = HyperMixerFlyDiscriminator(
+        img_resolution=img_resolution, img_channels=img_channels, channel_base=channel_base
     ).cuda()
+    G.eval(), D.eval()
 
     with torch.inference_mode():
-        print_model_summary(
-            D.eval(), torch.randn((batch_size, img_channels, img_resolution, img_resolution), device="cuda")
-        )
-        print_model_summary(G.eval(), torch.randn(batch_size, z_dim, device="cuda"))
+        print_model_summary(D, torch.randn((batch_size, img_channels, img_resolution, img_resolution), device="cuda"))
+        print_model_summary(G, torch.randn(batch_size, z_dim, device="cuda"))
 
-    with torch.autograd.set_detect_anomaly(True):
-
-        optimizer_G = torch.optim.Adam(G.parameters(), lr=1e-4, betas=(0.5, 0.999))
-        optimizer_D = torch.optim.Adam(D.parameters(), lr=1e-4, betas=(0.5, 0.999))
-
-        for _ in range(5):
-            D.train()
-            D.zero_grad(True)
-            img = G(torch.randn(batch_size, z_dim, device="cuda"))
-            pred_fake = D(img.detach())
-            pred_real = D(torch.randn((batch_size, img_channels, img_resolution, img_resolution), device="cuda"))
-            loss_Dgen = torch.nn.functional.softplus(pred_fake)
-            loss_Dreal = torch.nn.functional.softplus(-pred_real)
-            (loss_Dgen + loss_Dreal).backward()
-            optimizer_D.step()
-
-            print(img.min(), img.mean(), img.max())
-            print(pred_fake, pred_real)
-            print(loss_Dgen, loss_Dreal)
-
-            G.train()
-            G.zero_grad(True)
-            img = G(torch.randn(batch_size, z_dim, device="cuda"))
-            pred = D(img)
-            loss_G = torch.nn.functional.softplus(-pred)
-            loss_G.backward()
-            optimizer_G.step()
-
-            print(img.min(), img.mean(), img.max())
-            print(pred, loss_G)
-            print()
-
-            del img, pred_fake, pred_real, pred, loss_Dgen, loss_Dreal, loss_G
-            gc.collect()
-            torch.cuda.empty_cache()
+    optimizer_G = torch.optim.Adam(G.parameters(), lr=1e-4, betas=(0.5, 0.999))
+    optimizer_D = torch.optim.Adam(D.parameters(), lr=1e-4, betas=(0.5, 0.999))
 
     from time import time
 
-    t = time()
-    for _ in range(20):
-        img = G(torch.randn(batch_size, z_dim, device="cuda"))
-        torch.cuda.synchronize()
-    print("G:   ", 20 / (time() - t), "img/s")
+    trials = 20
+    print("Benchmarking...")
 
+    G.train(), D.train()
     t = time()
-    for _ in range(20):
+    for _ in range(trials):
+        D.requires_grad_(True)
+        G.requires_grad_(False)
+        D.zero_grad(True)
+        img = G(torch.randn(batch_size, z_dim, device="cuda"))
+        pred_fake = D(img.detach())
+        pred_real = D(torch.randn((batch_size, img_channels, img_resolution, img_resolution), device="cuda"))
+        loss_Dgen = torch.nn.functional.softplus(pred_fake).sum()
+        loss_Dreal = torch.nn.functional.softplus(-pred_real).sum()
+        (loss_Dgen + loss_Dreal).backward()
+        optimizer_D.step()
+
+        G.requires_grad_(True)
+        D.requires_grad_(False)
+        G.zero_grad(True)
+        img = G(torch.randn(batch_size, z_dim, device="cuda"))
         pred = D(img)
-        torch.cuda.synchronize()
-    print("D:   ", 20 / (time() - t), "img/s")
+        loss_G = torch.nn.functional.softplus(-pred).sum()
+        loss_G.backward()
+        optimizer_G.step()
 
-    t = time()
-    for _ in range(20):
-        img = G(torch.randn(batch_size, z_dim, device="cuda"))
-        pred = D(img.detach())
-        loss_Dgen = torch.nn.functional.softplus(pred)
-        loss_Dgen.backward()
         torch.cuda.synchronize()
-    print("Both:", 20 / (time() - t), "img/s")
+
+    print("G step")
+    print("img", img.min().item(), img.mean().item(), img.max().item())
+    print("pred", pred.mean().item())
+    print("loss", loss_G.item())
     print()
+
+    print("D step")
+    print("pred:", "fake", pred_fake.mean().item(), "real", pred_real.mean().item())
+    print("loss:", "fake", loss_Dgen.item(), "real", loss_Dreal.item())
+    print()
+
+    print("Train speed")
+    print(trials / (time() - t) * batch_size, "img/s")
+    print()
+
+    del img, pred_fake, pred_real, pred, loss_Dgen, loss_Dreal, loss_G
+    import gc
+
+    gc.collect()
+    torch.cuda.empty_cache()
+    D.zero_grad(True)
+    D.requires_grad_(False)
+    G.zero_grad(True)
+    G.requires_grad_(False)
+    G.eval(), D.eval()
+
+    with torch.inference_mode():
+        t = time()
+        for _ in range(trials):
+            img = G(torch.randn(batch_size, z_dim, device="cuda"))
+            torch.cuda.synchronize()
+        print("Inference speed")
+        print(trials / (time() - t) * batch_size, "img/s")
