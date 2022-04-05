@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 
 
@@ -11,34 +12,25 @@ def weights_init(m):
 
 
 class DeepConvolutionalGenerator(torch.nn.Module):
-    def __init__(self, nz=100, ngf=64, nc=3, **kwargs):
+    def __init__(self, image_size=64, nz=100, ngf=64, nc=3, **kwargs):
         super().__init__()
-        self.main = torch.nn.Sequential(
-            # input is Z, going into a convolution
-            torch.nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
-            torch.nn.BatchNorm2d(ngf * 8),
-            torch.nn.ReLU(True),
-            # state size. (ngf*8) x 4 x 4
-            torch.nn.ConvTranspose2d(ngf * 8, ngf * 8, 4, 2, 1, bias=False),
-            torch.nn.BatchNorm2d(ngf * 8),
-            torch.nn.ReLU(True),
-            # state size. (ngf*4) x 8 x 8
-            torch.nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
-            torch.nn.BatchNorm2d(ngf * 4),
-            torch.nn.ReLU(True),
-            # state size. (ngf*2) x 16 x 16
-            torch.nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
-            torch.nn.BatchNorm2d(ngf * 2),
-            torch.nn.ReLU(True),
-            # state size. (ngf*2) x 32 x 32
-            torch.nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
-            torch.nn.BatchNorm2d(ngf),
-            torch.nn.ReLU(True),
-            # state size. (ngf) x 64 x 64
-            torch.nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
-            torch.nn.Tanh()
-            # state size. (nc) x 128 x 128
-        )
+
+        nb = round(np.log2(image_size)) - 2
+        nfs = [nz] + list(reversed([min(ngf * 2**i, ngf * 8) for i in range(nb)])) + [nc]
+
+        blocks = []
+        for b, (nf_prev, nf_next) in enumerate(zip(nfs[:-1], nfs[1:])):
+            blocks += [
+                torch.nn.ConvTranspose2d(
+                    nf_prev, nf_next, kernel_size=4, stride=1 if b == 0 else 2, padding=0 if b == 0 else 1, bias=False
+                )
+            ]
+            if b < nb:
+                blocks += [torch.nn.BatchNorm2d(nf_next), torch.nn.LeakyReLU(0.2, inplace=True)]
+            else:
+                blocks += [torch.nn.Tanh()]
+
+        self.main = torch.nn.Sequential(*blocks)
         self.main.apply(weights_init)
 
     @staticmethod
@@ -53,32 +45,25 @@ class DeepConvolutionalGenerator(torch.nn.Module):
 
 
 class DeepConvolutionalDiscriminator(torch.nn.Module):
-    def __init__(self, nc=3, ndf=64, **kwargs):
+    def __init__(self, image_size=64, nc=3, ndf=64, **kwargs):
         super().__init__()
-        self.main = torch.nn.Sequential(
-            # input is (nc) x 128 x 128
-            torch.nn.Conv2d(nc, ndf, 4, 2, 1, bias=False),
-            torch.nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf) x 64 x 64
-            torch.nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
-            torch.nn.BatchNorm2d(ndf * 2),
-            torch.nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf) x 32 x 32
-            torch.nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
-            torch.nn.BatchNorm2d(ndf * 4),
-            torch.nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*2) x 16 x 16
-            torch.nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False),
-            torch.nn.BatchNorm2d(ndf * 8),
-            torch.nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*4) x 8 x 8
-            torch.nn.Conv2d(ndf * 8, ndf * 8, 4, 2, 1, bias=False),
-            torch.nn.BatchNorm2d(ndf * 8),
-            torch.nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*8) x 4 x 4
-            torch.nn.Conv2d(ndf * 8, 1, 4, 1, 0, bias=False),
-            torch.nn.Sigmoid(),
-        )
+
+        nb = round(np.log2(image_size)) - 2
+        nfs = [nc] + list([min(ndf * 2**i, ndf * 8) for i in range(nb)]) + [1]
+
+        blocks = []
+        for b, (nf_prev, nf_next) in enumerate(zip(nfs[:-1], nfs[1:])):
+            blocks += [
+                torch.nn.Conv2d(
+                    nf_prev, nf_next, kernel_size=4, stride=1 if b == nb else 2, padding=0 if b == nb else 1, bias=False
+                )
+            ]
+            if b < nb:
+                blocks += [torch.nn.BatchNorm2d(nf_next), torch.nn.LeakyReLU(0.2, inplace=True)]
+            else:
+                blocks += [torch.nn.Sigmoid()]
+
+        self.main = torch.nn.Sequential(*blocks)
         self.main.apply(weights_init)
 
     @staticmethod
@@ -88,4 +73,4 @@ class DeepConvolutionalDiscriminator(torch.nn.Module):
         return parent_parser
 
     def forward(self, input):
-        return self.main(input).squeeze(    )
+        return self.main(input).squeeze()

@@ -15,7 +15,7 @@ from average import EWMA
 from ffcv.fields import RGBImageField
 from ffcv.fields.decoders import RandomResizedCropRGBImageDecoder, SimpleRGBImageDecoder
 from ffcv.loader import Loader, OrderOption
-from ffcv.transforms import ToDevice, ToTensor, ToTorchImage
+from ffcv.transforms import ToTensor, ToTorchImage
 from ffcv.writer import DatasetWriter
 from overrides import overrides
 from pytorch_lightning import LightningModule
@@ -338,11 +338,11 @@ class LightningGAN(LightningModule):
                 self.metric_emas[key_ema].update(val)
             metric_emas = {key: avg.get() for key, avg in self.metric_emas.items()}
 
-            self.log_dict(metric_val)
-            fsd = metric_emas["Frechet SwAV Distance"]
-            del metric_emas["Frechet SwAV Distance"]
-            self.log_dict(metric_emas)
+            fsd = metric_val["Frechet SwAV Distance"]
+            del metric_val["Frechet SwAV Distance"]
             self.log_dict({"Frechet SwAV Distance": fsd}, prog_bar=True)
+            self.log_dict(metric_val)
+            self.log_dict(metric_emas)
 
     def configure_optimizers(self):
         optimizer_G = torch.optim.Adam(self.G.parameters(), lr=self.lr_G, betas=(0.5, 0.99))
@@ -372,6 +372,8 @@ def main(args):
 
     if args.generator == "deepconvolutional":
         generator = DeepConvolutionalGenerator(**dict_args)
+    if args.generator == "deepinvolutional":
+        generator = DeepInvolutionalGenerator(**dict_args)
 
     # =============================================================
     # ==================== LATENT DISTRIBUTION ====================
@@ -388,6 +390,8 @@ def main(args):
 
     if "cross_entropy" in args.generator_losses:
         generator_losses.append(GeneratorCrossEntropy(logits=args.logits))
+    if "softplus" in args.generator_losses:
+        generator_losses.append(GeneratorSoftPlus())
 
     # =============================================================
     # ======================= DISCRIMINATOR =======================
@@ -395,6 +399,8 @@ def main(args):
 
     if args.discriminator == "deepconvolutional":
         discriminator = DeepConvolutionalDiscriminator(**dict_args)
+    if args.discriminator == "deepinvolutional":
+        discriminator = DeepInvolutionalDiscriminator(**dict_args)
 
     # =============================================================
     # =================== DISCRIMINATOR LOSSES ====================
@@ -404,6 +410,8 @@ def main(args):
 
     if "cross_entropy" in args.discriminator_losses:
         discriminator_losses.append(DiscriminatorCrossEntropy(logits=args.logits))
+    if "softplus" in args.discriminator_losses:
+        discriminator_losses.append(DiscriminatorSoftPlus())
 
     # =============================================================
     # =========================== DATA ============================
@@ -443,8 +451,8 @@ def main(args):
         padding = ceil(args.image_size * (1 - np.cos(4 * np.pi * min(args.random_rotate_degrees, 45) / 180)) / 4)
         ffcv_pipeline += [
             torch.nn.ReflectionPad2d((padding, padding, padding, padding)),
-            tvt.RandomRotation(args.random_rotate_degrees, interpolation=tvt.InterpolationMode.BILINEAR),
-            tvt.Resize(args.image_size),
+            tvt.RandomRotation(args.random_rotate_degrees, interpolation=tvt.InterpolationMode.BILINEAR, expand=True),
+            tvt.CenterCrop(args.image_size),
         ]
 
     # =============================================================
@@ -495,13 +503,13 @@ if __name__ == "__main__":
     # fmt: off
     subparser = parser.add_argument_group("Models", description="Settings related to the neural network models")
     subparser.add_argument("-L", "--latent_distribution", type=str, default="normal", help="which input latent distribution to use")
-    subparser.add_argument("-G", "--generator", type=str, default="deepconvolutional", help="which generator to use")
-    subparser.add_argument("-D", "--discriminator", type=str, default="deepconvolutional", help="which discriminator to use")
+    subparser.add_argument("-G", "--generator", type=str, default="deepinvolutional", help="which generator to use")
+    subparser.add_argument("-D", "--discriminator", type=str, default="deepinvolutional", help="which discriminator to use")
     subparser.add_argument("-EMA", "--ema_decay", type=float, default=0.995, help="model weight exponential moving average decay")
 
     subparser = parser.add_argument_group("Losses", description="Settings related to losses used to train the models")
-    subparser.add_argument("-DL", "--discriminator_losses", type=str, nargs="+", default=["cross_entropy"], help="which discriminator losses to use")
-    subparser.add_argument("-GL", "--generator_losses", type=str, nargs="+", default=["cross_entropy"], help="which generator losses to use")
+    subparser.add_argument("-DL", "--discriminator_losses", type=str, nargs="+", default=["softplus"], help="which discriminator losses to use")
+    subparser.add_argument("-GL", "--generator_losses", type=str, nargs="+", default=["softplus"], help="which generator losses to use")
     
     subparser = parser.add_argument_group("Optimization", description="Settings related optimizers")
     subparser.add_argument("--lr_G", type=float, default=2e-4, help="Starting learning rate for the generator")
@@ -525,7 +533,7 @@ if __name__ == "__main__":
     subparser.add_argument("--epoch_kimg", type=int, default=10, help="How many kimg per epoch")
     subparser.add_argument("--ckpt_kimg", type=int, default=10, help="How many thousands of images to train on between model checkpoints")
     subparser.add_argument("--ckpt_top_k", type=int, default=10, help="How many checkpoints to keep")
-    subparser.add_argument("--test_kimg", type=int, default=1000, help="How many epochs to wait between running metric analysis")
+    subparser.add_argument("--test_kimg", type=int, default=100, help="How many epochs to wait between running metric analysis")
 
     subparser = parser.add_argument_group("Training augmentations", description="Settings related to augmentations for improving training (augmentations applied here will NOT be visible in output data)")
 
@@ -547,6 +555,10 @@ if __name__ == "__main__":
         from .models.deepconvolutional import DeepConvolutionalGenerator
 
         parser = DeepConvolutionalGenerator.add_model_specific_args(parser)
+    elif temp_args.generator == "deepinvolutional":
+        from .models.deepinvolutional import DeepInvolutionalGenerator
+
+        parser = DeepInvolutionalGenerator.add_model_specific_args(parser)
     elif temp_args.generator == "stylehypermixerfly":
         from .models.stylehypermixerfly import StyleHyperMixerFlyGenerator
 
@@ -565,8 +577,10 @@ if __name__ == "__main__":
     # ===================== GENERATOR LOSSES ======================
     # =============================================================
 
-    if "cross_entropy" in temp_args.discriminator_losses:
+    if "cross_entropy" in temp_args.generator_losses:
         from .losses.cross_entropy import GeneratorCrossEntropy
+    if "softplus" in temp_args.generator_losses:
+        from .losses.softplus import GeneratorSoftPlus
 
     # =============================================================
     # ======================= DISCRIMINATOR =======================
@@ -577,6 +591,11 @@ if __name__ == "__main__":
 
         parser = DeepConvolutionalDiscriminator.add_model_specific_args(parser)
         override_args["logits"] = False
+    elif temp_args.generator == "deepinvolutional":
+        from .models.deepinvolutional import DeepInvolutionalDiscriminator
+
+        parser = DeepInvolutionalDiscriminator.add_model_specific_args(parser)
+        override_args["logits"] = True
     elif temp_args.discriminator == "stylehypermixerfly":
         from .models.stylehypermixerfly import HyperMixerFlyDiscriminator
 
@@ -591,6 +610,8 @@ if __name__ == "__main__":
 
     if "cross_entropy" in temp_args.discriminator_losses:
         from .losses.cross_entropy import DiscriminatorCrossEntropy
+    if "softplus" in temp_args.discriminator_losses:
+        from .losses.softplus import DiscriminatorSoftPlus
 
     parser = LightningTrainer.add_argparse_args(parser)
     parser.add_argument("-h", "--help", action="help")

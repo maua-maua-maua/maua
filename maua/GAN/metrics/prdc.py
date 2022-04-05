@@ -21,21 +21,7 @@ def pairwise_distances(x, y=None):
     y_norm = (y**2).sum(2).view(y.shape[0], 1, y.shape[1])
     dist = x_norm + y_norm - 2.0 * torch.bmm(x, y_t)
     dist[dist != dist] = 0  # replace nan values with 0
-    return np.array(torch.clamp(dist, 0.0, np.inf)[0])
-
-
-def get_kth_value(unsorted, k, axis=-1):
-    """
-    Args:
-        unsorted: numpy.ndarray of any dimensionality.
-        k: int
-    Returns:
-        kth values along the designated axis.
-    """
-    indices = np.argpartition(unsorted, k, axis=axis)[..., :k]
-    k_smallests = np.take_along_axis(unsorted, indices, axis=axis)
-    kth_values = k_smallests.max(axis=axis)
-    return kth_values
+    return torch.clamp(dist, 0.0, np.inf)[0]
 
 
 def nearest_neighbor_distances(input_features, nearest_k):
@@ -47,7 +33,7 @@ def nearest_neighbor_distances(input_features, nearest_k):
         Distances to kth nearest neighbours.
     """
     distances = pairwise_distances(input_features)
-    radii = get_kth_value(distances, k=nearest_k + 1, axis=-1)
+    radii = torch.topk(distances, k=nearest_k + 1, largest=False, axis=-1).values.max(-1).values
     return radii
 
 
@@ -67,14 +53,9 @@ def prdc(real_features, fake_features, nearest_k=5):
     fake_nearest_neighbour_distances = nearest_neighbor_distances(fake_features, nearest_k)
     distance_real_fake = pairwise_distances(real_features, fake_features)
 
-    precision = (distance_real_fake < np.expand_dims(real_nearest_neighbour_distances, axis=1)).any(axis=0).mean()
+    precision = (distance_real_fake < real_nearest_neighbour_distances[:, None]).any(0).float().mean()
+    recall = (distance_real_fake < fake_nearest_neighbour_distances[None, :]).any(1).float().mean()
+    density = (distance_real_fake < real_nearest_neighbour_distances[:, None]).sum(0).float().mean() / nearest_k
+    coverage = (distance_real_fake.min(axis=1).values < real_nearest_neighbour_distances).float().mean()
 
-    recall = (distance_real_fake < np.expand_dims(fake_nearest_neighbour_distances, axis=0)).any(axis=1).mean()
-
-    density = (1.0 / float(nearest_k)) * (
-        distance_real_fake < np.expand_dims(real_nearest_neighbour_distances, axis=1)
-    ).sum(axis=0).mean()
-
-    coverage = (distance_real_fake.min(axis=1) < real_nearest_neighbour_distances).mean()
-
-    return precision, recall, density, coverage
+    return precision.item(), recall.item(), density.item(), coverage.item()

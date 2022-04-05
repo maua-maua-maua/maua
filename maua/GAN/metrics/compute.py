@@ -169,23 +169,25 @@ def compute(
         with np.load(cache_file) as data:
             real_features = torch.from_numpy(data["real_features"])
 
-    metrics_dict = {}
+    real_features, fake_features = real_features.to(device), fake_features.to(device)
+
+    res = {}
     for metric in metrics:
         if metric == "frechet":
-            metrics_dict[f"Frechet {extractor} Distance"] = frechet_distance(real_features, fake_features)
+            res[f"Frechet {extractor} Distance"] = frechet_distance(real_features, fake_features)
         elif metric == "kernel":
-            metrics_dict[f"Kernel {extractor} Distance"] = kernel_distance(real_features, fake_features)
+            res[f"Kernel {extractor} Distance"] = kernel_distance(real_features, fake_features)
         elif metric == "prdc":
             (
-                metrics_dict[f"Precision ({extractor})"],
-                metrics_dict[f"Recall ({extractor})"],
-                metrics_dict[f"Density ({extractor})"],
-                metrics_dict[f"Coverage ({extractor})"],
+                res[f"Precision ({extractor})"],
+                res[f"Recall ({extractor})"],
+                res[f"Density ({extractor})"],
+                res[f"Coverage ({extractor})"],
             ) = prdc(real_features, fake_features)
         else:
             raise ValueError(f"Unknown metric: {metric}")
 
-    return metrics_dict
+    return res
 
 
 if __name__ == "__main__":
