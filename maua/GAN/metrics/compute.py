@@ -1,20 +1,18 @@
 import os
 from glob import glob
 from pathlib import Path
-from typing import List, Union
+from typing import Callable, List, Union
 from zipfile import ZipFile
 
 import numpy as np
-import padl
 import torch
-from maua.GAN.metrics.extractors import get_extractor
-from padl.transforms import Transform as PadlTransform
 from PIL import Image
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torchvision.transforms.functional import to_tensor
 from tqdm import tqdm
 
+from .extractors import get_extractor
 from .frechet import frechet_distance
 from .kernel import kernel_distance
 from .prdc import prdc
@@ -33,6 +31,13 @@ def resize_clean(x, size):
     x = [resize_single_channel(x[:, :, idx], size) for idx in range(3)]
     x = np.concatenate(x, axis=2).astype(np.float32) / 255.0
     return x
+
+
+def resize(x, size):
+    dev = x.device
+    image_np = x.permute(0, 2, 3, 1).cpu().numpy()
+    resized = torch.stack([to_tensor(resize_clean(im, size)) for im in image_np])
+    return resized.to(dev)
 
 
 class FolderImages(Dataset):
@@ -84,9 +89,8 @@ class GeneratorImages(Dataset):
         self.size = size
 
     def __getitem__(self, index: int) -> None:
-        tensor = self.G.infer_apply()
-        image_np = tensor.add(1).div(2).permute(0, 2, 3, 1).cpu().numpy()
-        resized = torch.stack([to_tensor(resize_clean(im, self.size)) for im in image_np])
+        tensor = self.G().add(1).div(2)
+        resized = resize(tensor, self.size)
         return resized
 
     def __len__(self) -> int:
@@ -95,38 +99,53 @@ class GeneratorImages(Dataset):
 
 @torch.inference_mode()
 def compute(
-    real_samples: Union[str, Path],
-    fake_samples: PadlTransform,
+    real_samples: Union[str, Path, DataLoader],
+    fake_samples: Callable,
     n_samples: int = 10_000,
-    extractor: str = "swav",
+    extractor: str = "SwAV",
     metrics: List[str] = ["frechet", "kernel", "prdc"],
     batch_size: int = 32,
     num_workers: int = torch.multiprocessing.cpu_count(),
     device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     ignore_cache: bool = False,
+    verbose: bool = True,
 ):
     extractor_model, size = get_extractor(extractor)
     extractor_model = extractor_model.eval().to(device)
 
-    cache_file = f"cache/{'_'.join(real_samples.split('/')[-3:])}.npz"
+    if isinstance(real_samples, (str, Path)):
+        cache_file = f"cache/{Path(real_samples).stem}_real_{extractor}_features.npz"
+    else:
+        cache_file = f"cache/{Path(real_samples.path).stem}.npz".replace("ffcv", f"real_{extractor}_features")
     use_cache = os.path.exists(cache_file) and not ignore_cache
 
-    if not use_cache:
-        real_loader = DataLoader(
-            FolderImages(real_samples, n_samples, size), batch_size=batch_size, num_workers=num_workers, pin_memory=True
-        )
+    if isinstance(real_samples, (str, Path)):
+        if not use_cache:
+            real_loader = DataLoader(
+                FolderImages(real_samples, n_samples, size),
+                batch_size=batch_size,
+                num_workers=num_workers,
+                pin_memory=True,
+            )
+        else:
+            real_loader = range(n_samples // batch_size)
     else:
-        real_loader = range(n_samples // batch_size)
+        real_loader = real_samples
 
-    fake_loader = DataLoader(GeneratorImages(fake_samples, n_samples, size), batch_size=1, num_workers=0)
+    fake_loader = DataLoader(GeneratorImages(fake_samples, n_samples // batch_size, size), batch_size=1, num_workers=0)
 
     real_features, fake_features = [], []
-    for real_batch, fake_batch in tqdm(
-        zip(real_loader, fake_loader), total=n_samples // batch_size, unit_scale=batch_size, unit="images"
-    ):
+    if verbose:
+        pbar = tqdm(zip(real_loader, fake_loader), total=n_samples // batch_size, unit_scale=batch_size, unit="images")
+    else:
+        pbar = zip(real_loader, fake_loader)
+    for real_batch, fake_batch in pbar:
         if not use_cache:
             real_batch = real_batch.to(device)
             fake_batch = fake_batch.squeeze().to(device)
+            if real_batch.shape[-2:] != fake_batch.shape[-2:]:
+                real_batch = resize(real_batch, size)
+            assert len(real_batch) == len(fake_batch)
             batch = torch.cat((real_batch, fake_batch))
         else:
             batch = fake_batch.squeeze().to(device)
@@ -139,17 +158,16 @@ def compute(
             fake_features.append(fake_feats)
         else:
             fake_features.append(feats)
+    del pbar
 
     fake_features = torch.cat(fake_features)
 
-    if not use_cache:
+    if not os.path.exists(cache_file):
         real_features = torch.cat(real_features)
         np.savez_compressed(cache_file, real_features=real_features.numpy())
     else:
         with np.load(cache_file) as data:
             real_features = torch.from_numpy(data["real_features"])
-
-    print(real_features.shape, fake_features.shape)
 
     metrics_dict = {}
     for metric in metrics:
@@ -191,12 +209,7 @@ if __name__ == "__main__":
     from maua.GAN.load import load_network
 
     G = load_network(args.checkpoint).eval().to(args.device)
-    fake_samples = (
-        padl.transform(lambda *a, **kw: torch.randn((args.batch_size, 512), device=args.device))
-        >> padl.transform(lambda z: G(z, c=None))
-        >> padl.same.squeeze()
-    )
-    fake_samples.pd_to(args.device)
+    fake_samples = lambda *a, **kw: G(z=torch.randn((args.batch_size, 512), device=args.device), c=None).squeeze()
 
     metrics_dict = compute(
         real_samples=args.data_dir,
