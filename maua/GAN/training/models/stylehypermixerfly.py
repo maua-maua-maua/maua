@@ -1,11 +1,20 @@
 from typing import Tuple
 
 import numpy as np
-import pytorch_lightning as pl
 import torch
 from torch import nn
 from torch.nn.functional import interpolate
 from torch_butterfly import Butterfly
+from torch_butterfly.complex_utils import complex_reshape
+from torch_butterfly.multiply import butterfly_multiply
+
+
+class PixelNorm(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, input):
+        return input * torch.rsqrt(torch.mean(input**2, dim=1, keepdim=True) + 1e-8)
 
 
 class DropPath(nn.Module):
@@ -26,17 +35,45 @@ class DropPath(nn.Module):
         return output
 
 
+class EqualButterfly(Butterfly):
+    def __init__(self, in_size, *args, lr_mul=1, **kwargs):
+        super().__init__(in_size, *args, **kwargs)
+        self.scale = (1 / np.sqrt(in_size)) * lr_mul
+        self.lr_mul = lr_mul
+
+    def forward(self, input):
+        output = self.pre_process(input)
+        output_size = self.out_size if self.nstacks == 1 else None
+        output = butterfly_multiply(self.twiddle * self.scale, output, self.increasing_stride, output_size)
+        return self.post_process(input, output)
+
+    def post_process(self, input, output, out_size=None):
+        if out_size is None:
+            out_size = self.out_size
+        batch = output.shape[0]
+        output = output.view(batch, self.nstacks * output.size(-1))
+        if out_size != output.shape[-1]:  # Take top rows
+            output = output[:, :out_size]
+        if self.bias is not None:
+            output = output + self.bias[:out_size] * self.lr_mul
+        return output.view(*input.size()[:-1], out_size)
+
+
 class GLU(nn.Module):
-    def __init__(self, in_dim, hidden_dim=None, out_dim=None, drop=0.0, internal=True):
+    def __init__(self, in_dim, hidden_dim=None, out_dim=None, drop=0.0, internal=True, lr_mul=1):
         super().__init__()
         self.internal = internal
         out_dim = out_dim or in_dim
         hidden_dim = hidden_dim or in_dim
         assert hidden_dim % 2 == 0
 
-        self.fc1 = Butterfly(in_dim, hidden_dim)
+        self.fc1 = Butterfly(in_dim, hidden_dim) if lr_mul == 1 else EqualButterfly(in_dim, hidden_dim, lr_mul=lr_mul)
         self.act = nn.Sigmoid()
-        self.fc2 = Butterfly(hidden_dim // 2, out_dim)
+        self.fc2 = (
+            Butterfly(hidden_dim // 2, out_dim)
+            if lr_mul == 1
+            else EqualButterfly(hidden_dim // 2, out_dim, lr_mul=lr_mul)
+        )
         self.drop = nn.Dropout(drop)
 
     def forward(self, x):
@@ -230,30 +267,30 @@ def downscale(x):
 
 class StyleHyperMixerFlyGenerator(nn.Module):
     def __init__(
-        self, z_dim=512, w_dim=512, n_map=8, img_resolution=1024, img_channels=3, channel_base=512, drop=0.1, **kwargs
+        self, z_dim=512, w_dim=512, n_map=8, image_size=1024, img_channels=3, ngf=512, drop=0.1, lr_map=0.01, **kwargs
     ) -> None:
         super().__init__()
         self.z_dim = z_dim
         self.w_dim = w_dim
         self.n_map = n_map
-        self.img_resolution = img_resolution
+        self.image_size = image_size
         self.img_channels = img_channels
-        self.channel_base = channel_base
+        self.ngf = ngf
 
         self.mapping = nn.Sequential(
             *(
-                [GLU(in_dim=z_dim, out_dim=w_dim, drop=0)]
-                + [GLU(in_dim=w_dim, out_dim=w_dim, drop=0) for _ in range(n_map - 1)]
-                + [Stack(3 * int(np.log2(img_resolution) - 1))]
+                [PixelNorm(), GLU(in_dim=z_dim, out_dim=w_dim, drop=0, lr_mul=lr_map)]
+                + [GLU(in_dim=w_dim, out_dim=w_dim, drop=0, lr_mul=lr_map) for _ in range(n_map - 1)]
+                + [Stack(3 * int(np.log2(image_size) - 1))]
             )
         )
 
-        self.register_buffer("constant_input", torch.randn((1, channel_base, 4, 4)))
+        self.register_buffer("constant_input", torch.randn((1, ngf, 4, 4)))
 
-        block_resolutions = 2 ** np.arange(2, np.log2(img_resolution) + 1).astype(int)
-        log_n_channels = np.arange(np.log2(channel_base), 4, -1)
+        block_resolutions = 2 ** np.arange(2, np.log2(image_size) + 1).astype(int)
+        log_n_channels = np.arange(np.log2(ngf), 4, -1)
         n_channels = np.concatenate(
-            (channel_base * np.ones(len(block_resolutions) - len(log_n_channels) + 1), 2**log_n_channels)
+            (ngf * np.ones(len(block_resolutions) - len(log_n_channels) + 1), 2**log_n_channels)
         ).astype(int)
 
         self.synthesis = nn.ModuleList(
@@ -269,8 +306,13 @@ class StyleHyperMixerFlyGenerator(nn.Module):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = parent_parser.add_argument_group("StyleHyperMixerFlyGenerator")
-        parser.add_argument("--encoder_layers", type=int, default=12)
-        parser.add_argument("--data_path", type=str, default="/some/path")
+        parser.add_argument("--z_dim", type=int, default=512, help="Size of the input latent vector")
+        parser.add_argument("--w_dim", type=int, default=512, help="Size of mapped latent vector")
+        parser.add_argument("--n_map", type=int, default=8, help="Number of mapping layers")
+        parser.add_argument("--img_channels", type=int, default=3, help="Number of image channels")
+        parser.add_argument("--ngf", type=int, default=512, help="Base number of filters")
+        parser.add_argument("--drop", type=float, default=0.1, help="Dropout rate")
+        parser.add_argument("--lr_map", type=float, default=0.01, help="Equalized learning rate for mapping network")
         return parent_parser
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
@@ -293,7 +335,7 @@ class StyleHyperMixerFlyGenerator(nn.Module):
             y = to_rgb(x, w3).transpose(2, 1).reshape(B, -1, H, W)
             img = img + y if img is not None else y
 
-            if W != self.img_resolution:
+            if W != self.image_size:
                 x = x.transpose(2, 1).reshape(B, -1, H, W)
                 x_img = torch.cat((x, img), dim=1)
                 x_img = upscale(x_img)
@@ -303,17 +345,18 @@ class StyleHyperMixerFlyGenerator(nn.Module):
 
 
 class HyperMixerFlyDiscriminator(nn.Module):
-    def __init__(self, img_resolution=1024, img_channels=3, channel_base=512, drop=0.1) -> None:
-        super().__init__()
-        self.z_dim = z_dim
-        self.img_resolution = img_resolution
-        self.img_channels = img_channels
-        self.channel_base = channel_base
+    override_args = {"logits": True}
 
-        block_resolutions = 2 ** np.arange(np.log2(img_resolution), 1, -1).astype(int)
-        log_n_channels = np.arange(4, np.log2(channel_base))
+    def __init__(self, image_size=1024, img_channels=3, ndf=512, drop=0.1, **kwargs) -> None:
+        super().__init__()
+        self.image_size = image_size
+        self.img_channels = img_channels
+        self.ndf = ndf
+
+        block_resolutions = 2 ** np.arange(np.log2(image_size), 1, -1).astype(int)
+        log_n_channels = np.arange(4, np.log2(ndf))
         n_channels = np.concatenate(
-            (2**log_n_channels, channel_base * np.ones(len(block_resolutions) - len(log_n_channels)))
+            (2**log_n_channels, ndf * np.ones(len(block_resolutions) - len(log_n_channels)))
         ).astype(int)
 
         self.encode = nn.ModuleList(
@@ -323,7 +366,15 @@ class HyperMixerFlyDiscriminator(nn.Module):
                 for in_dim, out_dim in zip(n_channels[:-1], n_channels[1:])
             ]
         )
-        self.predict = GLU(n_channels[-1] * 4 * 4, channel_base, 1, drop=drop, internal=False)
+        self.predict = GLU(n_channels[-1] * 4 * 4, ndf, 1, drop=drop, internal=False)
+
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = parent_parser.add_argument_group("HyperMixerFlyDiscriminator")
+        parser.add_argument("--img_channels", type=int, default=3, help="Number of image channels")
+        parser.add_argument("--ndf", type=int, default=512, help="Base number of filters")
+        parser.add_argument("--drop", type=float, default=0.1, help="Dropout rate")
+        return parent_parser
 
     def forward(self, img: torch.Tensor) -> torch.Tensor:
         x = img
@@ -382,18 +433,16 @@ if __name__ == "__main__":
             handle.remove()
 
     batch_size, z_dim = 2, 512
-    img_resolution, img_channels, channel_base = 1024, 3, 512
+    image_size, img_channels, nf = 1024, 3, 512
 
     G = StyleHyperMixerFlyGenerator(
-        z_dim=z_dim, w_dim=z_dim, img_resolution=img_resolution, img_channels=img_channels, channel_base=channel_base
+        z_dim=z_dim, w_dim=z_dim, image_size=image_size, img_channels=img_channels, ngf=nf
     ).cuda()
-    D = HyperMixerFlyDiscriminator(
-        img_resolution=img_resolution, img_channels=img_channels, channel_base=channel_base
-    ).cuda()
+    D = HyperMixerFlyDiscriminator(image_size=image_size, img_channels=img_channels, ndf=nf).cuda()
     G.eval(), D.eval()
 
     with torch.inference_mode():
-        print_model_summary(D, torch.randn((batch_size, img_channels, img_resolution, img_resolution), device="cuda"))
+        print_model_summary(D, torch.randn((batch_size, img_channels, image_size, image_size), device="cuda"))
         print_model_summary(G, torch.randn(batch_size, z_dim, device="cuda"))
 
     optimizer_G = torch.optim.Adam(G.parameters(), lr=1e-4, betas=(0.5, 0.999))
@@ -412,7 +461,7 @@ if __name__ == "__main__":
         D.zero_grad(True)
         img = G(torch.randn(batch_size, z_dim, device="cuda"))
         pred_fake = D(img.detach())
-        pred_real = D(torch.randn((batch_size, img_channels, img_resolution, img_resolution), device="cuda"))
+        pred_real = D(torch.randn((batch_size, img_channels, image_size, image_size), device="cuda"))
         loss_Dgen = torch.nn.functional.softplus(pred_fake).sum()
         loss_Dreal = torch.nn.functional.softplus(-pred_real).sum()
         (loss_Dgen + loss_Dreal).backward()

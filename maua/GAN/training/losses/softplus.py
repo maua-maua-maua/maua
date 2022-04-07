@@ -1,27 +1,29 @@
 import torch
 
+from . import Loss
 
-class DiscriminatorSoftPlus(torch.nn.Module):
-    def forward(self, lightning_module, real_preds, fake_preds, **kwargs):
-        loss_D_real = torch.nn.functional.softplus(-real_preds).sum()
-        loss_D_fake = torch.nn.functional.softplus(fake_preds).sum()
+
+class DiscriminatorSoftPlus(Loss):
+    def forward(self, lightning_module, preds_real, preds_fake, **kwargs):
+        loss_D_real = torch.nn.functional.softplus(-preds_real)
+        loss_D_fake = torch.nn.functional.softplus(preds_fake)
 
         lightning_module.log_dict(
             dict(
-                loss_D_real=loss_D_real,
-                loss_D_fake=loss_D_fake,
-                real_preds=real_preds.mean(),
-                fake_preds=fake_preds.mean(),
+                loss_D_real=loss_D_real.mean(),
+                loss_D_fake=loss_D_fake.mean(),
+                preds_real=preds_real.sign().mean(),
+                preds_fake=preds_fake.sign().mean(),
             )
         )
 
         return loss_D_real + loss_D_fake
 
 
-class GeneratorSoftPlus(torch.nn.Module):
-    def forward(self, lightning_module, fake_preds, **kwargs):
-        loss_G = torch.nn.functional.softplus(-fake_preds).sum()
+class GeneratorSoftPlus(Loss):
+    def forward(self, lightning_module, preds_fake, **kwargs):
+        loss_G = torch.nn.functional.softplus(-preds_fake)
 
-        lightning_module.log_dict(dict(loss_G=loss_G))
+        lightning_module.log_dict(dict(loss_G=loss_G.mean()))
 
         return loss_G

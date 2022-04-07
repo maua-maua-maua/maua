@@ -26,8 +26,8 @@ dataroot = "/home/hans/datasets/diffuse/diffuse/all/"
 workers = 24
 batch_size = 128
 image_size = 64
-nc = 3
-nz = 100
+img_channels = 3
+z_dim = 100
 ngf = 64
 ndf = 64
 lr = 0.0002
@@ -134,7 +134,7 @@ class Generator(torch.nn.Module):
         self.ngpu = ngpu
         self.main = torch.nn.Sequential(
             # input is Z, going into a convolution
-            torch.nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
+            torch.nn.ConvTranspose2d(z_dim, ngf * 8, 4, 1, 0, bias=False),
             torch.nn.BatchNorm2d(ngf * 8),
             torch.nn.ReLU(True),
             # state size. (ngf*8) x 4 x 4
@@ -150,9 +150,9 @@ class Generator(torch.nn.Module):
             torch.nn.BatchNorm2d(ngf),
             torch.nn.ReLU(True),
             # state size. (ngf) x 32 x 32
-            torch.nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
+            torch.nn.ConvTranspose2d(ngf, img_channels, 4, 2, 1, bias=False),
             torch.nn.Tanh()
-            # state size. (nc) x 64 x 64
+            # state size. (img_channels) x 64 x 64
         )
         self.apply(weights_init)
 
@@ -166,8 +166,8 @@ class Discriminator(torch.nn.Module):
         super().__init__()
         self.ngpu = ngpu
         self.main = torch.nn.Sequential(
-            # input is (nc) x 64 x 64
-            torch.nn.Conv2d(nc, ndf, 4, 2, 1, bias=False),
+            # input is (img_channels) x 64 x 64
+            torch.nn.Conv2d(img_channels, ndf, 4, 2, 1, bias=False),
             torch.nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf) x 32 x 32
             torch.nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
@@ -211,7 +211,7 @@ The *main* advantage of this, however, is that it allows the program to isolate 
 
 @padl.transform
 def generate_noise(dummy):
-    return torch.randn(nz, 1, 1)
+    return torch.randn(z_dim, 1, 1)
 
 
 @padl.transform

@@ -1,35 +1,41 @@
 import torch
 
+from . import Loss
 
-class DiscriminatorCrossEntropy(torch.nn.Module):
-    def __init__(self, logits=True) -> None:
+
+class DiscriminatorCrossEntropy(Loss):
+    def __init__(self, logits=True, **kwargs) -> None:
         super().__init__()
-        self.cross_entropy = torch.nn.BCEWithLogitsLoss() if logits else torch.nn.BCELoss()
+        self.cross_entropy = (
+            torch.nn.BCEWithLogitsLoss(reduction="none") if logits else torch.nn.BCELoss(reduction="none")
+        )
 
-    def forward(self, lightning_module, real_preds, fake_preds, **kwargs):
-        loss_D_real = self.cross_entropy(real_preds, torch.ones_like(real_preds))
-        loss_D_fake = self.cross_entropy(fake_preds, torch.zeros_like(fake_preds))
+    def forward(self, lightning_module, preds_real, preds_fake, **kwargs):
+        loss_D_real = self.cross_entropy(preds_real, torch.ones_like(preds_real))
+        loss_D_fake = self.cross_entropy(preds_fake, torch.zeros_like(preds_fake))
 
         lightning_module.log_dict(
             dict(
-                loss_D_real=loss_D_real,
-                loss_D_fake=loss_D_fake,
-                real_preds=real_preds.mean(),
-                fake_preds=fake_preds.mean(),
+                loss_D_real=loss_D_real.mean(),
+                loss_D_fake=loss_D_fake.mean(),
+                preds_real=preds_real.sign().mean(),
+                preds_fake=preds_fake.sign().mean(),
             )
         )
 
         return loss_D_real + loss_D_fake
 
 
-class GeneratorCrossEntropy(torch.nn.Module):
-    def __init__(self, logits=True) -> None:
+class GeneratorCrossEntropy(Loss):
+    def __init__(self, logits=True, **kwargs) -> None:
         super().__init__()
-        self.cross_entropy = torch.nn.BCEWithLogitsLoss() if logits else torch.nn.BCELoss()
+        self.cross_entropy = (
+            torch.nn.BCEWithLogitsLoss(reduction="none") if logits else torch.nn.BCELoss(reduction="none")
+        )
 
-    def forward(self, lightning_module, fake_preds, **kwargs):
-        loss_G = self.cross_entropy(fake_preds, torch.ones_like(fake_preds))
+    def forward(self, lightning_module, preds_fake, **kwargs):
+        loss_G = self.cross_entropy(preds_fake, torch.ones_like(preds_fake))
 
-        lightning_module.log_dict(dict(loss_G=loss_G))
+        lightning_module.log_dict(dict(loss_G=loss_G.mean()))
 
         return loss_G

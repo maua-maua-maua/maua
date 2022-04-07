@@ -12,11 +12,11 @@ def weights_init(m):
 
 
 class DeepConvolutionalGenerator(torch.nn.Module):
-    def __init__(self, image_size=64, nz=100, ngf=64, nc=3, **kwargs):
+    def __init__(self, image_size=64, z_dim=100, ngf=64, img_channels=3, **kwargs):
         super().__init__()
 
         nb = round(np.log2(image_size)) - 2
-        nfs = [nz] + list(reversed([min(ngf * 2**i, ngf * 8) for i in range(nb)])) + [nc]
+        nfs = [z_dim] + list(reversed([min(ngf * 2**i, ngf * 8) for i in range(nb)])) + [img_channels]
 
         blocks = []
         for b, (nf_prev, nf_next) in enumerate(zip(nfs[:-1], nfs[1:])):
@@ -36,7 +36,7 @@ class DeepConvolutionalGenerator(torch.nn.Module):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = parent_parser.add_argument_group("DeepConvolutionalGenerator")
-        parser.add_argument("--nz", type=int, default=100, help="Size of the latent space")
+        parser.add_argument("--z_dim", type=int, default=100, help="Size of the latent space")
         parser.add_argument("--ngf", type=int, default=64, help="Base number of filters in the generator")
         return parent_parser
 
@@ -45,11 +45,13 @@ class DeepConvolutionalGenerator(torch.nn.Module):
 
 
 class DeepConvolutionalDiscriminator(torch.nn.Module):
-    def __init__(self, image_size=64, nc=3, ndf=64, **kwargs):
+    override_args = {"logits": True}
+
+    def __init__(self, image_size=64, img_channels=3, ndf=64, **kwargs):
         super().__init__()
 
         nb = round(np.log2(image_size)) - 2
-        nfs = [nc] + list([min(ndf * 2**i, ndf * 8) for i in range(nb)]) + [1]
+        nfs = [img_channels] + list([min(ndf * 2**i, ndf * 8) for i in range(nb)]) + [1]
 
         blocks = []
         for b, (nf_prev, nf_next) in enumerate(zip(nfs[:-1], nfs[1:])):
@@ -60,8 +62,6 @@ class DeepConvolutionalDiscriminator(torch.nn.Module):
             ]
             if b < nb:
                 blocks += [torch.nn.BatchNorm2d(nf_next), torch.nn.LeakyReLU(0.2, inplace=True)]
-            else:
-                blocks += [torch.nn.Sigmoid()]
 
         self.main = torch.nn.Sequential(*blocks)
         self.main.apply(weights_init)
