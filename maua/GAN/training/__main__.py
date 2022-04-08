@@ -206,6 +206,7 @@ if __name__ == "__main__":
     # ========================== TRAIN ============================
     # =============================================================
 
+    print("Starting training...")
     LightningTrainer.from_argparse_args(
         args,
         callbacks=[

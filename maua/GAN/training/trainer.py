@@ -181,14 +181,7 @@ class LightningGAN(LightningModule):
 
         self.metric_emas = {}
 
-        self.save_hyperparameters()
-        self.train_dataloader()
-
-    def forward(self):
-        return self.G(self.latent()).add(1).div(2).clamp(0, 1)
-
-    def train_dataloader(self):
-        return ImageLoader(
+        self.dataloader = ImageLoader(
             self.files,
             self.ffcv_preprocess,
             self.ffcv_pipeline,
@@ -198,6 +191,14 @@ class LightningGAN(LightningModule):
             self.num_workers,
             self.jpeg_quality,
         )
+
+        self.save_hyperparameters()
+
+    def forward(self):
+        return self.G(self.latent()).add(1).div(2).clamp(0, 1)
+
+    def train_dataloader(self):
+        return self.dataloader
 
     def val_dataloader(self):
         return torch.ones(1)

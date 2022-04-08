@@ -74,3 +74,20 @@ class DeepConvolutionalDiscriminator(torch.nn.Module):
 
     def forward(self, input):
         return self.main(input).squeeze()
+
+
+if __name__ == "__main__":
+    G = DeepConvolutionalGenerator(image_size=128, z_dim=64, ngf=128)
+    print(G)
+    print()
+
+    D = DeepConvolutionalDiscriminator(image_size=128, img_channels=3, ndf=128)
+    print(D)
+    print()
+
+    z = torch.randn((32, 64))
+    img = G(z)
+    print(img.shape)
+
+    pred = D(img)
+    print(pred.shape)

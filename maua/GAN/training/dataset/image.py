@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import PIL
 import torch
@@ -58,27 +59,36 @@ def ImageLoader(
         pipelines={"image": ffcv_pipeline},
     )
 
+    class FFCVPreprocessorDataset(TorchDataset):
+        def __len__(self):
+            return len(files)
+
+        def __getitem__(self, idx):
+            return np.asarray(ffcv_preprocess(PIL.Image.open(files[idx]).convert("RGB")))[np.newaxis]
+
+    data = FFCVPreprocessorDataset()
+    size = max(data[0].shape)
+
     try:
         loader = construct_loader()
+        (batch,) = next(iter(loader))
+        assert max(batch.shape[-2:]) == size, "Preprocessed data does not match currently specified size!"
         rebuild = False
     except:
+        if os.path.exists(cache_path):
+            import traceback
+
+            print("\nError while constructing dataloader, rebuilding dataset...")
+            traceback.print_exc()
         rebuild = True
 
     if rebuild:
-
-        class FFCVPreprocessorDataset(TorchDataset):
-            def __len__(self):
-                return len(files)
-
-            def __getitem__(self, idx):
-                return np.asarray(ffcv_preprocess(PIL.Image.open(files[idx]).convert("RGB")))[np.newaxis]
-
-        data = FFCVPreprocessorDataset()
         DatasetWriter(
-            cache_path, {"image": RGBImageField(max_resolution=max(data[0].shape), jpeg_quality=jpeg_quality)}
+            cache_path, {"image": RGBImageField(max_resolution=size, jpeg_quality=jpeg_quality)}
         ).from_indexed_dataset(data)
 
         loader = construct_loader()
+        print("Finished dataset preprocessing!\n")
 
     iterator = Iterator(loader, epoch_kimg)
     iterator.path = cache_path
