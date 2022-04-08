@@ -36,6 +36,7 @@ if __name__ == "__main__":
         allow_abbrev=True,
     )
     parser.add_argument("-lh", "--show_lightning_help", action="store_true", help="Show PyTorch Lightning Trainer arguments in --help message")
+    parser.add_argument("-e", "--experimental", action="store_true", help="Enable experimental network options")
 
     subparser = parser.add_argument_group("Input data", description="Settings related to data to train with (augmentations applied here will be visible in output data)")
     subparser.add_argument("--input_dir", type=str, help="Directory containing image files to train on")
@@ -73,6 +74,9 @@ if __name__ == "__main__":
 
     loss_choices = [Path(f).stem for f in glob(f"{HERE}/losses/*.py")]
     model_choices = [Path(f).stem for f in glob(f"{HERE}/models/*.py")]
+    if temp_args.experimental:
+        loss_choices.extend([Path(f).stem for f in glob(f"{HERE}/losses/experimental/*.py")])
+        model_choices.extend([Path(f).stem for f in glob(f"{HERE}/models/experimental/*.py")])
     latent_choices = [Path(f).stem for f in glob(f"{HERE}/latent_spaces/*.py")]
     augment_choices = [Path(f).stem for f in glob(f"{HERE}/augmentation/*.py")]
 
@@ -85,8 +89,8 @@ if __name__ == "__main__":
         subparser = parser.add_argument_group(component_title, description=component_desc)
         if component_module == "models":
             subparser.add_argument("-L", "--latent_distribution", type=str, default="normal", choices=latent_choices, help="which input latent distribution to use")
-            subparser.add_argument("-G", "--generator", type=str, default="deepinvolutional", choices=model_choices, help="which generator to use")
-            subparser.add_argument("-D", "--discriminator", type=str, default="deepinvolutional", choices=model_choices, help="which discriminator to use")
+            subparser.add_argument("-G", "--generator", type=str, default="deepconvolutional", choices=model_choices, help="which generator to use")
+            subparser.add_argument("-D", "--discriminator", type=str, default="deepconvolutional", choices=model_choices, help="which discriminator to use")
             subparser.add_argument("-EMA", "--ema_decay", type=float, default=0.995, help="model weight exponential moving average decay")
         if component_module == "losses":
             subparser.add_argument("-DL", "--discriminator_losses", type=str, nargs="+", default=["softplus"], choices=loss_choices, help="which discriminator losses to use")
@@ -94,11 +98,17 @@ if __name__ == "__main__":
         if component_module == "augmentation":
             subparser.add_argument("-A", "--augmentations", type=str, nargs="+", default=["blur"], choices=augment_choices, help="which augmentations to use")
 
-        for file in glob(f"{HERE}/{component_module}/*.py"):
+        files = glob(f"{HERE}/{component_module}/*.py")
+        if temp_args.experimental:
+            files.extend(glob(f"{HERE}/{component_module}/experimental/*.py"))
+        for file in files:
             name = Path(file).stem
-            module = importlib.import_module(f".{component_module}.{name}", package=__package__)
+            try:
+                mod = importlib.import_module(f".{component_module}.{name}", package=__package__)
+            except:
+                mod = importlib.import_module(f".{component_module}.experimental.{name}", package=__package__)
             for torch_module_name, torch_module in [
-                (n, m) for n, m in inspect.getmembers(module, inspect.isclass) if m.__module__ == module.__name__
+                (n, m) for n, m in inspect.getmembers(mod, inspect.isclass) if m.__module__ == mod.__name__
             ]:
                 if hasattr(torch_module, "add_model_specific_args"):
                     parser = torch_module.add_model_specific_args(parser)
@@ -124,7 +134,10 @@ if __name__ == "__main__":
     # =============================================================
 
     def build_by_name(module, submodule, pred=lambda m: True):
-        mod = importlib.import_module(f".{module}.{submodule}", package=__package__)
+        try:
+            mod = importlib.import_module(f".{module}.{submodule}", package=__package__)
+        except:
+            mod = importlib.import_module(f".{module}.experimental.{submodule}", package=__package__)
         classes = [m for _, m in inspect.getmembers(mod, inspect.isclass) if m.__module__ == mod.__name__ and pred(m)]
         assert len(classes) == 1, f"Multiple/no possible classes found in {module}.{submodule}:\n{classes}"
         cls = classes[0]
