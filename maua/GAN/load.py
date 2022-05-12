@@ -120,7 +120,7 @@ def load_rosinality2ada(path, blur_scale=4.0, for_inference=False):
     chnls = 3  # TODO
 
     G = (stylegan2_inference if for_inference else stylegan2_train).Generator(
-        z_dim, c_dim, w_dim, max_res, chnls, mapping_kwargs=dict(num_layers=num_map), use_const=use_const
+        z_dim, c_dim, w_dim, max_res, chnls, mapping_kwargs=dict(num_layers=num_map)  # , use_const=use_const
     )
     G.load_state_dict(state_nv)
 

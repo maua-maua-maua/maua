@@ -73,5 +73,5 @@ class StyleGAN(MauaGenerator):
         latent_w = self.mapper(latent_z, truncation=truncation)
         return latent_w
 
-    def forward(self, z, c=None):
+    def forward(self, z, *args, c=None, **kwargs):
         return self.synthesizer(self.mapper(z, c))

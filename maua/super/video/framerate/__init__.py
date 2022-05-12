@@ -35,8 +35,9 @@ MODEL_NAMES = list(MODEL_MODULES.keys())
 def interpolate(
     video_file,
     model_name="RIFE-2.3",
-    factor=2,
+    interpolation_factor=2,
     fp16=True,
+    decimate=1,
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> Generator[torch.Tensor, None, None]:
 
@@ -45,8 +46,9 @@ def interpolate(
 
     module = MODEL_MODULES[model_name]
     model = module.load_model(model_name, device)
-    for frame in module.interpolate(video_file, model, factor, fp16):
-        yield frame
+    for f, frame in enumerate(module.interpolate(video_file, model, interpolation_factor, fp16)):
+        if f % decimate == decimate // 2:
+            yield frame
 
     if fp16:
         torch.set_default_tensor_type(torch.FloatTensor)
@@ -63,18 +65,25 @@ def main(args):
             print(f"Skipping {Path(video_file).stem}, output {Path(out_file).stem} already exists!")
             continue
 
-        with VideoWriter(output_file=out_file, output_size=(w, h), fps=fps * (args.factor / args.slow_factor)) as video:
-            for frame in interpolate(video_file, args.model_name, args.factor, not args.no_fp16, args.device):
+        with VideoWriter(
+            output_file=out_file,
+            output_size=(w, h),
+            fps=fps * (args.interpolation_factor / args.slower / args.decimate),
+        ) as video:
+            for frame in interpolate(
+                video_file, args.model_name, args.interpolation_factor, not args.no_fp16, args.decimate, args.device
+            ):
                 video.write(frame)
 
 
 def argument_parser():
     # fmt: off
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="The output frame rate can be calculated by: original_fps * interpolation_factor / slower / decimate")
     parser.add_argument("video_files", nargs="+")
     parser.add_argument("--model_name", default="RIFE-2.3", choices=MODEL_NAMES)
-    parser.add_argument("--factor", type=int, default=4, help="Factor to increase framerate by")
-    parser.add_argument("--slow_factor", type=int, default=2, help="Factor to decrease output framerate by (default halves the quadrupled rate, i.e. half speed with double the framerate)")
+    parser.add_argument("-if", "--interpolation_factor", type=int, default=2, help="Factor to increase framerate by")
+    parser.add_argument("-s", "--slower", type=int, default=1, help="Factor to decrease output framerate by")
+    parser.add_argument("-d", "--decimate", type=int, default=2, help="Alternative to slower that samples every -d'th frame. ")
     parser.add_argument("--no-fp16", action="store_true", help="FP16 reduces memory usage and increases speed on tensor cores (disable for CPU)")
     parser.add_argument("--device", default=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
     parser.add_argument("--out_dir", default="output/")

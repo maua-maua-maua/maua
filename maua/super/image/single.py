@@ -35,7 +35,7 @@ MODEL_MODULES = {
 }
 MODEL_NAMES = list(MODEL_MODULES.keys())
 
-
+@torch.inference_mode()
 def upscale(
     images, model_name, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ) -> Generator[torch.Tensor, None, None]:
@@ -55,13 +55,17 @@ def main(args):
         torch.device(args.device),
     )
     for img, path in tqdm(zip(module.upscale(args.images, model), args.images), total=len(args.images)):
-        tensor2img(img).save(f"{args.out_dir}/{Path(path).stem}_{args.model_name}.png")
+        im = tensor2img(img)
+        if args.postdownsample > 1:
+            im = im.resize((im.size[0] // args.postdownsample, im.size[1] // args.postdownsample))
+        im.save(f"{args.out_dir}/{Path(path).stem}_{args.model_name}.png")
 
 
 def argument_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("images", nargs="+")
     parser.add_argument("--model_name", default="latent-diffusion", choices=MODEL_NAMES)
+    parser.add_argument("--postdownsample", default=1)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--out_dir", default="output/")
     return parser

@@ -74,15 +74,27 @@ class WriteWorker(Thread):
                 .run_async(pipe_stdin=True, pipe_stderr=not self.debug)
             )
 
-        while not self.stopping:
+        poll_count = 0
+        while poll_count < 30:
             try:
-                tensor = self.Q.get(timeout=20)
+                tensor = self.Q.get(timeout=1)
+
+                # resize tensor to even height and width (otherwise some codecs complain)
                 _, _, h, w = tensor.shape
                 if h % 2 or w % 2:
                     tensor = resample(tensor, (2 * ceil(h / 2), 2 * ceil(w / 2)))
+
+                # pass bytes to the FFMPEG processes
                 self.ffmpeg_proc.stdin.write(tensor2bytes(tensor))
+
+                # reset poll counter
+                poll_count = 0
             except Empty:
+                poll_count += 1
+            if self.stopping:
                 break
+        if poll_count >= 30:
+            print("Queue empty! Stopping FFMPEG thread...")
 
     def stop(self):
         self.stopping = True

@@ -1,5 +1,4 @@
-from maua.GAN.wrappers.stylegan3 import (StyleGAN3, StyleGAN3Mapper,
-                                         StyleGAN3Synthesizer)
+from maua.GAN.wrappers.stylegan3 import StyleGAN3, StyleGAN3Mapper, StyleGAN3Synthesizer
 
 from . import MauaPatch
 
@@ -19,9 +18,9 @@ class StyleGAN3Patch(MauaPatch):
         resize_layer=0,
     ):
         super().__init__(audio_file, fps, offset, duration)
-        self.mapper = StyleGAN3Mapper(model_file)
-        self.synthesizer = StyleGAN3Synthesizer(model_file, output_size, resize_strategy, resize_layer)
-        self.stylegan3 = StyleGAN3(self.mapper, self.synthesizer)
+        self.stylegan3 = StyleGAN3(model_file, output_size, resize_strategy, resize_layer)
+        self.mapper = self.stylegan3.mapper
+        self.synthesizer = self.stylegan3.synthesizer
 
     def process_mapper_inputs(self):
         """

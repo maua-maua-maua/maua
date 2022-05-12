@@ -198,7 +198,15 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
             _, block, conv = layer.split(".")
             synth_layer = getattr(self.G_synth.bs[int(block)], conv)
             h, w = synth_layer.noise_const.shape[-2], synth_layer.noise_const.shape[-1]
-            noises[f"noise{l}"] = torch.nn.functional.interpolate(noise, (h, w), mode="bicubic", align_corners=False)
+            try:
+                noises[f"noise{l}"] = torch.nn.functional.interpolate(
+                    noise, (h, w), mode="bicubic", align_corners=False
+                ).cpu()
+            except RuntimeError:  # CUDA out of memory
+                noises[f"noise{l}"] = torch.nn.functional.interpolate(
+                    noise.cpu(), (h, w), mode="bicubic", align_corners=False
+                )
+            noises[f"noise{l}"] /= noises[f"noise{l}"].std((1, 2, 3), keepdim=True)
         return noises
 
 

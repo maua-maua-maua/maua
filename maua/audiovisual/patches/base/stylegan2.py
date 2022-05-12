@@ -1,7 +1,6 @@
 import torch
 
-from maua.GAN.wrappers.stylegan2 import (StyleGAN2, StyleGAN2Mapper,
-                                         StyleGAN2Synthesizer)
+from maua.GAN.wrappers.stylegan2 import StyleGAN2, StyleGAN2Mapper, StyleGAN2Synthesizer
 
 from . import MauaPatch
 
@@ -22,9 +21,9 @@ class StyleGAN2Patch(MauaPatch):
         inference=False,
     ):
         super().__init__(audio_file, fps, offset, duration)
-        self.mapper = StyleGAN2Mapper(model_file, inference)
-        self.synthesizer = StyleGAN2Synthesizer(model_file, inference, output_size, resize_strategy, resize_layer)
-        self.stylegan2 = StyleGAN2(self.mapper, self.synthesizer)
+        self.stylegan2 = StyleGAN2(model_file, inference, output_size, resize_strategy, resize_layer)
+        self.mapper = self.stylegan2.mapper
+        self.synthesizer = self.stylegan2.synthesizer
 
     def process_mapper_inputs(self):
         """
