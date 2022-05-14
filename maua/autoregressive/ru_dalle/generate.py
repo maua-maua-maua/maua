@@ -12,12 +12,17 @@ from PIL import Image
 from tqdm import tqdm
 from transformers import AutoModelForSeq2SeqLM, MarianTokenizer
 
-sys.path.append("maua/submodules/ru-dalle")
+sys.path.append("maua/submodules/ru_dalle")
 sys.path.append("maua/submodules/VQGAN")
 from rudalle import get_realesrgan, get_rudalle_model, get_tokenizer, get_vae, utils
+from rudalle.dalle import MODELS
 from rudalle.dalle.fp16 import FP16Module
 from rudalle.dalle.model import DalleModel
 from rudalle.pipelines import super_resolution
+
+from . import SURREALIST_XL_DICT
+
+MODELS.update({"Surrealist_XL": SURREALIST_XL_DICT})
 
 
 def oversample_decode(self, img_seq, h):
@@ -62,78 +67,70 @@ def oversample_generate_images(
     cache = None
     past_cache = None
     im_id = 0
-    try:
-        for chunk in more_itertools.chunked(range(num_images), bs):
-            chunk_bs = len(chunk)
-            with torch.no_grad():
-                attention_mask = torch.tril(
-                    torch.ones((chunk_bs, 1, total_seq_length, total_seq_length), device=device)
-                )
-                out = input_ids.unsqueeze(0).repeat(chunk_bs, 1).to(device)
-                grid = torch.zeros((h, w)).long().cuda()
-                sample_scores = []
-                if image_prompts is not None:
-                    prompts_idx, prompts = image_prompts.image_prompts_idx, image_prompts.image_prompts
-                    prompts = prompts.repeat(chunk_bs, 1)
-                for idx in tqdm(range(out.shape[1], total_seq_length - real * real + w * h)):
-                    idx -= text_seq_length
-                    if image_prompts is not None and idx in prompts_idx:
-                        out = torch.cat((out, prompts[:, idx].unsqueeze(1)), dim=-1)
-                    else:
-                        y = idx // w
-                        x = idx % w
-                        x_from = max(0, min(w - real, x - real // 2))
-                        y_from = max(0, y - real // 2)
-                        outs = []
-                        xs = []
-                        for row in range(y_from, y):
-                            for col in range(x_from, x_from + real):
-                                outs.append(grid[row, col].item())
-                                xs.append((row, col))
-                        for col in range(x_from, x):
-                            outs.append(grid[y, col].item())
-                            xs.append((y, col))
-                        if past_cache is not None:
-                            cache = list(map(list, cache.values()))
-                            for i, e in enumerate(cache):
-                                for j, _ in enumerate(e):
-                                    t = cache[i][j]
-                                    t = t[..., :text_seq_length, :]
-                                    cache[i][j] = t
-                            cache = dict(zip(range(len(cache)), cache))
-                        past_cache = xs
-                        logits, cache = dalle(
-                            torch.cat(
-                                (input_ids.to(device).ravel(), torch.from_numpy(np.asarray(outs)).long().to(device)),
-                                dim=0,
-                            ).unsqueeze(0),
-                            attention_mask,
-                            cache=cache,
-                            use_cache=True,
-                            return_loss=False,
-                        )
-                        logits = logits[:, :, vocab_size:].view((-1, logits.shape[-1] - vocab_size))
-                        logits /= temperature
-                        filtered_logits = transformers.top_k_top_p_filtering(logits, top_k=top_k, top_p=top_p)
-                        probs = torch.nn.functional.softmax(filtered_logits, dim=-1)
-                        sample = torch.multinomial(probs, 1)
-                        sample_scores.append(probs[torch.arange(probs.size(0)), sample.transpose(0, 1)])
-                        sample, xs = sample[-1:], xs[-1:]
-                        grid[y, x] = sample.item()
-                codebooks = grid.reshape((1, -1))
-                pil_images += utils.torch_tensors_to_pil_list(oversample_decode(vae, codebooks, h))
-                if save_intermediate:
-                    for pi in range(-len(chunk), 0):
-                        if stretched_size:
-                            pil_images[pi] = pil_images[pi].resize(stretched_size)
-                        pil_images[pi].save(f"{output_dir}/{model_name}_{im_id}.png")
-                        im_id += 1
 
-    except Exception as e:
-        print(e)
-        pass
-    except KeyboardInterrupt:
-        pass
+    for chunk in more_itertools.chunked(range(num_images), bs):
+        chunk_bs = len(chunk)
+        with torch.no_grad():
+            attention_mask = torch.tril(torch.ones((chunk_bs, 1, total_seq_length, total_seq_length), device=device))
+            out = input_ids.unsqueeze(0).repeat(chunk_bs, 1).to(device)
+            grid = torch.zeros((h, w)).long().cuda()
+            sample_scores = []
+            if image_prompts is not None:
+                prompts_idx, prompts = image_prompts.image_prompts_idx, image_prompts.image_prompts
+                prompts = prompts.repeat(chunk_bs, 1)
+            for idx in tqdm(range(out.shape[1], total_seq_length - real * real + w * h)):
+                idx -= text_seq_length
+                if image_prompts is not None and idx in prompts_idx:
+                    out = torch.cat((out, prompts[:, idx].unsqueeze(1)), dim=-1)
+                else:
+                    y = idx // w
+                    x = idx % w
+                    x_from = max(0, min(w - real, x - real // 2))
+                    y_from = max(0, y - real // 2)
+                    outs = []
+                    xs = []
+                    for row in range(y_from, y):
+                        for col in range(x_from, x_from + real):
+                            outs.append(grid[row, col].item())
+                            xs.append((row, col))
+                    for col in range(x_from, x):
+                        outs.append(grid[y, col].item())
+                        xs.append((y, col))
+                    if past_cache is not None:
+                        cache = list(map(list, cache.values()))
+                        for i, e in enumerate(cache):
+                            for j, _ in enumerate(e):
+                                t = cache[i][j]
+                                t = t[..., :text_seq_length, :]
+                                cache[i][j] = t
+                        cache = dict(zip(range(len(cache)), cache))
+                    past_cache = xs
+                    logits, cache = dalle(
+                        torch.cat(
+                            (input_ids.to(device).ravel(), torch.from_numpy(np.asarray(outs)).long().to(device)), dim=0
+                        ).unsqueeze(0),
+                        attention_mask,
+                        cache=cache,
+                        use_cache=True,
+                        return_loss=False,
+                    )
+                    logits = logits[:, :, vocab_size:].view((-1, logits.shape[-1] - vocab_size))
+                    logits /= temperature
+                    filtered_logits = transformers.top_k_top_p_filtering(logits, top_k=top_k, top_p=top_p)
+                    probs = torch.nn.functional.softmax(filtered_logits, dim=-1)
+                    sample = torch.multinomial(probs, 1)
+                    sample_scores.append(probs[torch.arange(probs.size(0)), sample.transpose(0, 1)])
+                    sample, xs = sample[-1:], xs[-1:]
+                    grid[y, x] = sample.item()
+            codebooks = grid.reshape((1, -1))
+            pil_images += utils.torch_tensors_to_pil_list(oversample_decode(vae, codebooks, h))
+            if save_intermediate:
+                for pi in range(-len(chunk), 0):
+                    if stretched_size:
+                        pil_images[pi] = pil_images[pi].resize(stretched_size)
+                    pil_images[pi].save(f"{output_dir}/{model_name}_{im_id}.png")
+                    im_id += 1
+
     return pil_images
 
 
@@ -149,7 +146,6 @@ def generate_images(
     temperature=1.0,
     bs=8,
     seed=None,
-    use_cache=True,
     stretched_size=None,
     model_name="rudalle",
     output_dir="output/",
@@ -181,7 +177,7 @@ def generate_images(
                 if image_prompts is not None and idx in prompts_idx:
                     out = torch.cat((out, prompts[:, idx].unsqueeze(1)), dim=-1)
                 else:
-                    logits, cache = dalle(out, attention_mask, use_cache=use_cache, cache=cache, return_loss=False)
+                    logits, cache = dalle(out, attention_mask, use_cache=True, cache=cache, return_loss=False)
                     logits = logits[:, -1, vocab_size:]
                     logits /= temperature
                     filtered_logits = transformers.top_k_top_p_filtering(logits, top_k=top_k, top_p=top_p)
@@ -334,7 +330,7 @@ def argument_parser():
     parser.add_argument("--top_p", type=float, default=0.999, help="Effects how closely sampled images match training data. Lower values might give higher quality images at the cost of variation. A good range is between 0.9 and 0.999.")
     parser.add_argument("--device", type=str, default="cuda:0", help="The device to train on, using 'cpu' will take a long time!")
     parser.add_argument("--low_memory", action="store_true", help="Enable if you have less than 16 GB of (V)RAM to use gradient checkpointing (slower but more memory efficient)")
-    parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint to sample from. Defaults to official Malevich checkpoint.")
+    parser.add_argument("--checkpoint", type=str, default=None, help=f"Checkpoint to resume from. Either a path to a trained RuDALL-E checkpoint or one of {list(MODELS.keys())}.")
     parser.add_argument("--output_name", type=str, default=None, help="Name to save images under.")
     parser.add_argument("--output_dir", type=str, default="output/", help="Directory to save output images in.")
     # fmt: on
@@ -346,13 +342,17 @@ def main(args):
 
     width, height = [int(v) for v in args.size.split(",")]
 
-    if args.stretched_size is not None:
+    if args.stretch_size is not None:
         stretched_size = tuple(int(v) for v in args.stretch_size.split(","))
     else:
         stretched_size = None
 
-    model = get_rudalle_model("Malevich", pretrained=True, fp16=True, device=device, cache_dir="modelzoo/")
-    if args.checkpoint is not None:
+    if args.checkpoint is None:
+        args.checkpoint = "Malevich"
+    if args.checkpoint in list(MODELS.keys()):
+        model = get_rudalle_model(args.checkpoint, pretrained=True, fp16=True, device=device, cache_dir="modelzoo/")
+    else:
+        model = get_rudalle_model("Malevich", pretrained=True, fp16=True, device=device, cache_dir="modelzoo/")
         model.load_state_dict(torch.load(args.checkpoint))
         print(f"Loaded from {args.checkpoint}")
 
@@ -371,7 +371,7 @@ def main(args):
         model_name=output_name,
         input_text=args.input_text,
         num_outputs=args.num_outputs,
-        batch_size=args.inference_batch_size,
+        batch_size=args.batch_size,
         height=height,
         width=width,
         stretched_size=stretched_size,

@@ -19,9 +19,14 @@ from transformers import AdamW, AutoModelForSeq2SeqLM, MarianTokenizer
 sys.path.append("maua/submodules/ru_dalle")
 sys.path.append("maua/submodules/VQGAN")
 from rudalle import get_rudalle_model, get_tokenizer, get_vae
+from rudalle.dalle import MODELS
 from rudalle.dalle.fp16 import FP16Module
 from rudalle.dalle.model import DalleModel
 from rudalle.dalle.utils import exists, is_empty
+
+from . import SURREALIST_XL_DICT
+
+MODELS.update({"Surrealist_XL": SURREALIST_XL_DICT})
 
 
 def infiniter(dataloader):
@@ -285,7 +290,7 @@ def finetune(
     checkpoint: Optional[Union[str, Path]] = None,
     save_dir="modelzoo/",
 ) -> Tuple[Union[FP16Module, DalleModel], Optional[Tuple[int, int]]]:
-    """Finetune a RuDALL-E model on a set of images (and possibly captions).
+    f"""Finetune a RuDALL-E model on a set of images (and possibly captions).
 
     Args:
         images (List[Union[str, Path, Image.Image]]): List of PIL.Images or image files to finetune on
@@ -299,7 +304,7 @@ def finetune(
         stretch (bool, optional): Squash images down to fixed size for training and stretch back to original size after sampling. This can significantly improve training/sampling time while still yielding good results. All training images should have the same aspect ratio. Defaults to False.
         device (torch.device, optional): The device to train on, using 'cpu' will take a long time!. Defaults to torch.device("cuda" if torch.cuda.is_available() else "cpu").
         low_memory (bool, optional): Enable if you have less than 16 GB of (V)RAM to use gradient checkpointing (slower but more memory efficient). Defaults to False.
-        checkpoint (Optional[Union[str, Path]], optional): Checkpoint to resume from. Defaults to official Malevich checkpoint. Defaults to None.
+        checkpoint (Optional[Union[str, Path]], optional): Checkpoint to resume from. Either a path to a trained RuDALL-E checkpoint or one of {list(MODELS.keys())}.
         save_dir (str, optional): Directory to save finetuned checkpoints in. Defaults to "modelzoo/".
 
     Returns:
@@ -323,8 +328,12 @@ def finetune(
         new_short, new_long = requested_new_short, int(requested_new_short * long / short)
         stretched_size = (new_short, new_long) if w <= h else (new_long, new_short)
 
-    model = get_rudalle_model("Malevich", pretrained=True, fp16=True, device=device, cache_dir="modelzoo/")
-    if checkpoint is not None:
+    if checkpoint is None:
+        checkpoint = "Malevich"
+    if checkpoint in list(MODELS.keys()):
+        model = get_rudalle_model(checkpoint, pretrained=True, fp16=True, device=device, cache_dir="modelzoo/")
+    else:
+        model = get_rudalle_model("Malevich", pretrained=True, fp16=True, device=device, cache_dir="modelzoo/")
         model.load_state_dict(torch.load(checkpoint))
         print(f"Loaded from {checkpoint}")
 
@@ -378,7 +387,7 @@ def argument_parser():
     parser.add_argument("--top_p", type=float, default=0.999, help="Effects how closely sampled images match training data. Lower values might give higher quality images at the cost of variation. A good range is between 0.9 and 0.999.")
     parser.add_argument("--device", type=str, default="cuda:0", help="The device to train on, using 'cpu' will take a long time!")
     parser.add_argument("--low_memory", action="store_true", help="Enable if you have less than 16 GB of (V)RAM to use gradient checkpointing (slower but more memory efficient)")
-    parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint to resume from. Defaults to official Malevich checkpoint.")
+    parser.add_argument("--checkpoint", type=str, default=None, help=f"Checkpoint to resume from. Either a path to a trained RuDALL-E checkpoint or one of {list(MODELS.keys())}.")
     parser.add_argument("--save_dir", type=str, default="modelzoo/", help="Directory to save finetuned checkpoints in.")
     parser.add_argument("--model_name", type=str, default=None, help="Name for finetuned checkpoints. Will default to the name of input_dir or the first input_img.")
     parser.add_argument("--output_dir", type=str, default="output/", help="Directory to save output images in.")

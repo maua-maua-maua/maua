@@ -33,7 +33,7 @@ Currently installation has only been tested on a Ubuntu 20.04 machine with NVIDI
 Use --help to find the options available
 ```bash
 python -m maua --help
-python -m maua dalle --help
+python -m maua autoregressive --help
 python -m maua diffusion v --help
 ```
 
@@ -46,7 +46,7 @@ python -m maua diffusion cfg "A street art mural of a dapper turtle with wings"
 
 Generate images by finetuning RuDALL-E on a set of images:
 ```bash
-python -m maua dalle ru finetune --input_dir /path/to/directory/of/images/
+python -m maua autoregressive ru finetune --input_dir /path/to/directory/of/images/
 ```
 
 Upscale images using RealESRGAN:
