@@ -91,4 +91,4 @@ def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
             )
         sample = model.decode_first_stage(sample)
         sample = sample.clamp(-1, 1).add(1).div(2)
-        yield sample.cpu().float()
+        yield sample.float()

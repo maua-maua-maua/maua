@@ -120,4 +120,4 @@ def upscale(images, model, scale=4, pad_size=3, seg_size=64, batch_size=256):
             img_patches, h, w = split(img, 2, pad_size, seg_size)
             larger_patches = torch.cat([model(patches) for patches in torch.split(img_patches, batch_size)])
             img = merge(larger_patches, h, w, 2, pad_size, seg_size).clamp(0, 1)
-        yield img.cpu().float()
+        yield img.float()

@@ -46,4 +46,4 @@ def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
     for img in images:
         img_L = load_image(img).to(model.device)
         img_E = model(img_L)
-        yield img_E.cpu().float()
+        yield img_E.float()

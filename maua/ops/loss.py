@@ -95,6 +95,10 @@ def range_loss(input):
     return (input - input.clamp(-1, 1)).pow(2).mean([1, 2, 3])
 
 
+def saturation_loss(input):
+    return torch.abs(input - input.clamp(-1, 1)).mean([1, 2, 3])
+
+
 class ReplaceGrad(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x_forward, x_backward):

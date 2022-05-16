@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
+from resize_right import resize
 
 
 def original_colors(content, generated):
@@ -36,15 +37,15 @@ def random_cutouts(input, cut_size=224, cutn=32, cut_pow=1.0):
     # 1/4 of cutouts cover the full image (global structure)
     for offsety, offsetx in zip(tops, lefts):
         cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
-        cutouts.append(F.adaptive_avg_pool2d(cutout, cut_size))
+        cutouts.append(resize(cutout, out_shape=(cut_size, cut_size)))
 
     # 3/4 of cutouts are random of different zoom ins
     for _ in range(cutn - len(cutouts)):
-        size = int(torch.rand([]) ** cut_pow * (max_size - min_size) + min_size)
+        size = (torch.rand([]) ** cut_pow * max_size).clamp(min_size, max_size).round().long().item()
         loc = torch.randint(0, (sideX - size + 1) * (sideY - size + 1), ())
         offsety, offsetx = torch.div(loc, (sideX - size + 1), rounding_mode="floor"), loc % (sideX - size + 1)
         cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
-        cutouts.append(F.adaptive_avg_pool2d(cutout, cut_size))
+        cutouts.append(resize(cutout, out_shape=(cut_size, cut_size)))
 
     return torch.cat(cutouts)
 

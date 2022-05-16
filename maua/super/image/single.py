@@ -35,6 +35,7 @@ MODEL_MODULES = {
 }
 MODEL_NAMES = list(MODEL_MODULES.keys())
 
+
 @torch.inference_mode()
 def upscale(
     images, model_name, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -55,7 +56,7 @@ def main(args):
         torch.device(args.device),
     )
     for img, path in tqdm(zip(module.upscale(args.images, model), args.images), total=len(args.images)):
-        im = tensor2img(img)
+        im = tensor2img(img.cpu().float())
         if args.postdownsample > 1:
             im = im.resize((im.size[0] // args.postdownsample, im.size[1] // args.postdownsample))
         im.save(f"{args.out_dir}/{Path(path).stem}_{args.model_name}.png")
