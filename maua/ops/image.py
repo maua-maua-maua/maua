@@ -5,8 +5,24 @@ import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
+from medpy.filter.noise import immerkaer as immerkaer_np
 from PIL import Image
 from resize_right import resize
+
+
+def immerkaer(image_batch):  # TODO translate to pytorch
+    sigmas = torch.tensor([immerkaer_np(image.permute(1, 2, 0).cpu().numpy()) for image in image_batch])
+    return sigmas.to(image_batch)
+
+
+def local_std(im, ks=9):
+    r = ks // 2
+    im = F.pad(im, (r, r, r, r), mode="reflect")
+    kernel = torch.ones((1, 1, ks, ks), device=im.device, dtype=im.dtype).tile(1, im.shape[1], 1, 1)
+    s = F.conv2d(im, kernel)
+    s2 = F.conv2d(im**2, kernel)
+    ns = F.conv2d(torch.ones_like(im), kernel)
+    return torch.sqrt((s2 - s**2 / ns) / ns)
 
 
 def original_colors(content, generated):
@@ -210,7 +226,7 @@ def unsharp_mask(img, ks=(7, 7), sigma=1.0, amount=1, thresh=0.25):
     return sharpened
 
 
-def normalize(img):
+def normalize_np(img):
     min_val = np.min(img.ravel())
     max_val = np.max(img.ravel())
     out = (img.astype("float") - min_val) / (max_val - min_val)
@@ -222,7 +238,7 @@ def positive(x):
 
 
 def blurriness_lbp(im_gray, ks, thresh):
-    I = normalize(im_gray)
+    I = normalize_np(im_gray)
     pt = cv2.copyMakeBorder(I, 1, 1, 1, 1, cv2.BORDER_REPLICATE)
 
     right, left, above, below = pt[1:-1, 2:], pt[1:-1, :-2], pt[:-2, 1:-1], pt[2:, 1:-1]

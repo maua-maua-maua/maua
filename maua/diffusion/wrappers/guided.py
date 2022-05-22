@@ -215,7 +215,7 @@ class GuidedDiffusion(DiffusionWrapper):
         timesteps=100,
         model_checkpoint="uncondImageNet512",
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-        ddim_eta=0.3,
+        ddim_eta=0,
         plms_order=2,
         fast=True,
     ):
@@ -244,16 +244,24 @@ class GuidedDiffusion(DiffusionWrapper):
 
     @torch.no_grad()
     def sample(
-        self, img, prompts, start_step, n_steps, model_kwargs={}, randomize_class=False, verbose=True, q_sample=False
+        self,
+        img,
+        prompts,
+        start_step,
+        n_steps,
+        model_kwargs={},
+        randomize_class=False,
+        verbose=True,
+        q_sample=None,
+        noise=None,
     ):
         self.conditioning.set_targets(prompts)
 
-        if start_step == n_steps or q_sample:
+        if q_sample is None:
+            q_sample = start_step
+        if q_sample > 0:
             t = torch.ones([img.shape[0]], device=self.device, dtype=torch.long)
-            if q_sample == "half":
-                img = self.diffusion.q_sample(img, t * (start_step // 2))
-            else:
-                img = self.diffusion.q_sample(img, t * start_step - 1)
+            img = self.diffusion.q_sample(img, t * start_step, noise)
 
         steps = range(start_step - 1, start_step - n_steps - 1, -1)
         if verbose:

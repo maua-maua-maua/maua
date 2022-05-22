@@ -6,6 +6,7 @@ import lpips
 import numpy as np
 import torch
 from PIL import Image
+from torch.nn.functional import l1_loss
 from torchvision.transforms import Normalize
 from torchvision.transforms.functional import to_tensor
 
@@ -168,7 +169,7 @@ class LPIPSGrads(GradModule):
 
     def forward(self, img, t):
         if hasattr(self, "target"):
-            loss = self.lpips_model(resample(img, 512), resample(self.target, 512)).sum() * self.scale
+            loss = self.lpips_model(resample(img, 256), resample(self.target, 256)).sum() * self.scale
             grad = torch.autograd.grad(loss, img)[0]
         else:
             grad = torch.zeros_like(img)
@@ -201,13 +202,22 @@ class GradientGuidedConditioning(torch.nn.Module):
             fac = self.sqrt_one_minus_alphas_cumprod[t].reshape(-1, 1, 1, 1)
             img = out["pred_xstart"] * fac + x * (1 - fac)
 
-            print(tv_loss(img), range_loss(img), range_loss(out["pred_xstart"]))
-
             img_grad = torch.zeros_like(img)
             for grad_mod in self.grad_modules:
                 img_grad += grad_mod(img, ot)
 
             grad = -torch.autograd.grad(img, x, img_grad)[0]
+
+            print(
+                tv_loss(img).item(),
+                range_loss(img).item(),
+                img.min().item(),
+                img.mean().item(),
+                img.max().item(),
+                grad.min().item(),
+                grad.mean().item(),
+                grad.max().item(),
+            )
 
         return grad
 

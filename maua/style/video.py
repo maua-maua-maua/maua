@@ -53,7 +53,7 @@ def flow_warp_map(raw_flow: np.ndarray, size: Union[int, Tuple[int, int]]) -> to
 
 
 @torch.inference_mode()
-def preprocess_optical_flow(video_file, flow_model, smooth=1.5, consistency="magnitude", debug_optical_flow=False):
+def preprocess_optical_flow(video_file, flow_model, smooth=0, consistency="full", debug_optical_flow=False):
     frf = f"workspace/{Path(video_file).stem}_content.npy"
     fwf = f"workspace/{Path(video_file).stem}_forward_flow.npy"
     bkf = f"workspace/{Path(video_file).stem}_backward_flow.npy"
@@ -79,8 +79,8 @@ def preprocess_optical_flow(video_file, flow_model, smooth=1.5, consistency="mag
     frames = np.load(frf, mmap_mode="r")
 
     if smooth != 0:
-        forward = gaussian_filter(forward, [smooth, 0, 0, 0])
-        backward = gaussian_filter(backward, [smooth, 0, 0, 0])
+        forward = gaussian_filter(forward, [smooth, 0, 0, 0], mode="wrap")
+        backward = gaussian_filter(backward, [smooth, 0, 0, 0], mode="wrap")
 
     if not os.path.exists(rlf):
         with NpyFile(rlf) as reliable:
@@ -247,7 +247,7 @@ def transfer(
                     curr_frame = resample(torch.from_numpy(frames[[f_n]].copy()).to(device), (h, w))
                     prev_frame = resample(torch.from_numpy(frames[[(f_n - d) % len(frames)]].copy()).to(device), (h, w))
 
-                    using_blending = blend_factor > 0 and 1 < p_n < n_passes - 1
+                    using_blending = blend_factor > 0 and 0 < p_n < n_passes - 1
                     using_temporal_loss = temporal_weight > 0 and p_n > temporal_loss_after
                     if using_blending or using_temporal_loss or init_type == "prev_warped":
                         flow_map = flow_warp_map((forward if d == 1 else backward)[f_n], (h, w)).to(device)
