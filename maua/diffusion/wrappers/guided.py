@@ -260,8 +260,8 @@ class GuidedDiffusion(DiffusionWrapper):
         if q_sample is None:
             q_sample = start_step
         if q_sample > 0:
-            t = torch.ones([img.shape[0]], device=self.device, dtype=torch.long)
-            img = self.diffusion.q_sample(img, t * start_step, noise)
+            t = torch.ones([img.shape[0]], device=self.device, dtype=torch.long) * q_sample - 1
+            img = self.diffusion.q_sample(img, t, noise)
 
         steps = range(start_step - 1, start_step - n_steps - 1, -1)
         if verbose:
