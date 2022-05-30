@@ -8,7 +8,7 @@ import torch
 from PIL import Image
 from torch.nn.functional import l1_loss
 from torchvision.transforms import Normalize
-from torchvision.transforms.functional import to_tensor
+from torchvision.transforms.functional import to_pil_image, to_tensor
 
 from ..ops.image import resample
 from ..ops.loss import range_loss, spherical_dist_loss, tv_loss
@@ -177,14 +177,20 @@ class LPIPSGrads(GradModule):
 
 
 class GradientGuidedConditioning(torch.nn.Module):
-    def __init__(self, diffusion, model, grad_modules):
+    def __init__(self, diffusion, model, grad_modules, fast=True):
         super().__init__()
-        self.grad_modules = torch.nn.ModuleList(grad_modules)
+        self.fast = fast
+        if self.fast:
+            self.model = model
+        else:
+            self.model = partial(diffusion.p_mean_variance, model=model, clip_denoised=False)
 
-        self.p_mean_variance = partial(diffusion.p_mean_variance, model=model, clip_denoised=False)
+        self.grad_modules = torch.nn.ModuleList(grad_modules)
         self.timestep_map = diffusion.timestep_map
 
+        sqrt_alphas_cumprod = torch.from_numpy(diffusion.sqrt_alphas_cumprod).float()
         sqrt_one_minus_alphas_cumprod = torch.from_numpy(diffusion.sqrt_one_minus_alphas_cumprod).float()
+        self.register_buffer("sqrt_alphas_cumprod", sqrt_alphas_cumprod)
         self.register_buffer("sqrt_one_minus_alphas_cumprod", sqrt_one_minus_alphas_cumprod)
 
     def set_targets(self, prompts):
@@ -198,59 +204,16 @@ class GradientGuidedConditioning(torch.nn.Module):
         with torch.enable_grad():
             x = x.detach().requires_grad_()
 
-            out = self.p_mean_variance(x=x, t=t, model_kwargs={"y": y})
-            fac = self.sqrt_one_minus_alphas_cumprod[t].reshape(-1, 1, 1, 1)
-            img = out["pred_xstart"] * fac + x * (1 - fac)
-
-            img_grad = torch.zeros_like(img)
-            for grad_mod in self.grad_modules:
-                img_grad += grad_mod(img, ot)
-
-            grad = -torch.autograd.grad(img, x, img_grad)[0]
-
-            print(
-                tv_loss(img).item(),
-                range_loss(img).item(),
-                img.min().item(),
-                img.mean().item(),
-                img.max().item(),
-                grad.min().item(),
-                grad.mean().item(),
-                grad.max().item(),
-            )
-
-        return grad
-
-
-class FastGradientGuidedConditioning(torch.nn.Module):
-    def __init__(self, diffusion, model, grad_modules):
-        super().__init__()
-        self.grad_modules = torch.nn.ModuleList(grad_modules)
-
-        self.model = model
-        self.timestep_map = diffusion.timestep_map
-
-        sqrt_alphas_cumprod = torch.from_numpy(diffusion.sqrt_alphas_cumprod).float()
-        sqrt_one_minus_alphas_cumprod = torch.from_numpy(diffusion.sqrt_one_minus_alphas_cumprod).float()
-        self.register_buffer("sqrt_alphas_cumprod", sqrt_alphas_cumprod)
-        self.register_buffer("sqrt_one_minus_alphas_cumprod", sqrt_one_minus_alphas_cumprod)
-
-    def set_targets(self, prompts):
-        for grad_module in self.grad_modules:
-            grad_module.set_targets(prompts)
-
-    def forward(self, x, t, y=None):
-        ot = t.clone().long()
-        t = torch.tensor([self.timestep_map.index(t) for t in t.long()], device=x.device, dtype=torch.long)
-
-        with torch.enable_grad():
-            x = x.detach().requires_grad_()
-
-            alpha = self.sqrt_alphas_cumprod[t]
-            sigma = self.sqrt_one_minus_alphas_cumprod[t]
-            cosine_t = torch.atan2(sigma, alpha) * 2 / torch.pi
-            out = self.model(x, cosine_t).pred
-            img = out * sigma + x * (1 - sigma)
+            if self.fast:
+                alpha = self.sqrt_alphas_cumprod[t]
+                sigma = self.sqrt_one_minus_alphas_cumprod[t]
+                cosine_t = torch.atan2(sigma, alpha) * 2 / torch.pi
+                out = self.model(x, cosine_t).pred
+                img = out * sigma + x * (1 - sigma)
+            else:
+                out = self.model(x=x, t=t, model_kwargs={"y": y})
+                fac = self.sqrt_one_minus_alphas_cumprod[t].reshape(-1, 1, 1, 1)
+                img = out["pred_xstart"] * fac + x * (1 - fac)
 
             img_grad = torch.zeros_like(img)
             for grad_mod in self.grad_modules:

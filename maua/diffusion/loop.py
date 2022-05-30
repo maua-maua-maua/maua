@@ -3,9 +3,9 @@ import shutil
 from pathlib import Path
 from uuid import uuid4
 
-from kornia.filters.unsharp import unsharp_mask
 import numpy as np
 import torch
+from kornia.filters.unsharp import unsharp_mask
 from npy_append_array import NpyAppendArray as NpyFile
 from resize_right import resize
 from torch.nn.functional import grid_sample
@@ -34,23 +34,27 @@ if __name__ == "__main__":
     with torch.no_grad():
         W, H = 512, 512
         timesteps = 25
-        skip = 0.3
+        skip = 10 / 25
         text = "an epic illustration of a futuristic city made of magical runes and mathematical symbols, grayscale pen ink illustration"
         init = "/home/hans/modelzoo/diffusionGAN/denoising/take0/meer netsj interps/_diffusionGAN_interpolation_denoising_epoch82_seed48865_5065ae.mp4"
-        blend = 3
-        consistency_trust = 0.5
+        blend = 1
+        consistency_trust = 1
         noise_smooth = 1
-        sharpness = 0
+        blend_every = 1
+        fps = 12
+        continue_previous = False  # not working yet
 
         W, H = round64(W), round64(H)
         n_steps = round((1 - skip) * timesteps)
-        out_name = f"{text.replace(' ','_')}_{str(uuid4())[:6]}"
+        out_name = f"{text.replace(' ','_')}"
         if init is not None:
             out_name = f"{Path(init).stem}_{out_name}"
-
         prev_frame_file = f"workspace/{out_name}_frames_prev.npy"
         next_frame_file = f"workspace/{out_name}_frames_next.npy"
-        shutil.rmtree(prev_frame_file, ignore_errors=True)
+        out_name += f"_{str(uuid4())[:6]}"
+
+        if not continue_previous:
+            shutil.rmtree(prev_frame_file, ignore_errors=True)
         shutil.rmtree(next_frame_file, ignore_errors=True)
 
         content, forward, backward, reliable = preprocess_optical_flow(init, get_flow_model(), smooth=2)
@@ -58,7 +62,7 @@ if __name__ == "__main__":
 
         diffusion = GuidedDiffusion(
             [
-                CLIPGrads(scale=8000),
+                CLIPGrads(scale=6500),
                 LPIPSGrads(scale=1000),
                 LossGrads(tv_loss, scale=60),
                 LossGrads(range_loss, scale=75),
@@ -73,7 +77,7 @@ if __name__ == "__main__":
 
         d = 1
         with tqdm(total=n_steps * N) as progress:
-            for step in range(n_steps):
+            for step in range(0, n_steps, blend_every):
                 progress.set_description(f"Step {step + 1} / {n_steps}...")
 
                 if os.path.exists(prev_frame_file):
@@ -81,10 +85,16 @@ if __name__ == "__main__":
                 else:
                     frames = content
 
-                sigma = diffusion.diffusion.sqrt_one_minus_alphas_cumprod[n_steps - step - 1]
-                next_sigma = diffusion.diffusion.sqrt_one_minus_alphas_cumprod[max(0, n_steps - step - 2)]
-                alpha = diffusion.diffusion.sqrt_alphas_cumprod[n_steps - step - 1]
-                next_alpha = diffusion.diffusion.sqrt_alphas_cumprod[max(0, n_steps - step - 2)]
+                schedule_step = n_steps - step - 1
+                sigma = diffusion.diffusion.sqrt_one_minus_alphas_cumprod[schedule_step]
+                alpha = diffusion.diffusion.sqrt_alphas_cumprod[schedule_step]
+
+                next_schedule_step = schedule_step - blend_every
+                if next_schedule_step >= 0:
+                    next_sigma = diffusion.diffusion.sqrt_one_minus_alphas_cumprod[next_schedule_step]
+                    next_alpha = diffusion.diffusion.sqrt_alphas_cumprod[next_schedule_step]
+                else:
+                    next_sigma, next_alpha = 0, 1
 
                 with NpyFile(next_frame_file) as styled:
                     frame_range = np.arange(N) if d > 0 else np.flip(np.arange(N))
@@ -92,27 +102,21 @@ if __name__ == "__main__":
                     for f_i, f_n in enumerate(frame_range):
                         init_img = load_from_memmap(frames, f_n)
 
-                        if blend > 0 and step < n_steps - 1:
+                        if blend > 0:
                             if step > 0:
-                                init_img = init_img - sigma * noise[[f_n]]
-                            init_img /= alpha if step > 0 else 1
-
-                            if sharpness:
-                                init_img = unsharp_mask(init_img, (5, 5), (sharpness, sharpness)).clamp(
-                                    init_img.min(), init_img.max()
-                                )
+                                init_img -= sigma * noise[[f_n]]
+                                init_img /= alpha
 
                             prev_img = load_from_memmap(frames, (f_n - d) % N) if f_i == 0 else out_img
-                            if step == 0 and f_i == 0:
-                                pass
-                            else:
-                                prev_img = prev_img - (sigma if f_i == 0 else next_sigma) * noise[(f_n - d) % N]
-                            prev_img /= (alpha if step > 0 else 1) if f_i == 0 else next_alpha
+                            if not (step == 0 and f_i == 0):
+                                prev_img -= (sigma if f_i == 0 else next_sigma) * noise[(f_n - d) % N]
+                                prev_img /= alpha if f_i == 0 else next_alpha
 
                             flow_map = flow_warp_map((forward if d == 1 else backward)[f_n], (H, W)).cuda()
                             prev_warp = grid_sample(prev_img, flow_map, padding_mode="reflection", align_corners=False)
                             flow_mask = load_from_memmap(reliable, f_n).add(1).div(2)
-                            flow_mask = (1 - consistency_trust) + flow_mask * consistency_trust
+                            flow_mask *= consistency_trust
+                            flow_mask += 1 - consistency_trust
                             flow_mask *= blend
                             init_img += flow_mask * prev_warp
                             init_img /= 1 + flow_mask
@@ -121,26 +125,24 @@ if __name__ == "__main__":
                             init_img,
                             prompts=[TextPrompt(text), ContentPrompt(load_from_memmap(content, f_n))],
                             start_step=n_steps - step,
-                            n_steps=1,
+                            n_steps=blend_every,
                             verbose=False,
-                            # q_sample=n_steps - step - 1,
                             noise=noise[[f_n]],
                         )
 
                         styled.append(out_img.add(1).div(2).cpu().contiguous().numpy())
 
-                        progress.update()
+                        progress.update(blend_every)
 
                 noise = noise[frame_range]  # rotate noise to match frames
                 d = -d  # reverse direction of flow weighting
 
-                if (step + 1) % 1 == 0:
-                    # TODO more memory efficient to load incrementally with VideoWriter instead of write_video
-                    new_frames = torch.from_numpy(np.load(next_frame_file)).mul(2).sub(1)
-                    denoised_frames = new_frames - sigma * noise.cpu()
-                    denoised_frames = denoised_frames.div(next_alpha).add(1).div(2)
-                    write_video(denoised_frames, f"output/{out_name}_{step + 1}.mp4", fps=12)
+                # TODO more memory efficient to load incrementally with VideoWriter instead of write_video
+                new_frames = torch.from_numpy(np.load(next_frame_file)).mul(2).sub(1)
+                denoised_frames = new_frames - next_sigma * noise.cpu()
+                denoised_frames = denoised_frames.div(next_alpha).add(1).div(2)
+                write_video(denoised_frames, f"output/{out_name}_{step + 1}.mp4", fps=fps)
 
                 shutil.move(next_frame_file, prev_frame_file)
 
-        write_video(np.clip(np.load(prev_frame_file), 0, 1), f"output/{out_name}.mp4", fps=12)
+        write_video(np.clip(np.load(prev_frame_file), 0, 1), f"output/{out_name}.mp4", fps=fps)

@@ -7,7 +7,7 @@ import torch
 from tqdm import tqdm
 
 from ...utility import download
-from ..conditioning import FastGradientGuidedConditioning, GradientGuidedConditioning
+from ..conditioning import GradientGuidedConditioning
 from .base import DiffusionWrapper
 
 sys.path += ["maua/submodules/guided_diffusion"]
@@ -225,8 +225,8 @@ class GuidedDiffusion(DiffusionWrapper):
             timestep_respacing=f"ddim{timesteps}" if sampler == "ddim" else str(timesteps),
             use_secondary=fast,
         )
-        self.conditioning = (FastGradientGuidedConditioning if fast else GradientGuidedConditioning)(
-            self.diffusion, secondary_model if fast else self.model, grad_modules
+        self.conditioning = GradientGuidedConditioning(
+            self.diffusion, secondary_model if fast else self.model, grad_modules, fast=fast
         )
 
         if sampler == "p":
