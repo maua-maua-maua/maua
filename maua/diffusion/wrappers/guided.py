@@ -217,16 +217,16 @@ class GuidedDiffusion(DiffusionWrapper):
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         ddim_eta=0,
         plms_order=2,
-        fast=True,
+        speed="fast",
     ):
         super().__init__()
         self.model, self.diffusion, secondary_model = create_models(
             checkpoint=model_checkpoint,
             timestep_respacing=f"ddim{timesteps}" if sampler == "ddim" else str(timesteps),
-            use_secondary=fast,
+            use_secondary=speed == "fast",
         )
         self.conditioning = GradientGuidedConditioning(
-            self.diffusion, secondary_model if fast else self.model, grad_modules, fast=fast
+            self.diffusion, secondary_model if speed == "fast" else self.model, grad_modules, speed=speed
         )
 
         if sampler == "p":
@@ -255,7 +255,7 @@ class GuidedDiffusion(DiffusionWrapper):
         q_sample=None,
         noise=None,
     ):
-        self.conditioning.set_targets(prompts)
+        self.conditioning.set_targets(prompts, noise)
 
         if q_sample is None:
             q_sample = start_step

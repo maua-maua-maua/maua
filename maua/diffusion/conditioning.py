@@ -177,10 +177,12 @@ class LPIPSGrads(GradModule):
 
 
 class GradientGuidedConditioning(torch.nn.Module):
-    def __init__(self, diffusion, model, grad_modules, fast=True):
+    def __init__(self, diffusion, model, grad_modules, speed="fast"):
         super().__init__()
-        self.fast = fast
-        if self.fast:
+        self.speed = speed
+        if speed == "hyper":
+            pass
+        elif speed == "fast":
             self.model = model
         else:
             self.model = partial(diffusion.p_mean_variance, model=model, clip_denoised=False)
@@ -193,7 +195,8 @@ class GradientGuidedConditioning(torch.nn.Module):
         self.register_buffer("sqrt_alphas_cumprod", sqrt_alphas_cumprod)
         self.register_buffer("sqrt_one_minus_alphas_cumprod", sqrt_one_minus_alphas_cumprod)
 
-    def set_targets(self, prompts):
+    def set_targets(self, prompts, noise):
+        self.noise = noise
         for grad_module in self.grad_modules:
             grad_module.set_targets(prompts)
 
@@ -204,21 +207,35 @@ class GradientGuidedConditioning(torch.nn.Module):
         with torch.enable_grad():
             x = x.detach().requires_grad_()
 
-            if self.fast:
-                alpha = self.sqrt_alphas_cumprod[t]
-                sigma = self.sqrt_one_minus_alphas_cumprod[t]
+            alpha = self.sqrt_alphas_cumprod[t]
+            sigma = self.sqrt_one_minus_alphas_cumprod[t]
+
+            if torch.isnan(x).any():
+                print("x NaN")
+
+            if self.speed == "hyper":
+                img = (x - sigma * self.noise).div(alpha)
+            elif self.speed == "fast":
                 cosine_t = torch.atan2(sigma, alpha) * 2 / torch.pi
                 out = self.model(x, cosine_t).pred
                 img = out * sigma + x * (1 - sigma)
             else:
-                out = self.model(x=x, t=t, model_kwargs={"y": y})
-                fac = self.sqrt_one_minus_alphas_cumprod[t].reshape(-1, 1, 1, 1)
-                img = out["pred_xstart"] * fac + x * (1 - fac)
+                out = self.model(x=x, t=t, model_kwargs={"y": y})["pred_xstart"]
+                img = out * sigma + x * (1 - sigma)
+
+            if torch.isnan(img).any():
+                print("img NaN")
 
             img_grad = torch.zeros_like(img)
             for grad_mod in self.grad_modules:
                 img_grad += grad_mod(img, ot)
 
-            grad = -torch.autograd.grad(img, x, img_grad)[0]
+                if torch.isnan(img_grad).any():
+                    print(grad_mod.__class__.__name__, "NaN")
+
+            if torch.isnan(img_grad).any():
+                grad = torch.zeros_like(img)
+            else:
+                grad = -torch.autograd.grad(img, x, img_grad)[0]
 
         return grad

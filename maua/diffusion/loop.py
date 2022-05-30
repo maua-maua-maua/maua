@@ -35,14 +35,19 @@ if __name__ == "__main__":
         W, H = 512, 512
         timesteps = 25
         skip = 10 / 25
-        text = "an epic illustration of a futuristic city made of magical runes and mathematical symbols, grayscale pen ink illustration"
+        text = "a beautiful detailed ink illustration of a futuristic city skyline covered in irridescent windows and crystal glass, neo-tokyo metropolis"
+        init = "/home/hans/datasets/video/pleated.mp4"
         init = "/home/hans/modelzoo/diffusionGAN/denoising/take0/meer netsj interps/_diffusionGAN_interpolation_denoising_epoch82_seed48865_5065ae.mp4"
         blend = 1
         consistency_trust = 1
         noise_smooth = 1
         blend_every = 1
-        fps = 12
+        fps = 18
         continue_previous = False  # not working yet
+        clip_scale = 6500
+        lpips_scale = 1000
+        diffusion_speed = "fast"
+        diffusion_sampler = "plms"
 
         W, H = round64(W), round64(H)
         n_steps = round((1 - skip) * timesteps)
@@ -53,22 +58,19 @@ if __name__ == "__main__":
         next_frame_file = f"workspace/{out_name}_frames_next.npy"
         out_name += f"_{str(uuid4())[:6]}"
 
-        if not continue_previous:
-            shutil.rmtree(prev_frame_file, ignore_errors=True)
-        shutil.rmtree(next_frame_file, ignore_errors=True)
+        if not continue_previous and os.path.exists(prev_frame_file):
+            os.remove(prev_frame_file)
+        if os.path.exists(next_frame_file):
+            os.remove(next_frame_file)
 
         content, forward, backward, reliable = preprocess_optical_flow(init, get_flow_model(), smooth=2)
         N = content.shape[0]
 
         diffusion = GuidedDiffusion(
-            [
-                CLIPGrads(scale=6500),
-                LPIPSGrads(scale=1000),
-                LossGrads(tv_loss, scale=60),
-                LossGrads(range_loss, scale=75),
-            ],
-            sampler="plms",
+            [CLIPGrads(scale=clip_scale), LPIPSGrads(scale=lpips_scale)],
+            sampler=diffusion_sampler,
             timesteps=timesteps,
+            speed=diffusion_speed,
         )
 
         # TODO replace with lower memory version
@@ -102,15 +104,34 @@ if __name__ == "__main__":
                     for f_i, f_n in enumerate(frame_range):
                         init_img = load_from_memmap(frames, f_n)
 
+                        if torch.isnan(init_img).any():
+                            print("init_img NaN")
+
                         if blend > 0:
                             if step > 0:
                                 init_img -= sigma * noise[[f_n]]
                                 init_img /= alpha
 
+                            if torch.isnan(init_img).any():
+                                print("denoised NaN")
+
+                            # import matplotlib
+                            # matplotlib.use("TkAgg")
+                            # import matplotlib.pyplot as plt
+                            # fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+                            # ax[0].imshow(init_img.detach().add(1).div(2).squeeze().permute(1, 2, 0).cpu().numpy())
+
                             prev_img = load_from_memmap(frames, (f_n - d) % N) if f_i == 0 else out_img
+
+                            if torch.isnan(init_img).any():
+                                print("prev NaN")
+
                             if not (step == 0 and f_i == 0):
                                 prev_img -= (sigma if f_i == 0 else next_sigma) * noise[(f_n - d) % N]
                                 prev_img /= alpha if f_i == 0 else next_alpha
+
+                            if torch.isnan(init_img).any():
+                                print("prev denoised NaN")
 
                             flow_map = flow_warp_map((forward if d == 1 else backward)[f_n], (H, W)).cuda()
                             prev_warp = grid_sample(prev_img, flow_map, padding_mode="reflection", align_corners=False)
@@ -118,8 +139,20 @@ if __name__ == "__main__":
                             flow_mask *= consistency_trust
                             flow_mask += 1 - consistency_trust
                             flow_mask *= blend
+
+                            if torch.isnan(flow_mask).any():
+                                print("flow_mask NaN")
+
                             init_img += flow_mask * prev_warp
                             init_img /= 1 + flow_mask
+
+                            if torch.isnan(init_img).any():
+                                print("init_img NaN")
+
+                            # ax[1].imshow(init_img.detach().add(1).div(2).squeeze().permute(1, 2, 0).cpu().numpy())
+                            # [a.axis("off") for a in ax]
+                            # plt.tight_layout()
+                            # plt.show()
 
                         out_img = diffusion.sample(
                             init_img,
@@ -129,6 +162,9 @@ if __name__ == "__main__":
                             verbose=False,
                             noise=noise[[f_n]],
                         )
+
+                        if torch.isnan(out_img).any():
+                            print("out_img NaN")
 
                         styled.append(out_img.add(1).div(2).cpu().contiguous().numpy())
 
