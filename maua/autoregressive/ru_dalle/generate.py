@@ -1,3 +1,4 @@
+import os
 import sys
 from functools import partial
 from pathlib import Path
@@ -12,8 +13,8 @@ from PIL import Image
 from tqdm import tqdm
 from transformers import AutoModelForSeq2SeqLM, MarianTokenizer
 
-sys.path.append("maua/submodules/ru_dalle")
-sys.path.append("maua/submodules/VQGAN")
+sys.path.append(os.path.dirname(__file__) + "/../../submodules/ru_dalle")
+sys.path.append(os.path.dirname(__file__) + "/../../submodules/VQGAN")
 from rudalle import get_realesrgan, get_rudalle_model, get_tokenizer, get_vae, utils
 from rudalle.dalle import MODELS
 from rudalle.dalle.fp16 import FP16Module

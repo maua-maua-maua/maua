@@ -21,13 +21,70 @@ from .sample import round64
 from .wrappers.guided import GuidedDiffusion
 
 
-def load_from_memmap(mmap, n):
-    tensor = torch.from_numpy(mmap[[n]].copy()).cuda()
+def load_from_memmap(mmap, idx, h, w):
+    if not isinstance(idx, (list, np.ndarray)):
+        idx = [idx]
+    tensor = torch.from_numpy(mmap[idx].copy()).cuda()
     if tensor.dim() < 4:
         tensor = tensor.unsqueeze(1)
-    if tensor.shape[2] != H or tensor.shape[3] != W:
-        tensor = resize(tensor, out_shape=(H, W))
+    if tensor.shape[2] != h or tensor.shape[3] != w:
+        tensor = resize(tensor, out_shape=(h, w))
     return tensor.mul(2).sub(1)
+
+
+def get_flow_weighted(init_img, flow_window=4):
+    if os.path.exists(next_frame_file):
+        cur_pass = np.load(next_frame_file, mmap_mode="r")
+    # print(f_n, d)
+    prevs = []
+    for f_w in range(1, flow_window + 1):
+        pidx = (f_n - d * f_w) % N
+        # print(pidx, end=" ")
+        if f_w <= f_i:
+            prev = load_from_memmap(cur_pass, -f_w, H, W)
+            # print("cur")
+            prev -= next_sigma * noise[[pidx]]
+            prev /= next_alpha
+        else:
+            prev = load_from_memmap(frames, pidx, H, W)
+            # print("prev")
+            if step > 0:
+                prev -= sigma * noise[[pidx]]
+                prev /= alpha
+        prevs.append(prev)
+    prevs = torch.cat(prevs)
+
+    if torch.isnan(prevs).any():
+        print("prevs denoised NaN")
+
+    # print(np.arange(f_n, f_n - d * flow_window, -d) % N)
+    flows = (forward if d == 1 else backward)[np.arange(f_n, f_n - d * flow_window, -d) % N]
+    flows = torch.stack([flow_warp_map(flow, (H, W)) for flow in flows]).cuda()
+
+    prev_warp_avg = torch.zeros_like(init_img)
+    for f_w in reversed(range(flow_window)):
+        # print(f_w, ":", end=" ")
+        prev_warp = prevs[[f_w]]
+        for ff in reversed(range(f_w)):
+            # print(ff, end=" ")
+            prev_warp = grid_sample(prev_warp, flows[ff], padding_mode="reflection", align_corners=False)
+            # flow_mask = load_from_memmap(reliable, ff).add(1).div(2)
+            # flow_mask *= consistency_trust
+            # flow_mask += 1 - consistency_trust
+        # print()
+        # ax[4 - f_w].imshow(prev_warp.detach().add(1).div(2).squeeze().permute(1, 2, 0).cpu().numpy())
+        prev_warp_avg += prev_warp
+    prev_warp_avg /= flow_window
+
+    flow_mask = load_from_memmap(reliable, f_n, H, W).add(1).div(2)
+    flow_mask *= consistency_trust
+    flow_mask += 1 - consistency_trust
+    flow_mask *= blend
+
+    init_img += flow_mask * prev_warp_avg
+    init_img /= 1 + flow_mask
+
+    return init_img
 
 
 if __name__ == "__main__":
@@ -36,9 +93,9 @@ if __name__ == "__main__":
         timesteps = 25
         skip = 10 / 25
         text = "a beautiful detailed ink illustration of a futuristic city skyline covered in irridescent windows and crystal glass, neo-tokyo metropolis"
+        # init = "/home/hans/modelzoo/diffusionGAN/denoising/take0/meer netsj interps/_diffusionGAN_interpolation_denoising_epoch82_seed48865_5065ae.mp4"
         init = "/home/hans/datasets/video/pleated.mp4"
-        init = "/home/hans/modelzoo/diffusionGAN/denoising/take0/meer netsj interps/_diffusionGAN_interpolation_denoising_epoch82_seed48865_5065ae.mp4"
-        blend = 1
+        blend = 4
         consistency_trust = 1
         noise_smooth = 1
         blend_every = 1
@@ -102,7 +159,7 @@ if __name__ == "__main__":
                     frame_range = np.arange(N) if d > 0 else np.flip(np.arange(N))
                     frame_range = np.roll(frame_range, np.random.randint(0, N))
                     for f_i, f_n in enumerate(frame_range):
-                        init_img = load_from_memmap(frames, f_n)
+                        init_img = load_from_memmap(frames, f_n, H, W)
 
                         if torch.isnan(init_img).any():
                             print("init_img NaN")
@@ -118,45 +175,22 @@ if __name__ == "__main__":
                             # import matplotlib
                             # matplotlib.use("TkAgg")
                             # import matplotlib.pyplot as plt
-                            # fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+                            # fig, ax = plt.subplots(1, 6, figsize=(24, 4))
                             # ax[0].imshow(init_img.detach().add(1).div(2).squeeze().permute(1, 2, 0).cpu().numpy())
 
-                            prev_img = load_from_memmap(frames, (f_n - d) % N) if f_i == 0 else out_img
-
-                            if torch.isnan(init_img).any():
-                                print("prev NaN")
-
-                            if not (step == 0 and f_i == 0):
-                                prev_img -= (sigma if f_i == 0 else next_sigma) * noise[(f_n - d) % N]
-                                prev_img /= alpha if f_i == 0 else next_alpha
-
-                            if torch.isnan(init_img).any():
-                                print("prev denoised NaN")
-
-                            flow_map = flow_warp_map((forward if d == 1 else backward)[f_n], (H, W)).cuda()
-                            prev_warp = grid_sample(prev_img, flow_map, padding_mode="reflection", align_corners=False)
-                            flow_mask = load_from_memmap(reliable, f_n).add(1).div(2)
-                            flow_mask *= consistency_trust
-                            flow_mask += 1 - consistency_trust
-                            flow_mask *= blend
-
-                            if torch.isnan(flow_mask).any():
-                                print("flow_mask NaN")
-
-                            init_img += flow_mask * prev_warp
-                            init_img /= 1 + flow_mask
+                            init_img = get_flow_weighted(init_img)
 
                             if torch.isnan(init_img).any():
                                 print("init_img NaN")
 
-                            # ax[1].imshow(init_img.detach().add(1).div(2).squeeze().permute(1, 2, 0).cpu().numpy())
+                            # ax[-1].imshow(init_img.detach().add(1).div(2).squeeze().permute(1, 2, 0).cpu().numpy())
                             # [a.axis("off") for a in ax]
                             # plt.tight_layout()
                             # plt.show()
 
                         out_img = diffusion.sample(
                             init_img,
-                            prompts=[TextPrompt(text), ContentPrompt(load_from_memmap(content, f_n))],
+                            prompts=[TextPrompt(text), ContentPrompt(load_from_memmap(content, f_n, H, W))],
                             start_step=n_steps - step,
                             n_steps=blend_every,
                             verbose=False,

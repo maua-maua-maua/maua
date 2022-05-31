@@ -10,7 +10,7 @@ from ...utility import download
 from ..conditioning import GradientGuidedConditioning
 from .base import DiffusionWrapper
 
-sys.path += ["maua/submodules/guided_diffusion"]
+sys.path += [os.path.dirname(__file__) + "/../../submodules/guided_diffusion"]
 
 from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 

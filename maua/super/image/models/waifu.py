@@ -10,7 +10,7 @@ from torchvision.transforms.functional import to_pil_image
 
 from maua.ops.tensor import load_image
 
-sys.path.append("maua/submodules/waifu2x")
+sys.path.append(os.path.dirname(__file__) + "/../../../submodules/waifu2x")
 
 from Models import CARN_V2, UpConv_7, Vgg_7, network_to_half  # , DCSCN
 
@@ -19,7 +19,7 @@ def load_model(model_name="upconv-anime-1", device=torch.device("cuda" if torch.
 
     if "upconv" in model_name:
         upconv, which, noise = model_name.split("-")
-        base_path = "maua/submodules/waifu2x/model_check_points/Upconv_7/"
+        base_path = os.path.dirname(__file__) + "/../../../submodules/waifu2x/model_check_points/Upconv_7/"
         if not os.path.exists(f"modelzoo/{which}"):
             with py7zr.SevenZipFile(f"{base_path}/{which}.7z", mode="r") as z:
                 z.extractall(path="modelzoo")
@@ -29,7 +29,7 @@ def load_model(model_name="upconv-anime-1", device=torch.device("cuda" if torch.
     # TODO seems that the scale2x models don't actually upscale?
     # elif "vgg" in model_name:
     #     vgg, which = model_name.split("-")
-    #     base_path = "maua/submodules/waifu2x/model_check_points/vgg_7/"
+    #     base_path = os.path.dirname(__file__) + "/../../../submodules/waifu2x/model_check_points/vgg_7/"
     #     if not os.path.exists(f"modelzoo/{which}"):
     #         with py7zr.SevenZipFile(f"{base_path}/{which}.7z", mode="r") as z:
     #             z.extractall(path="modelzoo")
@@ -37,7 +37,7 @@ def load_model(model_name="upconv-anime-1", device=torch.device("cuda" if torch.
     #     model.load_pre_train_weights(json_file=f"modelzoo/{which}/scale2.0x_model.json")
 
     elif model_name == "CARN":
-        base_path = "maua/submodules/waifu2x/model_check_points/CRAN_V2/"
+        base_path = os.path.dirname(__file__) + "/../../../submodules/waifu2x/model_check_points/CRAN_V2/"
         if not os.path.exists(f"modelzoo/CARN_model_checkpoint.pt"):
             with zipfile.ZipFile(f"{base_path}/CRAN_V2_02_28_2019.zip", "r") as zip_ref:
                 zip_ref.extractall("modelzoo")
@@ -68,7 +68,7 @@ def load_model(model_name="upconv-anime-1", device=torch.device("cuda" if torch.
     #         up_sampler_filters=32,
     #     )
     #     model.load_state_dict(
-    #         torch.load("maua/submodules/waifu2x/model_check_points/DCSCN/DCSCN_weights_387epos_L12_noise_1.pt")
+    #         torch.load(os.path.dirname(__file__) + "/../../../submodules/waifu2x/model_check_points/DCSCN/DCSCN_weights_387epos_L12_noise_1.pt")
     #     )
 
     model = network_to_half(model).eval().to(device)

@@ -20,7 +20,7 @@ URLS = {
 
 
 def load_model(model_name="L-DFOWMFC-GAN", device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
-    sys.path.append("maua/submodules/SwinIR")
+    sys.path.append(os.path.dirname(__file__) + "/../../../submodules/SwinIR")
     from maua.submodules.SwinIR.models.network_swinir import SwinIR
 
     model = (

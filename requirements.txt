@@ -6,6 +6,7 @@ click
 cupy-cuda113==9.6
 decord
 dill
+easydict
 effortless_config
 einops
 ffmpeg_python
@@ -46,6 +47,7 @@ pytorch_lightning
 PyYaml
 requests
 resampy
+rudalle
 scikit_learn
 scipy
 seaborn
@@ -58,7 +60,7 @@ termcolor
 timm
 torch
 torch_optimizer
-torch==1.10.1
+torch==1.11.0
 torchaudio
 torchcrepe
 torchvision

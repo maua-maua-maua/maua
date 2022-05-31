@@ -27,7 +27,7 @@ from maua.utility import download, unzip
 from PIL import Image
 from tqdm import tqdm
 
-sys.path.append("maua/submodules/rq_vae_transformer/")
+sys.path.append(os.path.dirname(__file__) + "/../submodules/rq_vae_transformer/")
 from rqvae.models import create_model
 from rqvae.txtimg_datasets.tokenizers import create_tokenizer
 from rqvae.utils.config import augment_arch_defaults, load_config

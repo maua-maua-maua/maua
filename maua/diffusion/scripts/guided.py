@@ -15,7 +15,7 @@ from maua.ops.image import random_cutouts, resample
 from maua.ops.loss import range_loss, spherical_dist_loss, tv_loss
 from maua.utility import download, fetch
 
-sys.path += ["maua/submodules/guided_diffusion"]
+sys.path += [os.path.dirname(__file__) + "/../../submodules/guided_diffusion"]
 
 from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 

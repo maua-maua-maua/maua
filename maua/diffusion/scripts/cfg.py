@@ -37,7 +37,7 @@ from maua.utility import download
 
 from .guided import parse_prompt
 
-sys.path.append("maua/submodules/v_diffusion")
+sys.path.append(os.path.dirname(__file__) + "/../../submodules/v_diffusion")
 
 from diffusion import get_model, sampling, utils
 

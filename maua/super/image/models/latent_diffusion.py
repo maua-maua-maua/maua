@@ -16,10 +16,10 @@ from maua.utility import download
 
 def load_model(model_name="latent-diffusion", device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
     for file in [
-        "maua/submodules/latent_diffusion/ldm/models/diffusion/ddim.py",
-        "maua/submodules/latent_diffusion/ldm/models/diffusion/ddpm.py",
-        "maua/submodules/latent_diffusion/ldm/modules/diffusionmodules/model.py",
-        "maua/submodules/latent_diffusion/ldm/util.py",
+        os.path.dirname(__file__) + "/../../../submodules/latent_diffusion/ldm/models/diffusion/ddim.py",
+        os.path.dirname(__file__) + "/../../../submodules/latent_diffusion/ldm/models/diffusion/ddpm.py",
+        os.path.dirname(__file__) + "/../../../submodules/latent_diffusion/ldm/modules/diffusionmodules/model.py",
+        os.path.dirname(__file__) + "/../../../submodules/latent_diffusion/ldm/util.py",
     ]:
         with open(file, "r") as f:
             txt = (
@@ -31,8 +31,8 @@ def load_model(model_name="latent-diffusion", device=torch.device("cuda" if torc
         with open(file, "w") as f:
             f.write(txt)
 
-    sys.path.append("maua/submodules/latent_diffusion")
-    sys.path.append("maua/submodules/VQGAN")
+    sys.path.append(os.path.dirname(__file__) + "/../../../submodules/latent_diffusion")
+    sys.path.append(os.path.dirname(__file__) + "/../../../submodules/VQGAN")
     from ldm.models.diffusion.ddim import DDIMSampler
     from ldm.util import instantiate_from_config
     from omegaconf import OmegaConf

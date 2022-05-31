@@ -1,18 +1,18 @@
+import os
 import sys
 from typing import List
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-
 from maua.ops.image import luminance, resample
 
 # remove shape asserts from optical flow files
 for file in [
-    "maua/submodules/unflow/run.py",
-    "maua/submodules/pwc/run.py",
-    "maua/submodules/spynet/run.py",
-    "maua/submodules/liteflownet/run.py",
+    os.path.dirname(__file__) + "/../submodules/unflow/run.py",
+    os.path.dirname(__file__) + "/../submodules/pwc/run.py",
+    os.path.dirname(__file__) + "/../submodules/spynet/run.py",
+    os.path.dirname(__file__) + "/../submodules/liteflownet/run.py",
 ]:
     with open(file, "r") as f:
         txt = f.read().replace("assert", "# assert").replace("# #", "#")

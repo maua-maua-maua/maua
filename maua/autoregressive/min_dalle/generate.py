@@ -1,3 +1,4 @@
+import os
 import sys
 
 import clip
@@ -5,9 +6,9 @@ import numpy as np
 import torch
 from PIL import Image
 
-sys.path.append("maua/submodules/minDALLE")
-from maua.submodules.minDALLE.dalle.models import Dalle
-from maua.submodules.minDALLE.dalle.utils.utils import clip_score
+sys.path.append(os.path.dirname(__file__) + "/../../submodules/minDALLE")
+from dalle.models import Dalle
+from dalle.utils.utils import clip_score
 
 
 def generate(prompt, num_candidates, top_k, top_p, device):

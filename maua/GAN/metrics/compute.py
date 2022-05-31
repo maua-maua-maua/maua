@@ -141,14 +141,14 @@ def compute(
         pbar = zip(real_loader, fake_loader)
     for real_batch, fake_batch in pbar:
         if not use_cache:
-            real_batch = real_batch.to(device)
-            fake_batch = fake_batch.squeeze().to(device)
+            real_batch = real_batch.squeeze(0).to(device)
+            fake_batch = fake_batch.squeeze(0).to(device)
             if real_batch.shape[-2:] != fake_batch.shape[-2:]:
                 real_batch = resize(real_batch, size)
-            assert len(real_batch) == len(fake_batch)
+            assert real_batch.shape[0] == fake_batch.shape[0]
             batch = torch.cat((real_batch, fake_batch))
         else:
-            batch = fake_batch.squeeze().to(device)
+            batch = fake_batch.squeeze(0).to(device)
 
         feats = extractor_model(batch).cpu()
 

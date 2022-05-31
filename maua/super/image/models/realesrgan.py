@@ -20,7 +20,7 @@ URLS = {
 
 
 def load_model(model_name="pbaylies-hr-paintings", device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
-    sys.path.append("maua/submodules/RealESRGAN")
+    sys.path.append(os.path.dirname(__file__) + "/../../../submodules/RealESRGAN")
 
     from basicsr.archs.rrdbnet_arch import RRDBNet
     from realesrgan import RealESRGANer
