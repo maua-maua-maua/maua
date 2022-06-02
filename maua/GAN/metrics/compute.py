@@ -11,6 +11,7 @@ from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torchvision.transforms.functional import to_tensor
 from tqdm import tqdm
+from resize_right import resize
 
 from .extractors import get_extractor
 from .frechet import frechet_distance
@@ -31,13 +32,6 @@ def resize_clean(x, size):
     x = [resize_single_channel(x[:, :, idx], size) for idx in range(3)]
     x = np.concatenate(x, axis=2).astype(np.float32) / 255.0
     return x
-
-
-def resize(x, size):
-    dev = x.device
-    image_np = x.permute(0, 2, 3, 1).cpu().numpy()
-    resized = torch.stack([to_tensor(resize_clean(im, size)) for im in image_np])
-    return resized.to(dev)
 
 
 class FolderImages(Dataset):
@@ -90,7 +84,7 @@ class GeneratorImages(Dataset):
 
     def __getitem__(self, index: int) -> None:
         tensor = self.G().add(1).div(2)
-        resized = resize(tensor, self.size)
+        resized = resize(tensor, out_shape=(self.size, self.size))
         return resized
 
     def __len__(self) -> int:
@@ -144,7 +138,7 @@ def compute(
             real_batch = real_batch.squeeze(0).to(device)
             fake_batch = fake_batch.squeeze(0).to(device)
             if real_batch.shape[-2:] != fake_batch.shape[-2:]:
-                real_batch = resize(real_batch, size)
+                real_batch = resize(real_batch, out_shape=(size, size))
             assert real_batch.shape[0] == fake_batch.shape[0]
             batch = torch.cat((real_batch, fake_batch))
         else:
