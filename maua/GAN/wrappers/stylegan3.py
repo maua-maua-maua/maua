@@ -1,3 +1,5 @@
+import os
+import sys
 import warnings
 from typing import Tuple
 
@@ -5,10 +7,10 @@ import numpy as np
 import torch
 from torch.nn.functional import interpolate, pad
 
+sys.path.append(os.path.dirname(__file__) + "/../../GAN/nv")
 from ..load import load_network
-from ..studio.src.models import stylegan3
-from . import MauaSynthesizer
-from .stylegan import StyleGAN, StyleGANMapper
+from ..nv.networks import stylegan3
+from .stylegan import StyleGAN, StyleGANMapper, StyleGANSynthesizer
 
 layer_multipliers = {
     1024: {0: 64, 1: 64, 2: 64, 3: 32, 4: 32, 5: 16, 6: 8, 7: 8, 8: 4, 9: 4, 10: 2, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1},
@@ -17,18 +19,14 @@ layer_multipliers = {
 }
 
 
-class StyleGAN3(StyleGAN):
-    def __init__(self, mapper, synthesizer) -> None:
-        super().__init__(mapper, synthesizer)
-        self.synthesizer.avg_shift = self.synthesizer.input.affine(self.mapper.w_avg.unsqueeze(0)).squeeze(0)
-
-
 class StyleGAN3Mapper(StyleGANMapper):
-    MappingNetwork = stylegan3.MappingNetwork
+    MapperClsFn = lambda inference: stylegan3.MappingNetwork
 
 
-class StyleGAN3Synthesizer(MauaSynthesizer):
-    def __init__(self, model_file: str, output_size: Tuple[int, int], strategy: str, layer: int) -> None:
+class StyleGAN3Synthesizer(StyleGANSynthesizer):
+    def __init__(
+        self, model_file: str, inference: bool, output_size: Tuple[int, int], strategy: str, layer: int
+    ) -> None:
         super().__init__()
 
         if model_file is None or model_file == "None":
@@ -48,28 +46,15 @@ class StyleGAN3Synthesizer(MauaSynthesizer):
         self.change_output_resolution(output_size, strategy, layer)
 
     def forward(
-        self,
-        latent_w: torch.Tensor = None,
-        latent_w_plus: torch.Tensor = None,
-        translation: torch.Tensor = None,
-        rotation: torch.Tensor = None,
+        self, latents: torch.Tensor = None, translation: torch.Tensor = None, rotation: torch.Tensor = None
     ) -> torch.Tensor:
-        if latent_w is None and latent_w_plus is None:
-            raise Exception("One of latent_w or latent_w_plus inputs must be supplied!")
-        if latent_w is not None and latent_w_plus is not None:
-            warnings.warn("Both latent_w and latent_w_plus supplied, using latent_w_plus input...")
-
-        if not (translation is None or rotation is None):
-            self.G_synth.input.transform.copy_(make_transform_mat(translation, rotation))
-        else:
+        if translation == 0 and rotation == 0:
             # stabilization trick by @RiversHaveWings and @nshepperd1
             self.G_synth.input.affine.bias.data.add_(self.avg_shift)
             self.G_synth.input.affine.weight.data.zero_()
-
-        if latent_w_plus is None:
-            latent_w_plus = torch.tile(latent_w[:, None, :], (1, self.G_synth.num_ws, 1))
-
-        return self.G_synth.forward(latent_w_plus)
+        elif not (translation is None or rotation is None):
+            self.G_synth.input.transform.copy_(make_transform_mat(translation, rotation))
+        return self.G_synth.forward(latents)
 
     def change_output_resolution(self, output_size: Tuple[int, int], strategy: str, layer: int):
         self.refresh_model_hooks()
@@ -127,3 +112,18 @@ def get_hook(G_synth, layer, size, strategy):
 
     else:
         raise Exception(f"Resize strategy not found: {strategy}")
+
+
+class StyleGAN3(StyleGAN):
+    SynthesizerCls = StyleGAN3Synthesizer
+    MapperCls = StyleGAN3Mapper
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.synthesizer.register_buffer(
+            "avg_shift", self.synthesizer.G_synth.input.affine(self.mapper.G_map.w_avg.unsqueeze(0)).squeeze(0)
+        )
+
+    def forward(self, z, c=None, truncation=1, translation=None, rotation=None):
+        w = self.mapper(z, c, truncation=truncation)
+        return self.synthesizer(w, translation=translation, rotation=rotation)

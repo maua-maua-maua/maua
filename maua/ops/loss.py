@@ -88,11 +88,15 @@ def tv_loss(input):
     input = F.pad(input, (0, 1, 0, 1), "replicate")
     x_diff = input[..., :-1, 1:] - input[..., :-1, :-1]
     y_diff = input[..., 1:, :-1] - input[..., :-1, :-1]
-    return (x_diff ** 2 + y_diff ** 2).mean([1, 2, 3]).squeeze()
+    return (x_diff**2 + y_diff**2).mean([1, 2, 3]).squeeze()
 
 
 def range_loss(input):
     return (input - input.clamp(-1, 1)).pow(2).mean([1, 2, 3])
+
+
+def saturation_loss(input):
+    return torch.abs(input - input.clamp(-1, 1)).mean([1, 2, 3])
 
 
 class ReplaceGrad(torch.autograd.Function):

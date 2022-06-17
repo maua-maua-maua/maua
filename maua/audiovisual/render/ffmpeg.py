@@ -1,6 +1,7 @@
 import torch
 from decord import VideoReader
 from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data._utils.collate import default_collate
 from tqdm import tqdm
 
 from maua.ops.video import VideoWriter
@@ -19,21 +20,34 @@ torch.jit.fuser("fuser2")
 
 
 class FFMPEG(Renderer):
-    def __init__(self, output_file, fps=24, audio_file=None, audio_offset=0, audio_duration=None, ffmpeg_preset="slow"):
+    def __init__(
+        self,
+        output_file,
+        fps=24,
+        audio_file=None,
+        audio_offset=0,
+        audio_duration=None,
+        ffmpeg_preset="medium",
+        batch_size=16,
+    ):
         super().__init__()
         self.output_file, self.fps, self.ffmpeg_preset = output_file, fps, ffmpeg_preset
         self.audio_file, self.audio_offset, self.audio_duration = audio_file, audio_offset, audio_duration
+        self.batch_size = batch_size
 
     def __call__(self, synthesizer, inputs, postprocess, fp16=True):
-        dataset = TensorDataset(*inputs.values())
 
-        def collate_fn(data):
-            return {
-                k: v.unsqueeze(0).to(self.device, dtype=torch.float16 if fp16 else torch.float32)
-                for k, v in zip(inputs.keys(), data[0])
-            }
+        dataset = TensorDataset(*(i.cpu().pin_memory(self.device) for i in inputs.values()))
 
-        loader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn)
+        def collate_fn(batch):
+            return dict(
+                zip(
+                    inputs.keys(),
+                    (b.to(self.device, dtype=torch.float16 if fp16 else torch.float32) for b in default_collate(batch)),
+                )
+            )
+
+        loader = DataLoader(dataset, batch_size=self.batch_size, collate_fn=collate_fn)
         synthesizer = synthesizer.to(self.device)
 
         if fp16:
@@ -55,9 +69,10 @@ class FFMPEG(Renderer):
             self.audio_duration,
             self.ffmpeg_preset,
         ) as video:
-            for batch in tqdm(loader):
-                frame = synthesizer(**batch).add(1).div(2)
-                frame = postprocess(frame)
-                video.write(frame)
+            for batch in tqdm(loader, desc="Rendering to file...", unit_scale=self.batch_size, unit="img"):
+                frame_batch = synthesizer(**batch).add(1).div(2)
+                frame_batch = postprocess(frame_batch)
+                for frame in frame_batch:
+                    video.write(frame[None])
 
-        return VideoReader(self.output_file)
+        # return VideoReader(self.output_file)

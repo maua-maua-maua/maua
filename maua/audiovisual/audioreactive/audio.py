@@ -1,10 +1,10 @@
 import os
-import warnings
 from pathlib import Path
 
 import joblib
 import librosa as rosa
 import torch
+import torchaudio
 from openunmix.predict import separate
 from scipy import signal
 from torchaudio.functional import resample
@@ -39,9 +39,8 @@ def load_audio(audio_file, offset=0, duration=-1, cache=True):
         + ".npy"
     )
     if cache and not os.path.exists(cache_file):
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message="PySoundFile failed. Trying audioread instead.")
-            audio, sr = rosa.load(audio_file, offset=offset, duration=duration)
+        audio, sr = torchaudio.load(audio_file)
+        audio = audio[:, int(offset * sr) : int((offset + duration) * sr)].mean(0).numpy()
         joblib.dump((audio, sr), cache_file)
     else:
         audio, sr = joblib.load(cache_file)
@@ -50,13 +49,20 @@ def load_audio(audio_file, offset=0, duration=-1, cache=True):
 
 
 @cache_to_workspace("unmixed")
-def unmixed(audio, sr, stem="all"):
-    vocals, drums, bass, other = separate(resample(audio, sr, 44100), rate=44100, niter=3, device="cpu").values()
+def unmix(audio, sr):
+    a = resample(torch.from_numpy(audio).add(1).div(2), sr, 44100).mul(2).add(-1).clamp(-1, 1)
+    vocals, drums, bass, instruments = separate(a, rate=44100, niter=3, device="cpu").values()
 
-    vocals = vocals.squeeze().mean(0).cpu().numpy()
-    drums = drums.squeeze().mean(0).cpu().numpy()
-    bass = bass.squeeze().mean(0).cpu().numpy()
-    other = other.squeeze().mean(0).cpu().numpy()
+    vocals = resample(vocals, 44100, sr).squeeze().mean(0).cpu().numpy()
+    drums = resample(drums, 44100, sr).squeeze().mean(0).cpu().numpy()
+    bass = resample(bass, 44100, sr).squeeze().mean(0).cpu().numpy()
+    instruments = resample(instruments, 44100, sr).squeeze().mean(0).cpu().numpy()
+
+    return vocals, drums, bass, instruments
+
+
+def unmixed(audio, sr, stem="all"):
+    vocals, drums, bass, instruments = unmix(audio, sr)
 
     if stem == "vocals":
         return vocals
@@ -64,10 +70,10 @@ def unmixed(audio, sr, stem="all"):
         return drums
     if stem == "bass":
         return bass
-    if stem == "other":
-        return other
+    if stem == "instruments":
+        return instruments
 
-    return vocals, drums, bass, other
+    return vocals, drums, bass, instruments
 
 
 @cache_to_workspace("spleeted")
@@ -77,24 +83,29 @@ def spleeted(audio, sr):
 
 @cache_to_workspace("harmonic")
 def harmonic(audio, sr, margin=8):
-    return rosa.effects.harmonic(y=audio, margin=margin)
+    y = rosa.effects.harmonic(y=audio, margin=margin)
+    return y
 
 
 @cache_to_workspace("percussive")
 def percussive(audio, sr, margin=8):
-    return rosa.effects.percussive(y=audio, margin=margin)
+    y = rosa.effects.percussive(y=audio, margin=margin)
+    return y
 
 
 @cache_to_workspace("low_passed")
 def low_pass(audio, sr, fmax=200, db_per_octave=12):
-    return signal.sosfilt(signal.butter(db_per_octave, fmax, "low", fs=sr, output="sos"), audio)
+    y = signal.sosfilt(signal.butter(db_per_octave, fmax, "low", fs=sr, output="sos"), audio)
+    return y
 
 
 @cache_to_workspace("high_passed")
 def high_pass(audio, sr, fmin=3000, db_per_octave=12):
-    return signal.sosfilt(signal.butter(db_per_octave, fmin, "high", fs=sr, output="sos"), audio)
+    y = signal.sosfilt(signal.butter(db_per_octave, fmin, "high", fs=sr, output="sos"), audio)
+    return y
 
 
 @cache_to_workspace("band_passed")
 def band_pass(audio, sr, fmin=200, fmax=3000, db_per_octave=12):
-    return signal.sosfilt(signal.butter(db_per_octave, [fmin, fmax], "band", fs=sr, output="sos"), audio)
+    y = signal.sosfilt(signal.butter(db_per_octave, [fmin, fmax], "band", fs=sr, output="sos"), audio)
+    return y

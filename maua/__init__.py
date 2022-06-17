@@ -1,18 +1,21 @@
 import argparse
 
-from . import dalle, diffusion, super, style
+from . import autoregressive, diffusion, style, super
 
 
 def argument_parser():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
     subparsers.add_parser(
-        "dalle", parents=[dalle.argument_parser()], help="Generate images using DALL-E", add_help=False
+        "autoregressive",
+        parents=[autoregressive.argument_parser()],
+        help="Generate images using autoregressive sampling (e.g. DALL-E)",
+        add_help=False,
     )
     subparsers.add_parser(
         "diffusion",
         parents=[diffusion.argument_parser()],
-        help="Generate images using score-matching/diffusion models",
+        help="Generate images using score-matching / denoising diffusion models",
         add_help=False,
     )
     subparsers.add_parser(

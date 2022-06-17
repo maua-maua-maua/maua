@@ -6,7 +6,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .features import chroma
+from .mir import chroma
 
 # ====================================================================================
 # ==================================== utilities =====================================

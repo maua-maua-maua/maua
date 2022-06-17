@@ -18,12 +18,12 @@ URLS = {
 
 
 def load_model(model_name="BSRGAN", device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
-    with open("maua/submodules/BSRGAN/models/network_rrdbnet.py", "r") as f:
+    with open(os.path.dirname(__file__) + "/../../../submodules/BSRGAN/models/network_rrdbnet.py", "r") as f:
         txt = f.read().replace("print", "None # print").replace("None # None #", "None #")
-    with open("maua/submodules/BSRGAN/models/network_rrdbnet.py", "w") as f:
+    with open(os.path.dirname(__file__) + "/../../../submodules/BSRGAN/models/network_rrdbnet.py", "w") as f:
         f.write(txt)
 
-    sys.path.append("maua/submodules/BSRGAN")
+    sys.path.append(os.path.dirname(__file__) + "/../../../submodules/BSRGAN")
     from maua.submodules.BSRGAN.models.network_rrdbnet import RRDBNet
 
     checkpoint = f"modelzoo/{model_name}.pth"
@@ -46,4 +46,4 @@ def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
     for img in images:
         img_L = load_image(img).to(model.device)
         img_E = model(img_L)
-        yield img_E.cpu().float()
+        yield img_E.float()

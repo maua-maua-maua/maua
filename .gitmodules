@@ -55,9 +55,21 @@
 [submodule "maua/audio"]
 	path = maua/audio
 	url = https://github.com/maua-maua-maua/audio
-[submodule "maua/GAN"]
+[submodule "maua/GAN/studio"]
 	path = maua/GAN/studio
 	url = https://github.com/maua-maua-maua/GAN
 [submodule "maua/submodules/RIFE"]
 	path = maua/submodules/RIFE
 	url = https://github.com/hzwer/arXiv2020-RIFE.git
+[submodule "maua/GAN/nv"]
+	path = maua/GAN/nv
+	url = https://github.com/maua-maua-maua/nvGAN
+[submodule "maua/submodules/pycuda"]
+	path = maua/submodules/pycuda
+	url = https://github.com/inducer/pycuda.git
+[submodule "maua/submodules/butterfly"]
+	path = maua/submodules/butterfly
+	url = https://github.com/HazyResearch/butterfly
+[submodule "maua/submodules/rq_vae_transformer"]
+	path = maua/submodules/rq_vae_transformer
+	url = https://github.com/kakaobrain/rq-vae-transformer

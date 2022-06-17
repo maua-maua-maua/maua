@@ -1,37 +1,51 @@
+import os
+import sys
 import warnings
-from typing import Tuple
+from typing import Dict, Optional, Tuple
 
 import kornia.geometry.transform as kT
 import numpy as np
 import torch
-from torch.nn.functional import interpolate, pad
+from torch import Tensor
 
 from ..load import load_network
-from ..studio.src.models import stylegan2
-from . import MauaSynthesizer
-from .stylegan import StyleGAN, StyleGANMapper
+from ..nv.networks import stylegan2 as stylegan2_train
+from .inference import stylegan2 as stylegan2_inference
+from .stylegan import StyleGAN, StyleGANMapper, StyleGANSynthesizer
 
-
-class StyleGAN2(StyleGAN):
-    pass
+SynthesisLayerInputType = Tuple[Tensor, Tensor, str, float]
+SynthesisBlockInputType = Tuple[Optional[Tensor], Optional[Tensor], Tensor, str]
+ToRGBInputType = Tuple[Tensor, Tensor]
 
 
 class StyleGAN2Mapper(StyleGANMapper):
-    MappingNetwork = stylegan2.MappingNetwork
+    MapperClsFn = lambda inference: (stylegan2_inference if inference else stylegan2_train).MappingNetwork
 
 
-class StyleGAN2Synthesizer(MauaSynthesizer):
-    def __init__(self, model_file: str, output_size: Tuple[int, int], strategy: str, layer: int) -> None:
+class StyleGAN2Synthesizer(StyleGANSynthesizer):
+    __constants__ = ["w_dim", "num_ws", "layer_names"]
+
+    def __init__(
+        self, model_file: str, inference: bool, output_size: Tuple[int, int], strategy: str, layer: int
+    ) -> None:
         super().__init__()
 
         if model_file is None or model_file == "None":
-            self.G_synth = stylegan2.SynthesisNetwork(w_dim=512, img_resolution=1024, img_channels=3)
+            self.G_synth = (stylegan2_inference if inference else stylegan2_train).SynthesisNetwork(
+                w_dim=512, img_resolution=1024, img_channels=3
+            )
         else:
-            self.G_synth: stylegan2.SynthesisNetwork = load_network(model_file).synthesis
+            self.G_synth: (stylegan2_inference if inference else stylegan2_train).SynthesisNetwork = load_network(
+                model_file, inference
+            ).synthesis
+        if not hasattr(self.G_synth, "bs"):
+            self.G_synth.bs = []
+            for res in self.G_synth.block_resolutions:
+                self.G_synth.bs.append(getattr(self.G_synth, f"b{res}"))
 
         self.w_dim, self.num_ws = self.G_synth.w_dim, self.G_synth.num_ws
         self.layer_names = [
-            f"b{block_size}.conv{1 if block_size == 4 else c % 2}"
+            f"bs.{c//2}.conv{1 if block_size == 4 else c % 2}"
             for c, block_size in enumerate(sorted(self.G_synth.block_resolutions * 2))
         ]
 
@@ -47,23 +61,17 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
 
     def forward(
         self,
-        latent_w: torch.Tensor = None,
-        latent_w_plus: torch.Tensor = None,
-        translation: torch.Tensor = None,
+        latents: Tensor,
+        translation: Optional[Tensor] = None,
         translation_layer: int = 7,
-        zoom: torch.Tensor = None,
+        zoom: Optional[Tensor] = None,
         zoom_layer: int = 7,
-        zoom_center: int = None,
-        rotation: torch.Tensor = None,
+        zoom_center: Optional[int] = None,
+        rotation: Optional[Tensor] = None,
         rotation_layer: int = 7,
-        rotation_center: int = None,
+        rotation_center: Optional[int] = None,
         **noise,
-    ) -> torch.Tensor:
-        if latent_w is None and latent_w_plus is None:
-            raise Exception("One of latent_w or latent_w_plus inputs must be supplied!")
-        if latent_w is not None and latent_w_plus is not None:
-            warnings.warn("Both latent_w and latent_w_plus supplied, using latent_w_plus input...")
-
+    ) -> Tensor:
         if translation is not None:
             self.apply_translation(translation_layer, translation)
         if zoom is not None:
@@ -71,35 +79,36 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
         if rotation is not None:
             self.apply_rotation(rotation_layer, rotation, rotation_center)
 
-        if latent_w_plus is None:
-            latent_w_plus = torch.tile(latent_w[:, None, :], (1, self.G_synth.num_ws, 1))
-
         if noise is not None:
-            for l, (noise_l, layer_name) in enumerate(zip(noise.values(), self.layer_names[1:])):
-                block, conv = layer_name.split(".")
-                layer = getattr(getattr(self.G_synth, block), conv)
+            noises, l = list(noise.values()), 0
+            for block in self.G_synth.bs:
+                if l >= len(noises):
+                    continue
+                for c in ([block.conv0] if hasattr(block, "conv0") else []) + [block.conv1]:
+                    noise_l = noises[l].to(c.noise_const, non_blocking=True)
+                    if (noise_l.shape[-2], noise_l.shape[-1]) != (c.noise_const.shape[-2], c.noise_const.shape[-1]):
+                        warnings.warn(
+                            f"Supplied noise for SynthesisLayer {l} has shape {noise_l.shape} while the expected "
+                            f"shape is {c.noise_const.shape}. Resizing the supplied noise to match..."
+                        )
+                        h, w = c.noise_const.shape[-2], c.noise_const.shape[-1]
+                        noise_l = torch.nn.functional.interpolate(noise_l, (h, w), mode="bicubic", align_corners=False)
+                    setattr(c, "noise_const", noise_l)
+                    l += 1
 
-                noise_l = noise_l.to(layer.noise_const.device, non_blocking=True)
-
-                if (noise_l.shape[-2], noise_l.shape[-1]) != (layer.noise_const.shape[-2], layer.noise_const.shape[-1]):
-                    warnings.warn(
-                        f"Supplied noise for layer {layer_name} ({l + 1}) has shape {noise_l.shape} while the expected "
-                        f"shape is {layer.noise_const.shape}. Resizing the supplied noise to match..."
-                    )
-                    h, w = layer.noise_const.shape[-2], layer.noise_const.shape[-1]
-                    noise_l = interpolate(noise_l, (h, w), mode="bicubic", align_corners=False)
-
-                layer.noise_const.set_(noise_l)
-
-        return self.G_synth.forward(latent_w_plus, noise_mode="const")
+        return self.G_synth.forward(latents, noise_mode="const")
 
     def change_output_resolution(self, output_size: Tuple[int, int], strategy: str, layer: int):
         self.refresh_model_hooks()
 
         if output_size != (self.G_synth.img_resolution, self.G_synth.img_resolution):
-            block, conv = self.layer_names[layer].split(".")
+            _, block, conv = self.layer_names[layer].split(".")
 
-            layer_size = int(block.replace("b", ""))
+            synth_block = self.G_synth.bs[int(block)]
+            synth_layer = getattr(synth_block, conv)
+            torgb_layer = getattr(synth_block, "torgb")
+
+            layer_size = synth_layer.resolution
             lay_mult = self.G_synth.img_resolution // layer_size
             unrounded_size = np.array(output_size) / lay_mult
             target_size = np.round(unrounded_size).astype(int)
@@ -108,43 +117,43 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
                     f"Layer {layer} resizes to multiples of {lay_mult}. --output-size rounded to {lay_mult * target_size}"
                 )
 
-            feat_hook, prev_img_hook, rgb_hook = get_hook(layer_size, target_size, strategy)
-
-            synth_block = getattr(self.G_synth, block)
-            synth_layer = getattr(synth_block, conv)
-            torgb_layer = getattr(synth_block, "torgb")
+            use_pre_hook = layer == 0
+            feat_hook, prev_img_hook, rgb_hook = get_hook(layer_size, target_size, strategy, pre=use_pre_hook)
 
             self._hook_handles.append(
                 synth_layer.register_forward_pre_hook(feat_hook)
                 if layer == 0
                 else synth_layer.register_forward_hook(feat_hook)
             )
-            if layer != 0:
+            if not use_pre_hook:
                 self._hook_handles.append(synth_block.register_forward_hook(prev_img_hook))
                 self._hook_handles.append(torgb_layer.register_forward_hook(rgb_hook))
 
             for l in range(layer + 1, len(self.layer_names)):
-                b, c = self.layer_names[l].split(".")
-                noise_layer = getattr(getattr(self.G_synth, b), c)
+                _, b, c = self.layer_names[l].split(".")
+                noise_layer = getattr(self.G_synth.bs[int(b)], c)
 
-                def noise_adjust(module, input, l=l):
-                    if not hasattr(module, "noise_adjusted"):
-                        x = input[0]
-                        fac = 2 - l % 2
-                        (_, _, h, w), dev, dtype = x.shape, x.device, x.dtype
-                        del module.noise_const
-                        setattr(module, "noise_const", torch.randn(1, 1, h * fac, w * fac, device=dev, dtype=dtype))
-                        module.noise_adjusted = True
+                def noise_adjust(mod, input: Tuple[Tensor, Tensor, str, bool, float]) -> None:
+                    if not hasattr(mod, "noise_adjusted") or not mod.noise_adjusted:
+                        _, _, h, w = input[0].shape
+                        dev, dtype = mod.noise_const.device, mod.noise_const.dtype
+                        mod.noise_const = torch.randn((1, 1, h * mod.up, w * mod.up), device=dev, dtype=dtype)
+                        # mod.noise_strength = torch.nn.Parameter(torch.ones((1)).to(input[0]))
+                        mod.noise_adjusted = True
 
                 self._hook_handles.append(noise_layer.register_forward_pre_hook(noise_adjust))
+
+            self.forward(torch.randn((1, 18, 512)))  # ensure that noise_adjust hooks have adjusted noise buffers
 
         self.output_size = output_size
 
     def apply_translation(self, layer, translation):
-        block, conv = self.layer_names[layer].split(".")
-        synth_layer = getattr(getattr(self.G_synth, block), conv)
+        _, block, conv = self.layer_names[layer].split(".")
+        synth_layer = getattr(self.G_synth.bs[int(block)], conv)
 
-        def translate_hook(module, input, output):
+        def translate_hook(
+            module, input: Tuple[Tensor, Tensor, str, bool, float], output: Tuple[Tensor]
+        ) -> Tuple[Tensor]:
             _, _, h, w = output.shape
             output = kT.translate(
                 output, translation * torch.tensor([[h, w]], device=translation.device), padding_mode="reflection"
@@ -156,10 +165,12 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
         self.translate_hook = synth_layer.register_forward_hook(translate_hook)
 
     def apply_rotation(self, layer, angle, center):
-        block, conv = self.layer_names[layer].split(".")
-        synth_layer = getattr(getattr(self.G_synth, block), conv)
+        _, block, conv = self.layer_names[layer].split(".")
+        synth_layer = getattr(self.G_synth.bs[int(block)], conv)
 
-        def rotation_hook(module, input, output):
+        def rotation_hook(
+            module, input: Tuple[Tensor, Tensor, str, bool, float], output: Tuple[Tensor]
+        ) -> Tuple[Tensor]:
             output = kT.rotate(output, angle.squeeze(), center, padding_mode="reflection")
             return output
 
@@ -168,10 +179,10 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
         self.rotate_hook = synth_layer.register_forward_hook(rotation_hook)
 
     def apply_zoom(self, layer, zoom, center):
-        block, conv = self.layer_names[layer].split(".")
-        synth_layer = getattr(getattr(self.G_synth, block), conv)
+        _, block, conv = self.layer_names[layer].split(".")
+        synth_layer = getattr(self.G_synth.bs[int(block)], conv)
 
-        def zoom_hook(module, input, output):
+        def zoom_hook(module, input: Tuple[Tensor, Tensor, str, bool, float], output: Tuple[Tensor]) -> Tuple[Tensor]:
             output = kT.scale(output, zoom.squeeze(), center, padding_mode="reflection")
             return output
 
@@ -184,25 +195,38 @@ class StyleGAN2Synthesizer(MauaSynthesizer):
         for l, layer in enumerate(self.layer_names[1:]):
             if l > layer_limit:
                 continue
-            block, conv = layer.split(".")
-            synth_layer = getattr(getattr(self.G_synth, block), conv)
+            _, block, conv = layer.split(".")
+            synth_layer = getattr(self.G_synth.bs[int(block)], conv)
             h, w = synth_layer.noise_const.shape[-2], synth_layer.noise_const.shape[-1]
-            noises[f"noise{l}"] = interpolate(noise, (h, w), mode="bicubic", align_corners=False)
+            try:
+                noises[f"noise{l}"] = torch.nn.functional.interpolate(
+                    noise, (h, w), mode="bicubic", align_corners=False
+                ).cpu()
+            except RuntimeError:  # CUDA out of memory
+                noises[f"noise{l}"] = torch.nn.functional.interpolate(
+                    noise.cpu(), (h, w), mode="bicubic", align_corners=False
+                )
+            noises[f"noise{l}"] /= noises[f"noise{l}"].std((1, 2, 3), keepdim=True)
         return noises
 
 
-def get_hook(layer_size, target_size, strategy, add_noise=True):
+def get_hook(layer_size, target_size, strategy, add_noise=False, pre=False):
     target_size = np.flip(target_size)  # W,H --> H,W
 
     if strategy == "stretch":
-        if add_noise:
-            noise = torch.ones((1, 1, target_size[0], target_size[1])).cuda() * float("nan")
+        noise = torch.ones((1, 1, target_size[0], target_size[1])).cuda() * float("nan") if add_noise else None
 
-        def resize(x, feat=False):
+        def resize(
+            x: Tensor,
+            feat: bool = False,
+            target_size: Tuple[int, int] = tuple(target_size),
+            noise: Tensor = noise,
+            add_noise: bool = add_noise,
+        ):
 
-            x = interpolate(x, tuple(target_size), mode="bicubic", align_corners=False)
+            x = torch.nn.functional.interpolate(x, target_size, mode="bicubic", align_corners=False)
 
-            if feat:
+            if feat and add_noise:
                 if noise.isnan().any():
                     h, w = target_size
                     channel_noises = [
@@ -220,8 +244,8 @@ def get_hook(layer_size, target_size, strategy, add_noise=True):
 
             return x
 
-        def inverse(x):
-            return interpolate(x, (layer_size, layer_size), mode="bicubic", align_corners=False)
+        def inverse(x: Tensor, layer_size: int = layer_size):
+            return torch.nn.functional.interpolate(x, (layer_size, layer_size), mode="bicubic", align_corners=False)
 
     elif strategy.startswith("pad"):
         _, how, where = strategy.split("-")
@@ -243,15 +267,23 @@ def get_hook(layer_size, target_size, strategy, add_noise=True):
             value = float(how)
             how = "constant"
         else:
-            value = 0  # not used
+            value = 0.0  # not used
 
         if add_noise:
             noise = torch.ones((1, 1, target_size[0], target_size[1])).cuda() * float("nan")
 
         # TODO negative padding
 
-        def resize(x, feat=False):
-            x = pad(x, padding, mode=how, value=value)
+        def resize(
+            x: Tensor,
+            feat: bool = False,
+            padding: Tuple[int, int, int, int] = padding,
+            how: str = how,
+            value: float = value,
+            target_size: Tuple[int, int] = tuple(target_size),
+            noise: Tensor = noise,
+        ):
+            x = torch.nn.functional.pad(x, padding, mode=how, value=value)
 
             if feat:
                 if noise.isnan().any():
@@ -271,7 +303,7 @@ def get_hook(layer_size, target_size, strategy, add_noise=True):
 
             return x
 
-        def inverse(x):
+        def inverse(x: Tensor, padding: Tuple[int, int, int, int] = padding):
             if padding[3] == 0:
                 if padding[1] == 0:
                     return x[..., padding[2] :, padding[0] :]
@@ -286,22 +318,25 @@ def get_hook(layer_size, target_size, strategy, add_noise=True):
     else:
         raise Exception(f"Resize strategy not found: {strategy}")
 
-    def feat_hook(module, input, output=None):
-        is_pre_hook = False
-        if output is None:
-            is_pre_hook = True
-            output = input[0]
+    if pre:
 
-        output = resize(output, feat=True)
+        def feat_hook(module, input: SynthesisLayerInputType) -> SynthesisLayerInputType:
+            return (resize(input[0], feat=True), *input[1:])
 
-        if is_pre_hook:
-            output = (output, *input[1:])
-        return output
+    else:
 
-    def img_hook(module, input, output):
+        def feat_hook(module, input: SynthesisLayerInputType, output: Tensor) -> Tensor:
+            return resize(output, feat=True)
+
+    def img_hook(module, input: SynthesisBlockInputType, output: Tuple[Tensor, Tensor]) -> Tuple[Tensor, Tensor]:
         return (output[0], resize(output[1], feat=False))
 
-    def rgb_hook(module, input, output):
+    def rgb_hook(module, input: ToRGBInputType, output: Tensor) -> Tensor:
         return inverse(output)
 
     return feat_hook, img_hook, rgb_hook
+
+
+class StyleGAN2(StyleGAN):
+    SynthesizerCls = StyleGAN2Synthesizer
+    MapperCls = StyleGAN2Mapper

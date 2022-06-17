@@ -1,0 +1,14 @@
+import numpy
+
+def make_ext(modname, pyxfilename):
+    from distutils.extension import Extension
+    return Extension(
+        name = modname,
+	    sources=[pyxfilename],
+	    extra_compile_args=['-fopenmp'],
+	    extra_link_args=['-fopenmp'],
+        include_dirs=[numpy.get_include()]
+    )
+
+def make_setup_args():
+    return dict(script_args=['--verbose'])

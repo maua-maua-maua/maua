@@ -1,5 +1,7 @@
 import os
+import tarfile
 import urllib.request
+import zipfile
 from pathlib import Path
 
 import requests
@@ -71,3 +73,28 @@ def fetch(path_or_url):
     if not (path_or_url.startswith("http://") or path_or_url.startswith("https://")):
         return open(path_or_url, "rb")
     return requests.get(path_or_url, stream=True).raw
+
+
+def unzip(file, path):
+    if file.endswith("tar.gz"):
+        tar = tarfile.open(file, "r:gz")
+        tar.extractall(path)
+        tar.close()
+    elif file.endswith("tar"):
+        tar = tarfile.open(file, "r:")
+        tar.extractall(path)
+        tar.close()
+    elif file.endswith("zip"):
+        zip = zipfile.open(file)
+        zip.extractall(path)
+        zip.close()
+
+
+def parse_prompt(prompt):
+    if prompt.startswith("http://") or prompt.startswith("https://"):
+        vals = prompt.rsplit(":", 2)
+        vals = [vals[0] + ":" + vals[1], *vals[2:]]
+    else:
+        vals = prompt.rsplit(":", 1)
+    vals = vals + ["", "1"][len(vals) :]
+    return vals[0], float(vals[1])

@@ -13,10 +13,10 @@ from . import Parameterization
 
 # replace checkpoint path to avoid the weird path that gets created by default as well as a bunch of prints
 for file in [
-    "maua/submodules/VQGAN/taming/models/vqgan.py",
-    "maua/submodules/VQGAN/taming/modules/losses/lpips.py",
-    "maua/submodules/VQGAN/taming/modules/losses/vqperceptual.py",
-    "maua/submodules/VQGAN/taming/modules/diffusionmodules/model.py",
+    os.path.dirname(__file__) + "/../submodules/VQGAN/taming/models/vqgan.py",
+    os.path.dirname(__file__) + "/../submodules/VQGAN/taming/modules/losses/lpips.py",
+    os.path.dirname(__file__) + "/../submodules/VQGAN/taming/modules/losses/vqperceptual.py",
+    os.path.dirname(__file__) + "/../submodules/VQGAN/taming/modules/diffusionmodules/model.py",
 ]:
     with open(file, "r") as f:
         t = (
@@ -29,7 +29,7 @@ for file in [
     with open(file, "w") as f:
         f.write(t)
 
-sys.path.append("maua/submodules/VQGAN")
+sys.path.append(os.path.dirname(__file__) + "/../submodules/VQGAN")
 
 from taming.models import cond_transformer, vqgan
 

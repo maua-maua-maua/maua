@@ -20,7 +20,7 @@ URLS = {
 
 
 def load_model(model_name="pbaylies-hr-paintings", device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
-    sys.path.append("maua/submodules/RealESRGAN")
+    sys.path.append(os.path.dirname(__file__) + "/../../../submodules/RealESRGAN")
 
     from basicsr.archs.rrdbnet_arch import RRDBNet
     from realesrgan import RealESRGANer
@@ -45,5 +45,5 @@ def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
     for img in images:
         input = load_image(img).squeeze().permute(1, 2, 0).mul(255).numpy()
         large = model.enhance(input)[0]
-        large = torch.from_numpy(large).permute(2, 0, 1).unsqueeze(0).div(255)
+        large = torch.from_numpy(large).permute(2, 0, 1).unsqueeze(0).float().div(255)
         yield large

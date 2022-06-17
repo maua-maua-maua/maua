@@ -310,7 +310,7 @@ def icgan_clip():
         if save_every and i % save_every == 0 or show_every and i % show_every == 0:
             print(
                 "took: %d secs (%.2f sec/iter) CUDA memory: %.1f GB"
-                % (time() - start, (time() - start) / (i + 1), torch.cuda.max_memory_allocated() / 1024 ** 3)
+                % (time() - start, (time() - start) / (i + 1), torch.cuda.max_memory_allocated() / 1024**3)
             )
 
     # Obtain generated image with lowest loss.

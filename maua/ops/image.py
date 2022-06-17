@@ -5,7 +5,24 @@ import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
+from medpy.filter.noise import immerkaer as immerkaer_np
 from PIL import Image
+from resize_right import resize
+
+
+def immerkaer(image_batch):  # TODO translate to pytorch
+    sigmas = torch.tensor([immerkaer_np(image.permute(1, 2, 0).cpu().numpy()) for image in image_batch])
+    return sigmas.to(image_batch)
+
+
+def local_std(im, ks=9):
+    r = ks // 2
+    im = F.pad(im, (r, r, r, r), mode="reflect")
+    kernel = torch.ones((1, 1, ks, ks), device=im.device, dtype=im.dtype).tile(1, im.shape[1], 1, 1)
+    s = F.conv2d(im, kernel)
+    s2 = F.conv2d(im**2, kernel)
+    ns = F.conv2d(torch.ones_like(im), kernel)
+    return torch.sqrt((s2 - s**2 / ns) / ns)
 
 
 def original_colors(content, generated):
@@ -36,15 +53,15 @@ def random_cutouts(input, cut_size=224, cutn=32, cut_pow=1.0):
     # 1/4 of cutouts cover the full image (global structure)
     for offsety, offsetx in zip(tops, lefts):
         cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
-        cutouts.append(F.adaptive_avg_pool2d(cutout, cut_size))
+        cutouts.append(resize(cutout, out_shape=(cut_size, cut_size)))
 
     # 3/4 of cutouts are random of different zoom ins
     for _ in range(cutn - len(cutouts)):
-        size = int(torch.rand([]) ** cut_pow * (max_size - min_size) + min_size)
+        size = (torch.rand([]) ** cut_pow * max_size).clamp(min_size, max_size).round().long().item()
         loc = torch.randint(0, (sideX - size + 1) * (sideY - size + 1), ())
         offsety, offsetx = torch.div(loc, (sideX - size + 1), rounding_mode="floor"), loc % (sideX - size + 1)
         cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
-        cutouts.append(F.adaptive_avg_pool2d(cutout, cut_size))
+        cutouts.append(resize(cutout, out_shape=(cut_size, cut_size)))
 
     return torch.cat(cutouts)
 
@@ -72,7 +89,7 @@ def get_histogram(tensor):
 def match_histogram(target_tensor, source_tensor, mode="avg"):
     if mode == "False":
         return target_tensor
-        
+
     backup = target_tensor.clone()
     try:
         if mode == "avg":
@@ -209,7 +226,7 @@ def unsharp_mask(img, ks=(7, 7), sigma=1.0, amount=1, thresh=0.25):
     return sharpened
 
 
-def normalize(img):
+def normalize_np(img):
     min_val = np.min(img.ravel())
     max_val = np.max(img.ravel())
     out = (img.astype("float") - min_val) / (max_val - min_val)
@@ -221,7 +238,7 @@ def positive(x):
 
 
 def blurriness_lbp(im_gray, ks, thresh):
-    I = normalize(im_gray)
+    I = normalize_np(im_gray)
     pt = cv2.copyMakeBorder(I, 1, 1, 1, 1, cv2.BORDER_REPLICATE)
 
     right, left, above, below = pt[1:-1, 2:], pt[1:-1, :-2], pt[:-2, 1:-1], pt[2:, 1:-1]
@@ -313,3 +330,11 @@ def blurriness_svd(img, kr=10, sv_num=3):
     blur_map = (sv_degrees - min_sv) / (max_sv - min_sv)
 
     return blur_map.float().reshape(h, w).cpu().numpy()
+
+
+def scaled_height_width(h, w, size):
+    short, long = (w, h) if w <= h else (h, w)
+    requested_new_short = size
+    new_short, new_long = requested_new_short, int(requested_new_short * long / short)
+    w, h = (new_short, new_long) if w <= h else (new_long, new_short)
+    return math.ceil(h / 2.0) * 2, math.ceil(w / 2.0) * 2
