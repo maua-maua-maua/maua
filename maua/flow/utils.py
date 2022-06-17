@@ -18,6 +18,7 @@ SOFTWARE.
 """
 
 import numpy as np
+import torch
 
 
 def resample_flow(img, sz):
@@ -29,23 +30,23 @@ def resample_flow(img, sz):
     in_width = img.shape[1]
     out_height = sz[0]
     out_width = sz[1]
-    out_flow = np.zeros((out_height, out_width, 2), dtype=img.dtype)
+    out_flow = torch.zeros((out_height, out_width, 2)).to(img)
 
     height_scale = float(in_height) / float(out_height)
     width_scale = float(in_width) / float(out_width)
 
-    [x, y] = np.meshgrid(range(out_width), range(out_height))
+    x, y = torch.meshgrid(torch.arange(out_width).to(img), torch.arange(out_height).to(img), indexing="xy")
     xx = x * width_scale
     yy = y * height_scale
-    x0 = np.floor(xx).astype(np.int32)
+    x0 = torch.floor(xx).long()
     x1 = x0 + 1
-    y0 = np.floor(yy).astype(np.int32)
+    y0 = torch.floor(yy).long()
     y1 = y0 + 1
 
-    x0 = np.clip(x0, 0, in_width - 1)
-    x1 = np.clip(x1, 0, in_width - 1)
-    y0 = np.clip(y0, 0, in_height - 1)
-    y1 = np.clip(y1, 0, in_height - 1)
+    x0 = torch.clip(x0, 0, in_width - 1)
+    x1 = torch.clip(x1, 0, in_width - 1)
+    y0 = torch.clip(y0, 0, in_height - 1)
+    y1 = torch.clip(y1, 0, in_height - 1)
 
     Ia = img[y0, x0, :]
     Ib = img[y1, x0, :]

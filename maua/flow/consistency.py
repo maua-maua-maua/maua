@@ -86,9 +86,7 @@ def sample(tensor, uv):
 def motion_edge(flow_forward, flow_backward):
     # algorithm based on https://github.com/manuelruder/artistic-videos/blob/master/consistencyChecker/consistencyChecker.cpp
     # reimplemented in pytorch by Henry Rachootin
-    # // consistencyChecker
-    # // Check consistency of forward flow via backward flow.
-    # // (c) Manuel Ruder, Alexey Dosovitskiy, Thomas Brox 2016
+    # (c) Manuel Ruder, Alexey Dosovitskiy, Thomas Brox 2016
 
     dev = flow_forward.device
 

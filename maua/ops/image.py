@@ -330,3 +330,11 @@ def blurriness_svd(img, kr=10, sv_num=3):
     blur_map = (sv_degrees - min_sv) / (max_sv - min_sv)
 
     return blur_map.float().reshape(h, w).cpu().numpy()
+
+
+def scaled_height_width(h, w, size):
+    short, long = (w, h) if w <= h else (h, w)
+    requested_new_short = size
+    new_short, new_long = requested_new_short, int(requested_new_short * long / short)
+    w, h = (new_short, new_long) if w <= h else (new_long, new_short)
+    return math.ceil(h / 2.0) * 2, math.ceil(w / 2.0) * 2

@@ -1,141 +1,24 @@
 import os
 import shutil
-from math import ceil
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import List, Union
 
 import numpy as np
 import torch
-from decord import VideoReader
 from npy_append_array import NpyAppendArray as NpyFile
 from PIL import Image
-from scipy.ndimage import gaussian_filter
 from torch import Tensor
 from torch.nn.functional import grid_sample
 from tqdm import tqdm
 
-from maua.flow import check_consistency, get_flow_model, motion_edge, resample_flow
-from maua.flow.utils import flow_to_image
-from maua.ops.image import match_histogram, resample
+from maua.flow import flow_warp_map, get_flow_model, preprocess_optical_flow
+from maua.ops.image import match_histogram, resample, scaled_height_width
 from maua.ops.loss import feature_loss, tv_loss
 from maua.ops.tensor import load_images
 from maua.ops.video import write_video
 from maua.optimizers import OPTIMIZERS, load_optimizer
 from maua.parameterizations import load_parameterization
 from maua.perceptors import load_perceptor
-
-
-def scaled_height_width(h, w, size):
-    short, long = (w, h) if w <= h else (h, w)
-    requested_new_short = size
-    new_short, new_long = requested_new_short, int(requested_new_short * long / short)
-    w, h = (new_short, new_long) if w <= h else (new_long, new_short)
-    return ceil(h / 2.0) * 2, ceil(w / 2.0) * 2
-
-
-def flow_warp_map(raw_flow: np.ndarray, size: Union[int, Tuple[int, int]]) -> torch.Tensor:
-    if isinstance(size, int):
-        h, w, _ = raw_flow.shape
-        h, w = scaled_height_width(h, w, size)
-    else:
-        h, w = size
-
-    flow = gaussian_filter(raw_flow, [5, 5, 0])
-    flow = resample_flow(flow, (h, w))
-    flow = torch.from_numpy(flow.copy())
-    flow[..., 0] /= w
-    flow[..., 1] /= h
-
-    neutral = torch.stack(torch.meshgrid(torch.linspace(-1, 1, h), torch.linspace(-1, 1, w), indexing="ij"), axis=2)
-    warp_map = neutral[..., [1, 0]] + flow[..., [1, 0]]
-
-    return warp_map.unsqueeze(0)
-
-
-@torch.inference_mode()
-def preprocess_optical_flow(video_file, flow_model, smooth=0, consistency="full", debug_optical_flow=False):
-    frf = f"workspace/{Path(video_file).stem}_content.npy"
-    fwf = f"workspace/{Path(video_file).stem}_forward_flow.npy"
-    bkf = f"workspace/{Path(video_file).stem}_backward_flow.npy"
-    rlf = f"workspace/{Path(video_file).stem}_reliable_flow.npy"
-
-    if not (os.path.exists(frf) and os.path.exists(fwf) and os.path.exists(bkf)):
-        with NpyFile(frf) as frames, NpyFile(fwf) as forward, NpyFile(bkf) as backward:
-
-            vr = VideoReader(video_file)
-            for i in tqdm(range(len(vr)), desc="Estimating optical flow..."):
-                frame1 = torch.from_numpy(vr[i].asnumpy()).div(255)
-                frame2 = torch.from_numpy(vr[(i + 1) % len(vr)].asnumpy()).div(255)
-
-                forward_flow = flow_model(frame1, frame2)
-                backward_flow = flow_model(frame2, frame1)
-
-                frames.append(np.ascontiguousarray(frame1[None].permute(0, 3, 1, 2).numpy()))
-                forward.append(np.ascontiguousarray(forward_flow[None].astype(np.float32)))
-                backward.append(np.ascontiguousarray(backward_flow[None].astype(np.float32)))
-
-    forward = np.load(fwf, mmap_mode="r")
-    backward = np.load(bkf, mmap_mode="r")
-    frames = np.load(frf, mmap_mode="r")
-
-    if smooth != 0:
-        forward = gaussian_filter(forward, [smooth, 0, 0, 0], mode="wrap")
-        backward = gaussian_filter(backward, [smooth, 0, 0, 0], mode="wrap")
-
-    if not os.path.exists(rlf):
-        with NpyFile(rlf) as reliable:
-            for forward_flow, backward_flow in zip(forward, backward):
-                if consistency == "magnitude":
-                    reliable_flow = np.sqrt(forward_flow[..., 0] ** 2 + forward_flow[..., 1] ** 2)
-                elif consistency == "motion":
-                    reliable_flow = (
-                        motion_edge(
-                            torch.from_numpy(forward_flow.copy()).permute(2, 1, 0).unsqueeze(0),
-                            torch.from_numpy(backward_flow.copy()).permute(2, 1, 0).unsqueeze(0),
-                        )
-                        .numpy()
-                        .squeeze()
-                    )
-                elif consistency == "full":
-                    reliable_flow = check_consistency(forward_flow, backward_flow)
-                else:
-                    reliable_flow = torch.ones((forward_flow.shape[0], forward_flow.shape[1]))
-
-                reliable.append(np.ascontiguousarray(reliable_flow[None].astype(np.float32)))
-
-    reliable = np.load(rlf, mmap_mode="r")
-
-    if consistency == "magnitude":
-        reliable = 1 - (reliable / reliable.max())
-
-    if smooth != 0:
-        reliable = gaussian_filter(reliable, [smooth, smooth, smooth])
-
-    if debug_optical_flow:
-        print("                  ", "min     ", "mean     ", "max     ", "shape")
-        print("forward flow (px):", forward.min(), forward.mean(), forward.max(), forward.shape)
-        write_video(
-            torch.stack([torch.from_numpy(flow_to_image(f)) for f in forward.copy()]).permute(0, 3, 1, 2).div(255),
-            f"output/{Path(video_file).stem}_forward_flow.mp4",
-        )
-        print("backward flow (px):", backward.min(), backward.mean(), backward.max(), backward.shape)
-        write_video(
-            torch.stack([torch.from_numpy(flow_to_image(f)) for f in backward.copy()]).permute(0, 3, 1, 2).div(255),
-            f"output/{Path(video_file).stem}_backward_flow.mp4",
-        )
-        print("reliable flow (0,1):", reliable.min(), reliable.mean(), reliable.max(), reliable.shape)
-        write_video(
-            torch.from_numpy(reliable.copy()).unsqueeze(1).tile(1, 3, 1, 1),
-            f"output/{Path(video_file).stem}_reliable_flow.mp4",
-        )
-
-    return frames, forward, backward, reliable
-
-
-def log(x):
-    if x < 0:
-        return -torch.log(-x)
-    return torch.log(x)
 
 
 @torch.no_grad()

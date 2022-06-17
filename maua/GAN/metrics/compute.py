@@ -164,6 +164,7 @@ def compute(
             real_features = torch.from_numpy(data["real_features"])
 
     real_features, fake_features = real_features.to(device), fake_features.to(device)
+    real_features, fake_features = real_features.cpu(), fake_features.cpu()
 
     res = {}
     for metric in metrics:

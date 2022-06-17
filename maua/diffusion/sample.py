@@ -65,17 +65,17 @@ def round64(x):
 
 if __name__ == "__main__":
     with torch.no_grad():
-        W, H = 1024, 1024
+        W, H = 512, 384
         num_images = 32
-        scales = 2
+        scales = 1
         sf = 2
-        timesteps = 40
-        start_skip, end_skip = 0.2, 0.5
-        text = "stained glass butterfly wings, technological science fiction mechanical butterfly wings, cyberpunk digital art"
+        timesteps = 100
+        start_skip, end_skip = 0.1, 0.5
+        text = "very very very beautiful optimistic solarpunk eco painting science fiction sci-fi futuristic cyberpunk digital art trending on ArtStation"
         init = None
 
         diffusion = GuidedDiffusion(
-            [CLIPGrads(scale=6500), LossGrads(tv_loss, scale=60), LossGrads(range_loss, scale=75)],
+            [CLIPGrads(scale=8000)],  # , LossGrads(tv_loss, scale=60), LossGrads(range_loss, scale=75)],
             sampler="plms",
             timesteps=timesteps,
         )
