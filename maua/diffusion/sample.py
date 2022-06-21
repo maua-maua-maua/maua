@@ -120,14 +120,14 @@ def restitch(tiled, H, W):
             wx = blend_weight1d(tile_size, fade_in=0 if x == 0 else fade, fade_out=0 if x == xs[-1] else fade).to(tiled)
             weight = wy.reshape(1, 1, -1, 1) * wx.reshape(1, 1, 1, -1)
             out[..., y : y + tile_size, x : x + tile_size] += tiled[i] * weight
-            rescale += weight
+            rescale[..., y : y + tile_size, x : x + tile_size] += weight
             i += 1
     return out / rescale
 
 
 if __name__ == "__main__":
     with torch.no_grad():
-        W, H = 2048, 2048
+        W, H = 1984, 1984
         num_images = 1
         scales = 2
         sf = 4
@@ -207,7 +207,7 @@ if __name__ == "__main__":
                         img = upscale_image(img.add(1).div(2), model_name=super_res_model).mul(2).sub(1)
                     img = resize(img, out_shape=shape, interp_method=lanczos3).cpu()
 
-                print(f"Current size: {shape[1]}x{shape[2]}")
+                print(f"Current size: {shape[1]}x{shape[0]}")
 
                 # if the image is larger than diffuison model's size, chop it into tiles
                 needs_stitching = stitch and min(shape) > diffusion.model.image_size
