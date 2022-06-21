@@ -35,7 +35,7 @@ def original_colors(content, generated):
 
 
 def random_cutouts(input, cut_size=224, cutn=32, cut_pow=1.0):
-    sideY, sideX = input.shape[2:4]
+    sideY, sideX = input.shape[-2:]
     max_size = min(sideX, sideY)
     min_size = min(sideX, sideY, cut_size)
 

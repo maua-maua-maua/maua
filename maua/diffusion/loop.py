@@ -15,7 +15,7 @@ from tqdm import tqdm
 from ..audiovisual.audioreactive.signal import gaussian_filter
 from ..flow import get_flow_model
 from ..ops.video import write_video
-from .conditioning import CLIPGrads, ContentPrompt, LPIPSGrads, TextPrompt
+from .conditioning import CLIPGrads, ContentPrompt, LPIPSGrads, PerceptualGrads, StylePrompt, TextPrompt
 from .sample import round64
 from .wrappers.guided import GuidedDiffusion
 
@@ -48,20 +48,23 @@ def flow_weighted(img, prev, flow, flow_mask, blend=1, consistency_trust=0.75):
 
 if __name__ == "__main__":
     W, H = 512, 512
-    timesteps = 25
-    skip = 13 / 25
+    timesteps = 50
+    skip = 10 / 50
     text = "a beautiful detailed ink illustration of a futuristic city skyline covered in irridescent windows and crystal glass, neo-tokyo metropolis"
+    # text = ""
     init = "/home/hans/modelzoo/diffusionGAN/denoising/take0/meer netsj interps/_diffusionGAN_interpolation_denoising_epoch82_seed48865_5065ae.mp4"
     init = "/home/hans/datasets/video/pleated.mp4"
+    style_img = None  # "/home/hans/datasets/2022/raw/romaintrystram/romaintrystram_CULGzHzqW33_20210923.jpg"
     blend = 0.5
     consistency_trust = 0.75
-    blend_every = 2
+    blend_every = 10
     fps = 18
     clip_scale = 8000
     lpips_scale = 1000
+    style_scale = 100
     diffusion_speed = "fast"
     diffusion_sampler = "plms"
-    turbo_start = 8
+    turbo_start = 2
 
     # process user inputs
     W, H = round64(W), round64(H)
@@ -71,6 +74,8 @@ if __name__ == "__main__":
 
     # initialize cache files
     out_name = f"{text.replace(' ','_')}"
+    if style_img is not None:
+        out_name = f"{Path(style_img).stem}_{out_name}"
     if init is not None:
         out_name = f"{Path(init).stem}_{out_name}"
     prev_frame_file, next_frame_file = f"workspace/{out_name}_frames_new.npy", f"workspace/{out_name}_frames_old.npy"
@@ -85,11 +90,17 @@ if __name__ == "__main__":
     content = decord.VideoReader(init, width=W, height=H)
     flow_model = get_flow_model()
     diffusion = GuidedDiffusion(
-        [CLIPGrads(scale=clip_scale), LPIPSGrads(scale=lpips_scale)],
+        [
+            CLIPGrads(scale=clip_scale),
+            # LPIPSGrads(scale=lpips_scale),
+            # PerceptualGrads(style_weight=style_scale),
+        ],
         sampler=diffusion_sampler,
         timesteps=timesteps,
         speed=diffusion_speed,
     )
+    text_prompt = TextPrompt(text)
+    # style_prompt = StylePrompt(path=style_img)
 
     start_idx, direction = 0, 1
     total_steps = sum([round(blend_every * len(content) / turbo) for turbo in turbo_schedule])
@@ -177,11 +188,12 @@ if __name__ == "__main__":
                     out_img = diffusion.sample(
                         init_img,
                         prompts=[
-                            TextPrompt(text),
+                            text_prompt,
+                            # style_prompt,
                             ContentPrompt(content[c_n].permute(2, 0, 1).div(127.5).sub(1)[None].to(init_img)),
                         ],
-                        start_step=n_steps - step + 1,
-                        n_steps=blend_every + 1,  # always take an extra step to offset blurring from blending
+                        start_step=n_steps - step,
+                        n_steps=blend_every,
                         verbose=False,
                         noise=noise,
                     )

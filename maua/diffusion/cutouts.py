@@ -13,7 +13,7 @@ class MauaCutouts(nn.Module):
         self.cut_size, self.cutn, self.pow_gain = cut_size, cutn, pow_gain
 
     def forward(self, input, t):
-        pow = self.pow_gain ** ((500 - t.float()) / 500)  # schedule to start large crops and end with small crops
+        pow = self.pow_gain ** ((500 - t) / 500)  # schedule to start large crops and end with small crops
         return random_cutouts(input, self.cut_size, self.cutn, pow)
 
 

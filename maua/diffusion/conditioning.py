@@ -5,13 +5,15 @@ import clip
 import lpips
 import numpy as np
 import torch
+from kornia.color import rgb_to_hsv
 from PIL import Image
-from torch.nn.functional import l1_loss
+from torch.nn.functional import kl_div, l1_loss, mse_loss
 from torchvision.transforms import Normalize
 from torchvision.transforms.functional import to_pil_image, to_tensor
 
 from ..ops.image import resample
 from ..ops.loss import range_loss, spherical_dist_loss, tv_loss
+from ..perceptors import load_perceptor
 from ..utility import fetch
 from .cutouts import make_cutouts
 
@@ -52,6 +54,8 @@ class ImagePrompt(torch.nn.Module):
         if size is not None:
             self.img = resample(self.img, min(size))
 
+        self.img = self.img.mul(2).sub(1)
+
     def forward(self):
         return self.img, self.weight
 
@@ -68,8 +72,75 @@ class GradModule(torch.nn.Module):
     def set_targets(self, prompts):
         pass
 
-    def forward(self, img):
+    def forward(self, img, t):
         return 0
+
+
+def differentiable_histogram(x, weighting=None, nbins=255):
+    B = x.shape[0]
+    hist = torch.zeros(B, nbins, device=x.device)
+    delta = 1 / (nbins - 1)
+    bins = torch.arange(nbins + 1) * delta
+    if weighting is None:
+        weighting = torch.ones_like(x)
+
+    for dim in range(nbins):
+        bin_val_prev, bin_val, bin_val_next = bins[dim - 1], bins[dim] if dim > 0 else 0, bins[dim + 1]
+
+        mask_sub = ((bin_val > x) & (x >= bin_val_prev)).float()
+        mask_plus = ((bin_val_next > x) & (x >= bin_val)).float()
+
+        hist[:, dim] += torch.sum(((x - bin_val_prev) * weighting * mask_sub).view(B, -1), dim=-1)
+        hist[:, dim] += torch.sum(((bin_val_next - x) * weighting * mask_plus).view(B, -1), dim=-1)
+
+    hist /= hist.sum(axis=-1, keepdim=True)
+    return hist
+
+
+class ColorMatchGrads(torch.nn.Module):
+    def __init__(self, scale, bins=255) -> None:
+        super().__init__()
+        self.scale = scale
+        self.bins = bins
+
+    def histogram(self, img):
+        hue, sat, val = rgb_to_hsv(img.add(1).div(2).clamp(1e-8, 1 - 1e-8)).clamp(0, 1).unbind(1)
+        hist = differentiable_histogram(hue, weighting=(sat * val).sqrt(), nbins=self.bins)
+        return hist
+
+    def set_targets(self, prompts):
+        for prompt in prompts:
+            if isinstance(prompt, StylePrompt):
+                img, _ = prompt()
+                self.target = self.histogram(img)
+
+    def forward(self, img, t):
+        loss = self.scale * mse_loss(self.histogram(img), self.target.to(img))
+        grad = torch.autograd.grad(loss, img)[0]
+        return grad
+
+
+class PerceptualGrads(torch.nn.Module):
+    def __init__(
+        self, content_weight=0, style_weight=1, perceptor="kbc", perceptor_kwargs=dict(content_layers=[])
+    ) -> None:
+        super().__init__()
+        self.perceptor = load_perceptor(perceptor)(
+            content_strength=content_weight, style_strength=style_weight, **perceptor_kwargs
+        )
+
+    def set_targets(self, prompts):
+        device = next(self.perceptor.parameters()).device
+        for prompt in prompts:
+            if isinstance(prompt, StylePrompt):
+                img, _ = prompt()
+                img = img.to(device)
+                self.target_embeddings = self.perceptor.get_target_embeddings(None, [img.add(1).div(2)])
+
+    def forward(self, img, t):
+        loss = self.perceptor.get_loss(img.add(1).div(2), self.target_embeddings)
+        grad = torch.autograd.grad(loss, img)[0]
+        return grad
 
 
 class CLIPGrads(GradModule):
@@ -80,7 +151,7 @@ class CLIPGrads(GradModule):
         cutouts="maua",
         cutout_kwargs=dict(cutn=16),
         cutout_batches=4,
-        clamp_gradient=0.15,
+        clamp_gradient=None,
     ):
         super().__init__()
         self.scale = scale
@@ -113,10 +184,11 @@ class CLIPGrads(GradModule):
             elif isinstance(prompt, StylePrompt):
                 img, weight = prompt()
                 img = img.to(device)
-                for c, clip_model in enumerate(self.clip_models):
-                    im_cuts = clip_model.encode_image(self.normalize(self.cutouts[c](img, t=0))).float()
-                    target_embeds[c].append(im_cuts)
-                    weights.extend([0.5 * weight / im_cuts.shape[0]])
+                for _ in range(self.cutout_batches):
+                    for c, clip_model in enumerate(self.clip_models):
+                        im_cuts = clip_model.encode_image(self.normalize(self.cutouts[c](img, t=0))).float()
+                        target_embeds[c].append(im_cuts)
+                    weights.extend([0.5 * weight / im_cuts.shape[0]] * im_cuts.shape[0])
 
         for c, target_embed in enumerate(target_embeds):
             self.clip_models[c].register_buffer("target", torch.cat(target_embed).unsqueeze(0))
@@ -132,11 +204,12 @@ class CLIPGrads(GradModule):
         grad = torch.zeros_like(img)
         for c, clip_model in enumerate(self.clip_models):
             for _ in range(self.cutout_batches):
-                image_embeds = clip_model.encode_image(self.normalize(self.cutouts[c](img.add(1).div(2), t))).float()
+                image_embeds = clip_model.encode_image(
+                    self.normalize(self.cutouts[c](img.add(1).div(2), t[[0]].long()))
+                ).float()
                 dists = spherical_dist_loss(image_embeds.unsqueeze(1), clip_model.target)
                 loss = dists.view((-1, img.shape[0], dists.shape[-1])).mul(self.weights).sum(2).mean(0)
                 grad += torch.autograd.grad(loss.sum() * self.scale, img)[0] / self.cutout_batches
-
         if self.clamp_gradient:
             magnitude = grad.square().mean().sqrt()
             grad *= magnitude.clamp(max=self.clamp_gradient) / magnitude
@@ -214,28 +287,28 @@ class GradientGuidedConditioning(torch.nn.Module):
                 print("x NaN")
 
             if self.speed == "hyper":
-                img = (x - sigma * self.noise).div(alpha)
+                img = (x - sigma.reshape(-1, 1, 1, 1) * self.noise).div(alpha.reshape(-1, 1, 1, 1))
             elif self.speed == "fast":
                 cosine_t = torch.atan2(sigma, alpha) * 2 / torch.pi
                 out = self.model(x, cosine_t).pred
-                img = out * sigma + x * (1 - sigma)
+                img = out * sigma.reshape(-1, 1, 1, 1) + x * (1 - sigma.reshape(-1, 1, 1, 1))
             else:
                 out = self.model(x=x, t=t, model_kwargs={"y": y})["pred_xstart"]
-                img = out * sigma + x * (1 - sigma)
+                img = out * sigma.reshape(-1, 1, 1, 1) + x * (1 - sigma.reshape(-1, 1, 1, 1))
 
             if torch.isnan(img).any():
                 print("img NaN")
 
             img_grad = torch.zeros_like(img)
             for grad_mod in self.grad_modules:
-                img_grad += grad_mod(img, ot)
+                sub_grad = grad_mod(img, ot)
 
-                if torch.isnan(img_grad).any():
+                if torch.isnan(sub_grad).any():
                     print(grad_mod.__class__.__name__, "NaN")
+                    sub_grad = torch.zeros_like(img)
 
-            if torch.isnan(img_grad).any():
-                grad = torch.zeros_like(img)
-            else:
-                grad = -torch.autograd.grad(img, x, img_grad)[0]
+                img_grad += sub_grad
+
+            grad = -torch.autograd.grad(img, x, img_grad)[0]
 
         return grad

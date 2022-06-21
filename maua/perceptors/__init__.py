@@ -18,6 +18,8 @@ class Perceptor(nn.Module):
         self.loss = 0
 
     def register_layer_hooks(self):
+        c = -1  # magical init value so that second for doesn't off-by-one error when there are no content_layers
+
         for c, layer in enumerate(self.content_layers):
 
             def content_hook(module, input, output, l=c):
@@ -39,9 +41,6 @@ class Perceptor(nn.Module):
                     self.loss += self.style_strength * feature_loss(embedding, self.targets[l])
 
             getattr(self.net, str(layer)).register_forward_hook(style_hook)
-
-    def forward(self, inputs, targets):
-        raise NotImplementedError()
 
     def get_target_embeddings(self, contents=None, styles=None, content_weights=None, style_weights=None):
         if isinstance(contents, torch.Tensor):

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import partial
 
 import torch
+from torchvision.transforms.functional import to_pil_image
 from tqdm import tqdm
 
 from ...utility import download
@@ -237,6 +238,8 @@ class GuidedDiffusion(DiffusionWrapper):
             self.sample_fn = lambda old_out: partial(
                 self.diffusion.plms_sample, order=plms_order, old_out=old_out, clip_denoised=False
             )
+        else:
+            raise NotImplementedError()
 
         self.device = device
         self.model = self.model.to(device)
@@ -248,22 +251,26 @@ class GuidedDiffusion(DiffusionWrapper):
         img,
         prompts,
         start_step,
-        n_steps,
+        n_steps=None,
         model_kwargs={},
         randomize_class=False,
         verbose=True,
         q_sample=None,
         noise=None,
+        stop_conditioning_under=0,  # zero conditions
     ):
-        self.conditioning.set_targets(prompts, noise)
+        if n_steps is None:
+            n_steps = start_step
+        if stop_conditioning_under < n_steps:
+            self.conditioning.set_targets(prompts, noise)
 
         if q_sample is None:
             q_sample = start_step
         if q_sample > 0:
-            t = torch.ones([img.shape[0]], device=self.device, dtype=torch.long) * q_sample - 1
+            t = torch.ones([img.shape[0]], device=self.device, dtype=torch.long) * q_sample
             img = self.diffusion.q_sample(img, t, noise)
 
-        steps = range(start_step - 1, start_step - n_steps - 1, -1)
+        steps = range(start_step, start_step - n_steps, -1)
         if verbose:
             steps = tqdm(steps)
 
@@ -275,10 +282,16 @@ class GuidedDiffusion(DiffusionWrapper):
                 )
 
             t = torch.tensor([i] * img.shape[0], device=self.device, dtype=torch.long)
-            out = self.sample_fn(out)(self.model, img, t, cond_fn=self.conditioning, model_kwargs=model_kwargs)
+            out = self.sample_fn(out)(
+                self.model,
+                img,
+                t,
+                cond_fn=self.conditioning if i > stop_conditioning_under else None,
+                model_kwargs=model_kwargs,
+            )
             img = out["sample"]
 
-        return img
+        return out["pred_xstart"]
 
     def forward(self, shape, prompts, model_kwargs={}):
         img = torch.randn(*shape, device=self.device)

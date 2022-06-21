@@ -1,12 +1,12 @@
 import argparse
+import gc
 from pathlib import Path
 from typing import Generator
 
 import torch
+from maua.ops.tensor import tensor2img
 from PIL import Image
 from tqdm import tqdm
-
-from maua.ops.tensor import tensor2img
 
 from .models import bsrgan, latent_diffusion, realesrgan, swinir, waifu
 
@@ -47,6 +47,22 @@ def upscale(
     )
     for img in module.upscale(images, model):
         yield img
+
+
+@torch.inference_mode()
+def upscale_image(
+    image, model_name, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+) -> Generator[torch.Tensor, None, None]:
+
+    module = MODEL_MODULES[model_name]
+    model = module.load_model(
+        model_name.replace("RealESRGAN-", "").replace("SwinIR-", "").replace("waifu2x", "upconv"), torch.device(device)
+    )
+    image = [im for im in module.upscale([image], model)][0]
+    del model
+    gc.collect()
+    torch.cuda.empty_cache()
+    return image
 
 
 def main(args):
