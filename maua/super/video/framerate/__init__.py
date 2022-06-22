@@ -6,6 +6,7 @@ from typing import Generator
 
 import torch
 from decord import VideoReader
+from tqdm import tqdm
 
 from maua.ops.video import VideoWriter
 
@@ -32,7 +33,7 @@ MODEL_MODULES = {
 MODEL_NAMES = list(MODEL_MODULES.keys())
 
 
-def interpolate(
+def interpolate_video(
     video_file,
     model_name="RIFE-2.3",
     interpolation_factor=2,
@@ -41,17 +42,17 @@ def interpolate(
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> Generator[torch.Tensor, None, None]:
 
-    if fp16:
-        torch.set_default_tensor_type(torch.cuda.HalfTensor)
-
     module = MODEL_MODULES[model_name]
-    model = module.load_model(model_name, device)
-    for f, frame in enumerate(module.interpolate(video_file, model, interpolation_factor, fp16)):
-        if f % decimate == decimate // 2:
-            yield frame
+    model = module.load_model(model_name, device, fp16)
 
-    if fp16:
-        torch.set_default_tensor_type(torch.FloatTensor)
+    vr = VideoReader(video_file)
+    N = len(vr)
+    for i in tqdm(range(N)):
+        frame1 = torch.from_numpy(vr[i].asnumpy()).permute(2, 0, 1).unsqueeze(0).div(255).to(model.device)
+        frame2 = torch.from_numpy(vr[(i + 1) % N].asnumpy()).permute(2, 0, 1).unsqueeze(0).div(255).to(model.device)
+        for f, frame in enumerate(module.interpolate(frame1, frame2, model, interpolation_factor, fp16)):
+            if f % decimate == decimate // 2:
+                yield frame
 
 
 def main(args):
@@ -70,7 +71,7 @@ def main(args):
             output_size=(w, h),
             fps=fps * (args.interpolation_factor / args.slower / args.decimate),
         ) as video:
-            for frame in interpolate(
+            for frame in interpolate_video(
                 video_file, args.model_name, args.interpolation_factor, not args.no_fp16, args.decimate, args.device
             ):
                 video.write(frame)

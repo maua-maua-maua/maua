@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 from ..flow import get_flow_model
 from ..ops.video import write_video
+from ..super.video.framerate import rife
 from .conditioning import (CLIPGrads, ColorMatchGrads, ContentPrompt,
                            LPIPSGrads, StylePrompt, TextPrompt, VGGGrads)
 from .sample import build_output_name, round64
@@ -105,8 +106,10 @@ class MemoryMappedFrames(Dataset):
             item = item[None]
         self.array.append(np.ascontiguousarray(item))
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, exc_type, exc_val, exc_tb):
         self.array.close()
+        if exc_type:
+            return
         self.array = np.load(self.file, mmap_mode="r")
 
 
@@ -124,10 +127,9 @@ def initialize_optical_flow(cache, frames):
             cache.reliable.append(get_consistency_map(ff, bf))
 
 
-def update_optical_flow(cache, frames, content, turbo, direction):  # TODO is direction necessary here?
+def update_optical_flow(cache, frames, content, turbo):
     flow_model = get_flow_model()
-
-    t_d = turbo * direction
+    interp_model = rife.load_model()
 
     # remove old cache, initialize new ones
     cache.forward.clear(), cache.backward.clear(), cache.reliable.clear()
@@ -135,17 +137,26 @@ def update_optical_flow(cache, frames, content, turbo, direction):  # TODO is di
 
         # load a new frame halfway between each pair of
         for f_n in range(len(frames)):
-            prev = content[(start_idx + (f_n - 1) * t_d) % len(content)].add(1).div(2)
-            btwn = content[(start_idx + round((f_n - 0.5) * t_d)) % len(content)].add(1).div(2)
-            curr = content[(start_idx + f_n * t_d) % len(content)].add(1).div(2)
+            prev = content[(start_idx + (f_n - 1) * turbo) % len(content)].add(1).div(2)
+            btwn = content[(start_idx + round((f_n - 0.5) * turbo)) % len(content)].add(1).div(2)
+            curr = content[(start_idx + f_n * turbo) % len(content)].add(1).div(2)
 
             ff1, ff2 = flow_model(prev, btwn), flow_model(btwn, curr)
             bf1, bf2 = flow_model(btwn, prev), flow_model(curr, btwn)
-            fc1, fc2 = get_consistency_map(ff1, bf1), get_consistency_map(ff2, bf2)
+            fc1, fc2 = get_consistency_map(ff1, bf1)[None], get_consistency_map(ff2, bf2)[None]
 
-            prev = frames[(f_n - direction) % N]
+            prev = frames[(f_n - 1) % N]
             curr = frames[f_n]
-            new = 0.5 * (warp(prev, flow_warp_map(ff1, (H, W))) + warp(curr, flow_warp_map(bf1, (H, W))))
+            prev_warp = warp(prev, flow_warp_map(ff1, (H, W)))
+            curr_warp = warp(curr, flow_warp_map(bf1, (H, W)))
+            if interp_model:
+                new = (
+                    next(rife.interpolate(prev_warp.add(1).div(2), curr_warp.add(1).div(2), interp_model, factor=1))
+                    .mul(2)
+                    .sub(1)
+                )
+            else:
+                new = 0.5 * (prev_warp + curr_warp)
 
             cache.new.append(torch.cat((new, curr)))
             cache.forward.append(np.stack((ff1, ff2)))
@@ -157,31 +168,33 @@ def update_optical_flow(cache, frames, content, turbo, direction):  # TODO is di
 
 if __name__ == "__main__":
     W, H = 256, 256
-    timesteps = 50
+    timesteps = 40
     skip = 0.7
-    text = "a beautiful detailed ink illustration of a futuristic city skyline covered in irridescent windows and crystal glass, neo-tokyo metropolis"
-    init = "/home/hans/datasets/video/pleated.mp4"
-    style_img = None  # "/home/hans/datasets/2022/raw/romaintrystram/romaintrystram_CULGzHzqW33_20210923.jpg"
-    blend = 1
+    blend_every = 6
+    blend = 2
     consistency_trust = 0.75
-    blend_every = 0.075
+    text = "a very very very beautiful watercolor painting of an epic galaxy filled with pulsars and gas giants"
+    init = "/home/hans/datasets/video/dreams.mp4"
+    style_img = None
     fps = 12
     clip_scale = 2500
-    lpips_scale = 0
+    lpips_scale = 2000
     style_scale = 0
     color_match_scale = 0
     diffusion_speed = "fast"
     diffusion_sampler = "p"
-    turbo_start = 1
+    turbo_start = 2
     diffusion_model = "uncondImageNet256"
     device = "cuda"
 
     # process user inputs
     W, H = round64(W), round64(H)
     n_steps = round((1 - skip) * timesteps)
-    blend_every = round(blend_every * timesteps)
-    turbo_schedule = [turbo_start / 2**i for i in range(round(np.log2(turbo_start)) + 1)]
-    turbo_schedule = np.repeat(turbo_schedule, n_steps / blend_every // len(turbo_schedule)).astype(int)
+    blend_every = round(blend_every * timesteps) if blend_every < 1 else blend_every
+    turbo_schedule = [int(turbo_start / 2**i) for i in range(round(np.log2(turbo_start)) + 1)]
+    turbo_schedule += [1 for _ in range(len(list(range(0, n_steps, blend_every))) - len(turbo_schedule))]
+    print(list(range(0, n_steps, blend_every)))
+    print(turbo_schedule)
 
     # build output name based on inputs
     out_name = build_output_name(init, style_img, text)
@@ -210,7 +223,7 @@ if __name__ == "__main__":
     total_steps = sum([round(blend_every * len(content) / turbo) for turbo in turbo_schedule])
     with tqdm(total=total_steps) as progress, torch.no_grad():
         for step, turbo in zip(range(0, n_steps, blend_every), turbo_schedule):
-            progress.set_description(f"Step {step + 1} / {n_steps}, Turbo {turbo}...")
+            progress.set_description(f"Step {step + 1} - {step + blend_every} of {n_steps}, Turbo {turbo}...")
 
             t_d = turbo * direction
 
@@ -225,9 +238,9 @@ if __name__ == "__main__":
                 # load init images for this pass
                 frames = cache.old
 
-            # when the turbo schedule changes we double the temporal resolution ==> recalculate optical flow
+            # when the turbo schedule changes we double the temporal resolution + recalculate optical flow
             if len(content) / turbo > len(frames):
-                update_optical_flow(cache, frames, content, turbo, direction)
+                update_optical_flow(cache, frames, content, turbo)
 
             N = len(frames)
 

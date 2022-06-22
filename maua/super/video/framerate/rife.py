@@ -34,7 +34,11 @@ URLS = {
 VERSIONS = [ver.replace("RIFE-", "") for ver in URLS.keys()]
 
 
-def load_model(model_name, device):
+def load_model(model_name="RIFE-2.3", device="cuda", fp16=True):
+
+    if fp16:
+        torch.set_default_tensor_type(torch.cuda.HalfTensor)
+
     version = model_name.replace("RIFE-", "")
     model_dir = f"modelzoo/RIFE_HDv{version}"
     if not os.path.exists(model_dir):
@@ -74,6 +78,10 @@ def load_model(model_name, device):
     model.eval()
     model.device()
     model.device = device
+
+    if fp16:
+        torch.set_default_tensor_type(torch.FloatTensor)
+
     return model
 
 
@@ -90,28 +98,23 @@ def recursive_inference(model, I0, I1, n):
 
 
 @torch.inference_mode()
-def interpolate(
-    video_file,
-    model,
-    factor=4,
-    fp16=True,
-) -> Generator[torch.Tensor, None, None]:
+def interpolate(frame1, frame2, model, factor=2, fp16=True):
 
-    vr = VideoReader(video_file)
+    if fp16:
+        torch.set_default_tensor_type(torch.cuda.HalfTensor)
 
-    N = len(vr)
-    h, w, _ = vr[0].shape
+    b, c, h, w = frame1.shape
     ph = ((h - 1) // 32 + 1) * 32
     pw = ((w - 1) // 32 + 1) * 32
     padding = (0, pw - w, 0, ph - h)
 
-    for i in tqdm(range(N)):
-        frame1 = torch.from_numpy(vr[i].asnumpy()).permute(2, 0, 1).unsqueeze(0).div(255).to(model.device)
-        frame2 = torch.from_numpy(vr[(i + 1) % N].asnumpy()).permute(2, 0, 1).unsqueeze(0).div(255).to(model.device)
-        if fp16:
-            frame1, frame2 = frame1.half(), frame2.half()
-        frame1, frame2 = F.pad(frame1, padding), F.pad(frame2, padding)
+    if fp16:
+        frame1, frame2 = frame1.half(), frame2.half()
+    frame1, frame2 = F.pad(frame1, padding), F.pad(frame2, padding)
 
-        intermediate_frames = recursive_inference(model, frame1, frame2, factor)
-        for frame in intermediate_frames:
-            yield frame[..., :h, :w].cpu().float()
+    intermediate_frames = recursive_inference(model, frame1, frame2, factor)
+    for frame in intermediate_frames:
+        yield frame[..., :h, :w].float()
+
+    if fp16:
+        torch.set_default_tensor_type(torch.FloatTensor)
