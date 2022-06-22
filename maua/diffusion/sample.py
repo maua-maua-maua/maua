@@ -1,6 +1,7 @@
 # fmt:off
 from pathlib import Path
 from uuid import uuid4
+from decord.video_reader import VideoReader
 
 import numpy as np
 import torch
@@ -16,7 +17,7 @@ from tqdm import tqdm, trange
 from ..ops.loss import range_loss, tv_loss
 from ..super.image.single import upscale_image
 from .conditioning import (CLIPGrads, ColorMatchGrads, ContentPrompt,
-                           LossGrads, LPIPSGrads, PerceptualGrads, StylePrompt,
+                           LossGrads, LPIPSGrads, VGGGrads, StylePrompt,
                            TextPrompt)
 from .wrappers.guided import GuidedDiffusion
 # fmt:on
@@ -125,6 +126,51 @@ def restitch(tiled, H, W):
     return out / rescale
 
 
+def build_output_name(init=None, style=None, text=None):
+    out_name = str(uuid4())[:6]
+    if text is not None:
+        out_name = f"{text.replace(' ','_')}_{out_name}"
+    if style is not None:
+        out_name = f"{Path(style).stem}_{out_name}"
+    if init is not None:
+        out_name = f"{Path(init).stem}_{out_name}"
+    return out_name
+
+
+def get_image_sizes(width, height, scales, scale_factor):
+    shapes = []
+    for scale in range(scales):
+        divisor = scale_factor ** (scales - 1 - scale)
+        shapes.append((round64(height / divisor), round64(width / divisor)))
+    return shapes
+
+
+def get_start_steps(start_skip, end_skip, scales):
+    skips = np.linspace(start_skip, end_skip, scales)
+    start_steps = np.argmax(
+        diffusion.diffusion.original_num_steps * (1 - skips[:, None])
+        < np.array(diffusion.diffusion.timestep_map)[None, :],
+        axis=1,
+    )
+    return start_steps
+
+
+def initialize_image(init, shape):
+    if init == "random":
+        img = torch.randn((1, 3, *shape))
+    elif init is not None:
+        img = resize(to_tensor(Image.open(init).convert("RGB")).unsqueeze(0).mul(2).sub(1), out_shape=shape)
+    elif init == "perlin":
+        img = (
+            resize(create_perlin_noise([1.5**-i * 0.5 for i in range(12)], 1, 1, False), out_shape=shape)
+            + resize(create_perlin_noise([1.5**-i * 0.5 for i in range(8)], 4, 4, True), out_shape=shape)
+            - 1
+        ).unsqueeze(0)
+    else:
+        raise Exception("init strategy not recognized!")
+    return img
+
+
 if __name__ == "__main__":
     with torch.no_grad():
         W, H = 1984, 1984
@@ -132,8 +178,9 @@ if __name__ == "__main__":
         scales = 2
         sf = 4
         timesteps = 50
-        start_skip, end_skip = 0.5, 0.6
-        text = "very very very beautiful optimistic solarpunk eco painting science fiction sci-fi futuristic cyberpunk digital art trending on ArtStation"
+        start_skip = 0.4
+        end_skip = 0.6
+        text = "science-fiction butterfly wings made of crystal trees, vines, and shimmering magical runes, mathemtaical equations, matte painting"
         init = "/home/hans/datasets/content/nega-pomegranate.jpg"
         style_img = None  # "/home/hans/datasets/style/xoyo.png"
         super_res_model = "latent-diffusion"
@@ -141,56 +188,40 @@ if __name__ == "__main__":
         sharpness_factor = 0
         stitch = True
         max_batch = 4
+        diffusion_speed = "fast"
+        diffusion_sampler = "ddim"
+        clip_scale = 4000
+        lpips_scale = 0
+        style_scale = 0
+        color_match_scale = 0
+        device = "cuda"
 
         # initialize diffusion class
         diffusion = GuidedDiffusion(
             [
-                CLIPGrads(scale=2500),
-                # PerceptualGrads(style_weight=150),
-                # ColorMatchGrads(scale=4e5),
-                # LPIPSGrads(scale=500),
+                CLIPGrads(scale=clip_scale),
+                LPIPSGrads(scale=lpips_scale),
+                VGGGrads(scale=style_scale),
+                ColorMatchGrads(scale=color_match_scale),
             ],
-            model_checkpoint="uncondImageNet512",
-            sampler="p",
+            sampler=diffusion_sampler,
             timesteps=timesteps,
-            speed="fast",
-        )
+            speed=diffusion_speed,
+        ).to(device)
 
         # calculate steps to start from (supports compound timestep respacing like '30,20,10')
-        skips = np.linspace(start_skip, end_skip, scales)
-        start_steps = np.argmax(
-            diffusion.diffusion.original_num_steps * (1 - skips[:, None])
-            < np.array(diffusion.diffusion.timestep_map)[None, :],
-            axis=1,
-        )
+        start_steps = get_start_steps(start_skip, end_skip, scales)
+
+        # calculate size of each scale
+        shapes = get_image_sizes(W, H, scales, sf)
 
         for b in range(num_images):
 
             # build output name based on inputs
-            out_name = str(uuid4())[:6]
-            if text is not None:
-                out_name = f"{text.replace(' ','_')}_{out_name}"
-            if style_img is not None:
-                out_name = f"{Path(style_img).stem}_{out_name}"
-            if init is not None:
-                out_name = f"{Path(init).stem}_{out_name}"
-
-            # calculate starting shape
-            shape = round64(H / sf ** (scales - 1)), round64(W / sf ** (scales - 1))
+            out_name = build_output_name(init, style_img, text)
 
             # initialize image
-            if init == "random":
-                img = torch.randn((1, 3, *shape))
-            elif init is not None:
-                img = resize(to_tensor(Image.open(init).convert("RGB")).unsqueeze(0).mul(2).sub(1), out_shape=shape)
-            elif init == "perlin":
-                img = (
-                    resize(create_perlin_noise([1.5**-i * 0.5 for i in range(12)], 1, 1, False), out_shape=shape)
-                    + resize(create_perlin_noise([1.5**-i * 0.5 for i in range(8)], 4, 4, True), out_shape=shape)
-                    - 1
-                ).unsqueeze(0)
-            else:
-                raise Exception("init strategy not recognized!")
+            img = initialize_image(init, shapes[0])
 
             # maybe apply style image's color histogram to init image
             if match_hist and style_img is not None:
@@ -201,16 +232,17 @@ if __name__ == "__main__":
                 if scale != 0:
                     save(img, f"output/{out_name}_{scale}.png")
 
-                    # resize image for next scale
-                    shape = round64(H / sf ** (scales - 1 - scale)), round64(W / sf ** (scales - 1 - scale))
+                    # maybe upsample image with super-resolution model
                     if super_res_model:
                         img = upscale_image(img.add(1).div(2), model_name=super_res_model).mul(2).sub(1)
-                    img = resize(img, out_shape=shape, interp_method=lanczos3).cpu()
 
-                print(f"Current size: {shape[1]}x{shape[0]}")
+                    # resize image for next scale
+                    img = resize(img, out_shape=shapes[scale], interp_method=lanczos3).cpu()
+
+                print(f"Current size: {shapes[scale][1]}x{shapes[scale][0]}")
 
                 # if the image is larger than diffuison model's size, chop it into tiles
-                needs_stitching = stitch and min(shape) > diffusion.model.image_size
+                needs_stitching = stitch and min(shapes[scale]) > diffusion.model.image_size
                 if needs_stitching:
                     img = destitch(img, tile_size=diffusion.model.image_size)
 
@@ -219,21 +251,21 @@ if __name__ == "__main__":
                 if text is not None:
                     prompts.append(TextPrompt(text))
                 if style_img is not None:
-                    prompts.append(StylePrompt(path=style_img, size=shape))
+                    prompts.append(StylePrompt(path=style_img, size=shapes[scale]))
 
                 # run diffusion sampling (in multiple batches if necessary)
                 if img.shape[0] > max_batch:
                     img = [
-                        diffusion.sample(im_batch.cuda(), prompts, start_step, verbose=False)
+                        diffusion.sample(im_batch.to(device), prompts, start_step, verbose=False)
                         for im_batch in tqdm(img.split(max_batch))
                     ]
                     img = torch.cat(img)
                 else:
-                    img = diffusion.sample(img.cuda(), prompts=prompts, start_step=start_step, n_steps=start_step)
+                    img = diffusion.sample(img.to(device), prompts=prompts, start_step=start_step, n_steps=start_step)
 
                 # reassemble image tiles to final image
                 if needs_stitching:
-                    img = restitch(img, *shape)
+                    img = restitch(img, *shapes[scale])
 
                 # maybe sharpen image
                 if sharpness_factor:

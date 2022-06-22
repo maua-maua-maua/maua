@@ -21,7 +21,7 @@ def flow_warp_map(
     device: torch.device = "cuda" if torch.cuda.is_available() else "cpu",
 ) -> torch.Tensor:
     if isinstance(raw_flow, np.ndarray):
-        raw_flow = torch.from_numpy(raw_flow.copy()).float().to(device)
+        raw_flow = torch.from_numpy(raw_flow.copy()).permute(2, 0, 1).unsqueeze(0).float().to(device)
 
     if isinstance(size, int):
         h, w, _ = raw_flow.shape
@@ -29,8 +29,7 @@ def flow_warp_map(
     else:
         h, w = size
 
-    flow = raw_flow.permute(2, 0, 1).unsqueeze(0)
-    flow = gaussian_blur(flow, kernel_size=5)
+    flow = gaussian_blur(raw_flow, kernel_size=3)
     flow = flow.squeeze(0).permute(1, 2, 0)
     flow = resample_flow(flow, (h, w))
     flow[..., 0] /= w
@@ -73,8 +72,8 @@ def preprocess_optical_flow(video_file, flow_model, consistency="full", debug_op
 
             vr = VideoReader(video_file)
             for i in tqdm(range(len(vr)), desc="Estimating optical flow..."):
-                frame1 = torch.from_numpy(vr[i].asnumpy()).div(255)
-                frame2 = torch.from_numpy(vr[(i + 1) % len(vr)].asnumpy()).div(255)
+                frame1 = torch.from_numpy(vr[i].asnumpy()).div(255).permute(2, 0, 1).unsqueeze(0)
+                frame2 = torch.from_numpy(vr[(i + 1) % len(vr)].asnumpy()).div(255).permute(2, 0, 1).unsqueeze(0)
 
                 forward_flow = flow_model(frame1, frame2)
                 backward_flow = flow_model(frame2, frame1)

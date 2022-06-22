@@ -21,15 +21,15 @@ for file in [
 
 
 def preprocess(im, h, w):
-    im = im.permute(2, 0, 1).unsqueeze(0)
     if h is not None and w is not None:
         im = resample(im, (h, w))
     im = im[:, [2, 1, 0]]  # RGB -> BGR
     return im.float().squeeze()
 
 
+@torch.no_grad()
 def predict(model, im1, im2, flowh=None, floww=None):
-    h, w, _ = im1.shape
+    b, c, h, w = im1.shape
     tens1 = preprocess(im1, flowh, floww)
     tens2 = preprocess(im2, flowh, floww)
     model_out = model(tens1, tens2).unsqueeze(0)

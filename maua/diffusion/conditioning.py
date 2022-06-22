@@ -69,11 +69,15 @@ class ContentPrompt(ImagePrompt):
 
 
 class GradModule(torch.nn.Module):
+    def __init__(self, scale) -> None:
+        super().__init__()
+        self.scale = scale
+
     def set_targets(self, prompts):
         pass
 
     def forward(self, img, t):
-        return 0
+        return torch.zeros_like(img)
 
 
 def differentiable_histogram(x, weighting=None, nbins=255):
@@ -97,37 +101,37 @@ def differentiable_histogram(x, weighting=None, nbins=255):
     return hist
 
 
-class ColorMatchGrads(torch.nn.Module):
-    def __init__(self, scale, bins=255) -> None:
-        super().__init__()
-        self.scale = scale
+class ColorMatchGrads(GradModule):
+    def __init__(self, scale, saturation_weighting=True, bins=255) -> None:
+        super().__init__(scale)
         self.bins = bins
+        self.saturation_weighting = saturation_weighting
 
     def histogram(self, img):
         hue, sat, val = rgb_to_hsv(img.add(1).div(2).clamp(1e-8, 1 - 1e-8)).clamp(0, 1).unbind(1)
-        hist = differentiable_histogram(hue, weighting=(sat * val).sqrt(), nbins=self.bins)
+        if self.saturation_weighting:
+            weighting = (sat * val).sqrt()
+        else:
+            weighting = None
+        hist = differentiable_histogram(hue, weighting, self.bins)
         return hist
 
     def set_targets(self, prompts):
         for prompt in prompts:
             if isinstance(prompt, StylePrompt):
                 img, _ = prompt()
-                self.target = self.histogram(img)
+                self.register_buffer("target", self.histogram(img))
 
     def forward(self, img, t):
-        loss = self.scale * mse_loss(self.histogram(img), self.target.to(img))
+        loss = self.scale * mse_loss(self.histogram(img), self.target)
         grad = torch.autograd.grad(loss, img)[0]
         return grad
 
 
-class PerceptualGrads(torch.nn.Module):
-    def __init__(
-        self, content_weight=0, style_weight=1, perceptor="kbc", perceptor_kwargs=dict(content_layers=[])
-    ) -> None:
-        super().__init__()
-        self.perceptor = load_perceptor(perceptor)(
-            content_strength=content_weight, style_strength=style_weight, **perceptor_kwargs
-        )
+class VGGGrads(GradModule):
+    def __init__(self, scale=1, perceptor="kbc") -> None:
+        super().__init__(scale)
+        self.perceptor = load_perceptor(perceptor)(content_strength=0, style_strength=scale, **dict(content_layers=[]))
 
     def set_targets(self, prompts):
         device = next(self.perceptor.parameters()).device
@@ -135,7 +139,9 @@ class PerceptualGrads(torch.nn.Module):
             if isinstance(prompt, StylePrompt):
                 img, _ = prompt()
                 img = img.to(device)
-                self.target_embeddings = self.perceptor.get_target_embeddings(None, [img.add(1).div(2)])
+                self.register_buffer(
+                    "target_embeddings", self.perceptor.get_target_embeddings(None, [img.add(1).div(2)])
+                )
 
     def forward(self, img, t):
         loss = self.perceptor.get_loss(img.add(1).div(2), self.target_embeddings)
@@ -153,8 +159,7 @@ class CLIPGrads(GradModule):
         cutout_batches=4,
         clamp_gradient=None,
     ):
-        super().__init__()
-        self.scale = scale
+        super().__init__(scale)
         self.clip_models = torch.nn.ModuleList(
             [clip.load(name, jit=False)[0].eval().requires_grad_(False) for name in perceptors]
         )
@@ -218,9 +223,8 @@ class CLIPGrads(GradModule):
 
 class LossGrads(GradModule):
     def __init__(self, loss_fn, scale=1):
-        super().__init__()
+        super().__init__(scale)
         self.loss_fn = loss_fn
-        self.scale = scale
 
     def forward(self, img, t):
         loss = self.loss_fn(img).sum() * self.scale
@@ -230,8 +234,7 @@ class LossGrads(GradModule):
 
 class LPIPSGrads(GradModule):
     def __init__(self, scale=1):
-        super().__init__()
-        self.scale = scale
+        super().__init__(scale)
         self.lpips_model = lpips.LPIPS(net="vgg", verbose=False)
 
     def set_targets(self, prompts):

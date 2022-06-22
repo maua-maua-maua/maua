@@ -227,7 +227,10 @@ class GuidedDiffusion(DiffusionWrapper):
             use_secondary=speed == "fast",
         )
         self.conditioning = GradientGuidedConditioning(
-            self.diffusion, secondary_model if speed == "fast" else self.model, grad_modules, speed=speed
+            self.diffusion,
+            secondary_model if speed == "fast" else self.model,
+            [gm for gm in grad_modules if gm.scale != 0],
+            speed=speed,
         )
 
         if sampler == "p":
@@ -262,7 +265,7 @@ class GuidedDiffusion(DiffusionWrapper):
         if n_steps is None:
             n_steps = start_step
         if stop_conditioning_under < n_steps:
-            self.conditioning.set_targets(prompts, noise)
+            self.conditioning.set_targets([p.to(img) for p in prompts], noise)
 
         if q_sample is None:
             q_sample = start_step
