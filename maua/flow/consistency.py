@@ -5,7 +5,7 @@ from torch.nn.functional import conv2d, grid_sample
 from torchvision.transforms.functional import gaussian_blur
 
 
-def check_consistency(flow1, flow2, edges_unreliable=False):
+def check_consistency_np(flow1, flow2, edges_unreliable=True):
     # algorithm based on https://github.com/manuelruder/artistic-videos/blob/master/consistencyChecker/consistencyChecker.cpp
     # reimplemented in numpy by Hans Brouwer
     # // consistencyChecker
@@ -83,12 +83,13 @@ def sample(tensor, uv):
 
 
 @torch.no_grad()
-def motion_edge(flow_forward, flow_backward):
+def check_consistency(flow_forward, flow_backward):
     # algorithm based on https://github.com/manuelruder/artistic-videos/blob/master/consistencyChecker/consistencyChecker.cpp
     # reimplemented in pytorch by Henry Rachootin
     # (c) Manuel Ruder, Alexey Dosovitskiy, Thomas Brox 2016
-
     dev = flow_forward.device
+    batch, height, width, two = flow_forward.shape
+    flow_forward, flow_backward = flow_forward.permute(0, 3, 1, 2), flow_backward.permute(0, 3, 1, 2)
 
     dx_ker = torch.tensor([[[[0, 0, 0], [1, 0, -1], [0, 0, 0]]]], device=dev).float().div(2).repeat(2, 2, 1, 1)
     dy_ker = torch.tensor([[[[0, 1, 0], [0, 0, 0], [0, -1, 0]]]], device=dev).float().div(2).repeat(2, 2, 1, 1)
@@ -96,10 +97,7 @@ def motion_edge(flow_forward, flow_backward):
     f_y = conv2d(flow_backward, dy_ker, padding="same")
     motionedge = torch.cat([f_x, f_y]).square().sum(dim=(0, 1))
 
-    height, width = flow_forward.shape[-2:]
-    y, x = torch.meshgrid([torch.arange(0, height), torch.arange(0, width)], indexing="ij")
-    x = x.to(dev)
-    y = y.to(dev)
+    y, x = torch.meshgrid([torch.arange(0, height, device=dev), torch.arange(0, width, device=dev)], indexing="ij")
 
     p1 = torch.stack([x, y])
     v1 = flow_forward.squeeze(0)

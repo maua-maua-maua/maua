@@ -1,62 +1,40 @@
 import os
 from pathlib import Path
-from typing import Tuple, Union
 
 import numpy as np
 import torch
 from decord import VideoReader
 from npy_append_array import NpyAppendArray as NpyFile
-from torchvision.transforms.functional import gaussian_blur
 from tqdm import tqdm
 
-from maua.flow import check_consistency, motion_edge, resample_flow
-from maua.flow.utils import flow_to_image
-from maua.ops.video import write_video
-from maua.ops.image import scaled_height_width
+from ..ops.video import write_video
+from .consistency import check_consistency, check_consistency_np
+from .utils import flow_to_image
 
 
-def flow_warp_map(
-    raw_flow: Union[torch.Tensor, np.ndarray],
-    size: Union[int, Tuple[int, int]],
-    device: torch.device = "cuda" if torch.cuda.is_available() else "cpu",
-) -> torch.Tensor:
-    if isinstance(raw_flow, np.ndarray):
-        raw_flow = torch.from_numpy(raw_flow.copy()).permute(2, 0, 1).unsqueeze(0).float().to(device)
-
-    if isinstance(size, int):
-        h, w, _ = raw_flow.shape
-        h, w = scaled_height_width(h, w, size)
-    else:
-        h, w = size
-
-    flow = gaussian_blur(raw_flow, kernel_size=3)
-    flow = flow.squeeze(0).permute(1, 2, 0)
-    flow = resample_flow(flow, (h, w))
+def flow_warp_map(flow: torch.Tensor) -> torch.Tensor:
+    b, h, w, two = flow.shape
     flow[..., 0] /= w
     flow[..., 1] /= h
-
-    neutral = torch.stack(torch.meshgrid(torch.linspace(-1, 1, h), torch.linspace(-1, 1, w), indexing="ij"), axis=2)
-    warp_map = neutral[..., [1, 0]].to(flow) + flow[..., [1, 0]]
-
-    return warp_map.unsqueeze(0)
+    neutral = torch.stack(torch.meshgrid(torch.linspace(-1, 1, w), torch.linspace(-1, 1, h), indexing="xy"), axis=2)
+    warp_map = neutral.unsqueeze(0).to(flow) + flow
+    return warp_map
 
 
 def get_consistency_map(forward_flow, backward_flow, consistency="full"):
     if consistency == "magnitude":
-        reliable_flow = np.sqrt(forward_flow[..., 0] ** 2 + forward_flow[..., 1] ** 2)
-    elif consistency == "motion":
-        reliable_flow = (
-            motion_edge(
-                torch.from_numpy(forward_flow.copy()).permute(2, 1, 0).unsqueeze(0),
-                torch.from_numpy(backward_flow.copy()).permute(2, 1, 0).unsqueeze(0),
-            )
-            .numpy()
-            .squeeze()
-        )
+        reliable_flow = torch.sqrt(forward_flow[..., 0] ** 2 + forward_flow[..., 1] ** 2)
     elif consistency == "full":
         reliable_flow = check_consistency(forward_flow, backward_flow)
+    elif consistency == "numpy":
+        reliable_flow = torch.from_numpy(
+            check_consistency_np(
+                forward_flow.detach().cpu().numpy(),
+                backward_flow.detach().cpu().numpy(),
+            )
+        )
     else:
-        reliable_flow = np.ones((forward_flow.shape[0], forward_flow.shape[1]))
+        reliable_flow = torch.ones((forward_flow.shape[0], forward_flow.shape[1]))
     return reliable_flow
 
 
@@ -78,9 +56,9 @@ def preprocess_optical_flow(video_file, flow_model, consistency="full", debug_op
                 forward_flow = flow_model(frame1, frame2)
                 backward_flow = flow_model(frame2, frame1)
 
-                frames.append(np.ascontiguousarray(frame1[None].permute(0, 3, 1, 2).numpy()))
-                forward.append(np.ascontiguousarray(forward_flow[None].astype(np.float32)))
-                backward.append(np.ascontiguousarray(backward_flow[None].astype(np.float32)))
+                frames.append(np.ascontiguousarray(frame1.cpu().numpy()))
+                forward.append(np.ascontiguousarray(forward_flow.cpu().numpy()))
+                backward.append(np.ascontiguousarray(backward_flow.cpu().numpy()))
 
     forward = np.load(fwf, mmap_mode="r")
     backward = np.load(bkf, mmap_mode="r")

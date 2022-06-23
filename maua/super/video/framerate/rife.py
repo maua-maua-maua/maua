@@ -34,7 +34,7 @@ URLS = {
 VERSIONS = [ver.replace("RIFE-", "") for ver in URLS.keys()]
 
 
-def load_model(model_name="RIFE-2.3", device="cuda", fp16=True):
+def load_model(model_name="RIFE-2.3", device="cuda", fp16=False):
 
     if fp16:
         torch.set_default_tensor_type(torch.cuda.HalfTensor)
@@ -98,7 +98,7 @@ def recursive_inference(model, I0, I1, n):
 
 
 @torch.inference_mode()
-def interpolate(frame1, frame2, model, factor=2, fp16=True):
+def interpolate(frame1, frame2, model, factor=2, fp16=False):
 
     if fp16:
         torch.set_default_tensor_type(torch.cuda.HalfTensor)

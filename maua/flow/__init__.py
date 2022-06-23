@@ -1,116 +1,57 @@
-import os
-import sys
 from typing import List
 
-import numpy as np
 import torch
-import torch.nn.functional as F
-from maua.ops.image import luminance, resample
 
-# remove shape asserts from optical flow files
-for file in [
-    os.path.dirname(__file__) + "/../submodules/unflow/run.py",
-    os.path.dirname(__file__) + "/../submodules/pwc/run.py",
-    os.path.dirname(__file__) + "/../submodules/spynet/run.py",
-    os.path.dirname(__file__) + "/../submodules/liteflownet/run.py",
-]:
-    with open(file, "r") as f:
-        txt = f.read().replace("assert", "# assert").replace("# #", "#")
-    with open(file, "w") as f:
-        f.write(txt)
+from ..ops.image import luminance
+from . import mm, sniklaus
 
 
-def preprocess(im, h, w):
-    if h is not None and w is not None:
-        im = resample(im, (h, w))
-    im = im[:, [2, 1, 0]]  # RGB -> BGR
-    return im.float().squeeze()
-
-
-@torch.no_grad()
-def predict(model, im1, im2, flowh=None, floww=None):
-    b, c, h, w = im1.shape
-    tens1 = preprocess(im1, flowh, floww)
-    tens2 = preprocess(im2, flowh, floww)
-    model_out = model(tens1, tens2).unsqueeze(0)
-    output = F.interpolate(input=model_out, size=(h, w), mode="bilinear", align_corners=False)
-    return output.squeeze().permute(1, 2, 0).cpu().numpy()
-
-
-def get_flow_model(which: List[str] = ["pwc", "spynet", "liteflownet"], use_training_size=False):
+def get_flow_model(
+    which: List[str] = [
+        "unflow",
+        "pwc",
+        "spynet",
+        "liteflownet",
+        # "gma/gma_plus-p_8x2_120k_mixed_368x768",
+        # "raft/raft_8x2_100k_mixed_368x768",
+        "farneback",
+    ]
+):
     pred_fns = []
 
     if "unflow" in which:
-        del sys.argv[1:]
-        from maua.submodules.unflow.run import estimate as unflow
-
-        del sys.path[-1]
-        torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away
-
-        if use_training_size:
-            size = (384, 1280)
-        else:
-            size = (None, None)
-
-        pred_fns.append(lambda im1, im2: predict(unflow, im1, im2, *size))
-
+        pred_fns.append(sniklaus.get_prediction_fn("unflow"))
     if "pwc" in which:
-        del sys.argv[1:]
-        from maua.submodules.pwc.run import estimate as pwc
-
-        del sys.path[-1]
-        torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away
-
-        if use_training_size:
-            size = (436, 1024)
-        else:
-            size = (None, None)
-
-        pred_fns.append(lambda im1, im2: predict(pwc, im1, im2, *size))
-
+        pred_fns.append(sniklaus.get_prediction_fn("pwc"))
     if "spynet" in which:
-        del sys.argv[1:]
-        from maua.submodules.spynet.run import estimate as spynet
-
-        torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away
-
-        if use_training_size:
-            size = (416, 1024)
-        else:
-            size = (None, None)
-
-        pred_fns.append(lambda im1, im2: predict(spynet, im1, im2, *size))
-
+        pred_fns.append(sniklaus.get_prediction_fn("spynet"))
     if "liteflownet" in which:
-        del sys.argv[1:]
-        from maua.submodules.liteflownet.run import estimate as liteflownet
+        pred_fns.append(sniklaus.get_prediction_fn("liteflownet"))
 
-        del sys.path[-1]
-        torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away
-
-        if use_training_size:
-            size = (436, 1024)
-        else:
-            size = (None, None)
-
-        pred_fns.append(lambda im1, im2: predict(liteflownet, im1, im2, *size))
+    for w in which:
+        if w in mm.AVAILABLE_MODELS:
+            pred_fns.append(mm.get_prediction_fn(w))
 
     if "farneback" in which:
         import cv2
 
         pred_fns.append(
-            lambda im1, im2: cv2.calcOpticalFlowFarneback(
-                luminance(im1).mul(255).numpy().astype(np.uint8),
-                luminance(im2).mul(255).numpy().astype(np.uint8),
-                flow=None,
-                pyr_scale=0.8,
-                levels=15,
-                winsize=15,
-                iterations=15,
-                poly_n=7,
-                poly_sigma=1.5,
-                flags=10,
+            lambda im1, im2: torch.from_numpy(
+                cv2.calcOpticalFlowFarneback(
+                    luminance(im1.detach().squeeze().permute(1, 2, 0)).mul(255).byte().cpu().numpy(),
+                    luminance(im2.detach().squeeze().permute(1, 2, 0)).mul(255).byte().cpu().numpy(),
+                    flow=None,
+                    pyr_scale=0.8,
+                    levels=15,
+                    winsize=15,
+                    iterations=15,
+                    poly_n=7,
+                    poly_sigma=1.5,
+                    flags=10,
+                )
             )
+            .unsqueeze(0)
+            .to(im1.device)
         )
 
     if "deepflow2" in which:
@@ -120,9 +61,9 @@ def get_flow_model(which: List[str] = ["pwc", "spynet", "liteflownet"], use_trai
 
         models.append(lambda im1, im2: deepflow2(im1, im2, deepmatching(im1, im2)))
 
-    return lambda im1, im2: np.sum(pred(im1, im2) for pred in pred_fns) / len(pred_fns)
+    return lambda im1, im2: torch.mean(torch.stack([pred(im1, im2) for pred in pred_fns]), dim=0).to(im1).float()
 
 
-from .consistency import check_consistency, motion_edge
+from .consistency import check_consistency, check_consistency_np
+from .lib import flow_warp_map, get_consistency_map, preprocess_optical_flow
 from .utils import flow_to_image, read_flow, resample_flow, write_flow
-from .lib import preprocess_optical_flow, flow_warp_map, get_consistency_map

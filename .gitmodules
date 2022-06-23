@@ -73,3 +73,6 @@
 [submodule "maua/submodules/rq_vae_transformer"]
 	path = maua/submodules/rq_vae_transformer
 	url = https://github.com/kakaobrain/rq-vae-transformer
+[submodule "maua/submodules/mmflow"]
+	path = maua/submodules/mmflow
+	url = https://github.com/open-mmlab/mmflow

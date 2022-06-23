@@ -8,12 +8,12 @@ import numpy as np
 import torch
 from maua.flow.lib import flow_warp_map, get_consistency_map
 from npy_append_array import NpyAppendArray
-from resize_right import resize
 from torch.nn.functional import grid_sample
 from torch.utils.data import Dataset
-from tqdm import tqdm
+from tqdm import tqdm, trange
 
 from ..flow import get_flow_model
+from ..flow.lib import flow_warp_map, get_consistency_map
 from ..ops.video import write_video
 from ..super.video.framerate import rife
 from .conditioning import (CLIPGrads, ColorMatchGrads, ContentPrompt,
@@ -27,15 +27,6 @@ decord.bridge.set_bridge("torch")
 
 def warp(x, f):
     return grid_sample(x, f, padding_mode="reflection", align_corners=False)
-
-
-def flow_weighted(img, prev, flow, flow_mask, blend=1, consistency_trust=0.75):
-    flow_mask *= consistency_trust
-    flow_mask += 1 - consistency_trust
-    flow_mask *= blend
-    img += flow_mask * warp(prev, flow)
-    img /= 1 + flow_mask
-    return img
 
 
 def initialize_cache_files(out_name, height, width, device):
@@ -89,12 +80,10 @@ class MemoryMappedFrames(Dataset):
             raise Exception("Cache is empty!")
         if not isinstance(idx, (list, np.ndarray)):
             idx = [idx]
-        tensor = torch.from_numpy(self.array[idx].copy()).float().cuda()
+        tensor = torch.from_numpy(self.array[idx].copy()).float().to(self.device)
         if tensor.dim() < 4:
             tensor = tensor.unsqueeze(1)
-        if tensor.shape[2] != self.height or tensor.shape[3] != self.width:
-            tensor = resize(tensor, out_shape=(self.height, self.width))
-        return tensor.to(self.device)
+        return tensor
 
     def __enter__(self):
         self.array = NpyAppendArray(self.file)
@@ -117,13 +106,13 @@ def initialize_optical_flow(cache, frames):
     flow_model = get_flow_model()
     N = len(frames)
     with cache.forward, cache.backward, cache.reliable:
-        for f_n in range(N):
+        for f_n in trange(N, desc="Calculating optical flow..."):
             prev = frames[(f_n - 1) % N].add(1).div(2)
             curr = frames[f_n].add(1).div(2)
-            ff = flow_model(prev, curr)
-            bf = flow_model(curr, prev)
-            cache.forward.append(ff)
-            cache.backward.append(bf)
+            ff = flow_model(curr, prev)
+            bf = flow_model(prev, curr)
+            cache.forward.append(flow_warp_map(ff))
+            cache.backward.append(flow_warp_map(bf))
             cache.reliable.append(get_consistency_map(ff, bf))
 
 
@@ -141,17 +130,18 @@ def update_optical_flow(cache, frames, content, turbo):
             btwn = content[(start_idx + round((f_n - 0.5) * turbo)) % len(content)].add(1).div(2)
             curr = content[(start_idx + f_n * turbo) % len(content)].add(1).div(2)
 
-            ff1, ff2 = flow_model(prev, btwn), flow_model(btwn, curr)
-            bf1, bf2 = flow_model(btwn, prev), flow_model(curr, btwn)
+            ff1, ff2 = flow_warp_map(flow_model(btwn, prev)), flow_warp_map(flow_model(curr, btwn))
+            bf1, bf2 = flow_warp_map(flow_model(prev, btwn)), flow_warp_map(flow_model(btwn, curr))
             fc1, fc2 = get_consistency_map(ff1, bf1)[None], get_consistency_map(ff2, bf2)[None]
 
             prev = frames[(f_n - 1) % N]
             curr = frames[f_n]
-            prev_warp = warp(prev, flow_warp_map(ff1, (H, W)))
-            curr_warp = warp(curr, flow_warp_map(bf1, (H, W)))
+            prev_warp = warp(prev, ff1)
+            curr_warp = warp(curr, bf2)
             if interp_model:
                 new = (
                     next(rife.interpolate(prev_warp.add(1).div(2), curr_warp.add(1).div(2), interp_model, factor=1))
+                    .float()
                     .mul(2)
                     .sub(1)
                 )
@@ -159,9 +149,9 @@ def update_optical_flow(cache, frames, content, turbo):
                 new = 0.5 * (prev_warp + curr_warp)
 
             cache.new.append(torch.cat((new, curr)))
-            cache.forward.append(np.stack((ff1, ff2)))
-            cache.backward.append(np.stack((bf1, bf2)))
-            cache.reliable.append(np.stack((fc1, fc2)))
+            cache.forward.append(torch.cat((ff1, ff2)))
+            cache.backward.append(torch.cat((bf1, bf2)))
+            cache.reliable.append(torch.cat((fc1, fc2)))
 
     cache.old.update(cache.new)
 
@@ -169,21 +159,22 @@ def update_optical_flow(cache, frames, content, turbo):
 if __name__ == "__main__":
     W, H = 256, 256
     timesteps = 40
-    skip = 0.7
-    blend_every = 6
+    skip = 0.6
+    blend_every = 2
+    blend_first = 3
     blend = 2
     consistency_trust = 0.75
     text = "a very very very beautiful watercolor painting of an epic galaxy filled with pulsars and gas giants"
     init = "/home/hans/datasets/video/dreams.mp4"
     style_img = None
     fps = 12
-    clip_scale = 2500
+    clip_scale = 3500
     lpips_scale = 2000
     style_scale = 0
     color_match_scale = 0
     diffusion_speed = "fast"
     diffusion_sampler = "p"
-    turbo_start = 2
+    turbo_start = 1
     diffusion_model = "uncondImageNet256"
     device = "cuda"
 
@@ -193,8 +184,6 @@ if __name__ == "__main__":
     blend_every = round(blend_every * timesteps) if blend_every < 1 else blend_every
     turbo_schedule = [int(turbo_start / 2**i) for i in range(round(np.log2(turbo_start)) + 1)]
     turbo_schedule += [1 for _ in range(len(list(range(0, n_steps, blend_every))) - len(turbo_schedule))]
-    print(list(range(0, n_steps, blend_every)))
-    print(turbo_schedule)
 
     # build output name based on inputs
     out_name = build_output_name(init, style_img, text)
@@ -222,7 +211,7 @@ if __name__ == "__main__":
     start_idx, direction = 0, 1
     total_steps = sum([round(blend_every * len(content) / turbo) for turbo in turbo_schedule])
     with tqdm(total=total_steps) as progress, torch.no_grad():
-        for step, turbo in zip(range(0, n_steps, blend_every), turbo_schedule):
+        for s_i, (step, turbo) in enumerate(zip(range(0, n_steps, blend_every), turbo_schedule)):
             progress.set_description(f"Step {step + 1} - {step + blend_every} of {n_steps}, Turbo {turbo}...")
 
             t_d = turbo * direction
@@ -253,11 +242,17 @@ if __name__ == "__main__":
                     init_img = frames[f_n]
 
                     if blend > 0:
-                        prev_img = frames[(f_n - direction) % N] if f_i == 0 else out_img
-                        flow = (cache.forward if direction == 1 else cache.backward)[f_n]
-                        flow = flow_warp_map(flow, (H, W))
                         flow_mask = cache.reliable[f_n]
-                        init_img = flow_weighted(init_img, prev_img, flow, flow_mask, blend, consistency_trust)
+                        flow_mask *= consistency_trust
+                        flow_mask += 1 - consistency_trust
+                        flow_mask *= blend
+
+                        flow = (cache.forward if direction == 1 else cache.backward)[f_n]
+
+                        prev_img = frames[(f_n - direction) % N] if f_i == 0 else out_img
+
+                        init_img += flow_mask * warp(prev_img, flow)
+                        init_img /= 1 + flow_mask
 
                     prompts = [ContentPrompt(content[(start_idx + f_n * turbo * direction) % len(content)])]
                     if text is not None:
@@ -266,16 +261,23 @@ if __name__ == "__main__":
                         prompts.append(StylePrompt(path=style_img, size=(H, W)))
 
                     out_img = diffusion.sample(
-                        init_img, prompts=prompts, start_step=n_steps - step, n_steps=blend_every, verbose=False
+                        init_img,
+                        prompts=prompts,
+                        start_step=n_steps - step,
+                        n_steps=blend_every if s_i < blend_first else None,
+                        verbose=False,
                     )
                     cache.new.append(out_img)
 
-                    progress.update(blend_every)
+                    progress.update(blend_every if s_i < blend_first else n_steps - blend_first * blend_every)
 
             write_video(
                 np.load(cache.new.file, mmap_mode="r") * 0.5 + 0.5, f"output/{out_name}_{step + 1}.mp4", fps=fps / turbo
             )
             cache.old.update(cache.new)
             direction = -direction  # reverse direction of flow weighting
+
+            if s_i >= blend_first:
+                break
 
     write_video(np.load(cache.old.file, mmap_mode="r") * 0.5 + 0.5, f"output/{out_name}.mp4", fps=fps)
