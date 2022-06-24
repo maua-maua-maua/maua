@@ -249,18 +249,17 @@ def forward(self, input_ids, attention_mask, return_loss=False, use_cache=False,
     if gradient_checkpointing:
         embeddings = torch.utils.checkpoint.checkpoint_sequential(layers, 6, embeddings)
         transformer_output = embeddings
-        present_has_cache = False
     else:
         hidden_states = embeddings
         for i in range(len(t.layers)):
             mask = torch.mul(attention_mask, t._get_layer_mask(i)[: attention_mask.size(2), : attention_mask.size(3)])
-            hidden_states, present_has_cache = t.layers[i](hidden_states, mask, use_cache=use_cache)
+            hidden_states, cache = t.layers[i](hidden_states, mask, use_cache=use_cache)
         transformer_output = hidden_states
     transformer_output = self.transformer.final_layernorm(transformer_output)
 
     logits = self.to_logits(transformer_output)
     if return_loss is False:
-        return logits, present_has_cache
+        return logits, cache
 
     labels = torch.cat((text[:, 1:], image_input_ids), dim=1).contiguous().long()
     logits = rearrange(logits, "b n c -> b c n")
@@ -377,14 +376,14 @@ def argument_parser():
     parser.add_argument("--captions", type=list, default=[], nargs="*", help="List of a caption for each image")
     parser.add_argument("--input_text", type=str, default="", help="Input text to sample images for after training. Will only have effect if you train with low number of steps / low learning rate or train with captions.")
     parser.add_argument("--num_outputs", type=int, default=8, help="Number of images to generate after finetuning")
-    parser.add_argument("--steps", type=int, default=100, help="Number of batches to finetune for. More steps will converge to outputs that are closer to the inputs (which also means less variation).")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Starting learning rate (decays by a factor of 500 over training). A high learning rate will converge faster (which also means less variation). 1e-4 to 1e-5 is a good starting range (with 1e-5 resulting in more varied outputs).")
+    parser.add_argument("--steps", type=int, default=500, help="Number of batches to finetune for. More steps will converge to outputs that are closer to the inputs (which also means less variation).")
+    parser.add_argument("--lr", type=float, default=1e-5, help="Starting learning rate (decays by a factor of 500 over training). A high learning rate will converge faster (which also means less variation). 1e-4 to 1e-5 is a good starting range (with 1e-5 resulting in more varied outputs).")
     parser.add_argument("--train_batch_size", type=int, default=1, help="Number of images for each training step. Higher batch size requires more memory, but will be faster per sample overall.")
     parser.add_argument("--inference_batch_size", type=int, default=1, help="Number of images to sample at once. Higher batch size requires more memory, but will be faster per sample overall. Inference batches can be bigger as we don't need to store gradients for training.")
     parser.add_argument("--size", type=str, default='256,256', help="width,height of images to generate")
     parser.add_argument("--stretch", action="store_true", help="Squash images down to fixed size for training and stretch back to original size after sampling. This can significantly improve training/sampling time while still yielding good results. All training images should have the same aspect ratio.")
     parser.add_argument("--upscale", type=int, default=1, choices=[1, 2, 4, 8], help="Use RealESRGAN to upscale outputs.")
-    parser.add_argument("--top_p", type=float, default=0.999, help="Effects how closely sampled images match training data. Lower values might give higher quality images at the cost of variation. A good range is between 0.9 and 0.999.")
+    parser.add_argument("--top_p", type=float, default=0.99, help="Effects how closely sampled images match training data. Lower values might give higher quality images at the cost of variation. A good range is between 0.9 and 0.999.")
     parser.add_argument("--device", type=str, default="cuda:0", help="The device to train on, using 'cpu' will take a long time!")
     parser.add_argument("--low_memory", action="store_true", help="Enable if you have less than 16 GB of (V)RAM to use gradient checkpointing (slower but more memory efficient)")
     parser.add_argument("--checkpoint", type=str, default=None, help=f"Checkpoint to resume from. Either a path to a trained RuDALL-E checkpoint or one of {list(MODELS.keys())}.")

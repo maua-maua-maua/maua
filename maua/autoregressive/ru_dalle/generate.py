@@ -3,6 +3,7 @@ import sys
 from functools import partial
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
+from uuid import uuid4
 
 import more_itertools
 import numpy as np
@@ -56,6 +57,7 @@ def oversample_generate_images(
 ):
     if seed is not None:
         utils.seed_everything(seed)
+
     vocab_size = dalle.get_param("vocab_size")
     text_seq_length = dalle.get_param("text_seq_length")
     total_seq_length = dalle.get_param("total_seq_length")
@@ -65,11 +67,11 @@ def oversample_generate_images(
     text = text.lower().strip()
     input_ids = tokenizer.encode_text(text, text_seq_length=text_seq_length)
     pil_images = []
-    cache = None
-    past_cache = None
     im_id = 0
 
     for chunk in more_itertools.chunked(range(num_images), bs):
+        past_cache = None
+        cache = None
         chunk_bs = len(chunk)
         with torch.no_grad():
             attention_mask = torch.tril(torch.ones((chunk_bs, 1, total_seq_length, total_seq_length), device=device))
@@ -206,7 +208,7 @@ def sample_images(
     height=256,
     width=256,
     stretched_size=None,
-    top_p=0.999,
+    top_p=0.99,
     top_k=2048,
     model_name="rudalle",
     output_dir="output/",
@@ -257,7 +259,7 @@ def generate(
     width=256,
     stretched_size: Optional[Tuple[int, int]] = None,
     upscale=1,
-    top_p=0.999,
+    top_p=0.99,
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     output_dir="output/",
     save_intermediate=False,
@@ -328,7 +330,7 @@ def argument_parser():
     parser.add_argument("--size", type=str, default='256,256', help="width,height of images to sample")
     parser.add_argument("--stretch_size", type=str, default=None, help="width,height to stretch sampled images to (will only give decent results if model was finetuned with this stretch size).")
     parser.add_argument("--upscale", type=int, default=1, choices=[1, 2, 4, 8], help="Use RealESRGAN to upscale outputs.")
-    parser.add_argument("--top_p", type=float, default=0.999, help="Effects how closely sampled images match training data. Lower values might give higher quality images at the cost of variation. A good range is between 0.9 and 0.999.")
+    parser.add_argument("--top_p", type=float, default=0.99, help="Effects how closely sampled images match training data. Lower values might give higher quality images at the cost of variation. A good range is between 0.9 and 0.999.")
     parser.add_argument("--device", type=str, default="cuda:0", help="The device to train on, using 'cpu' will take a long time!")
     parser.add_argument("--low_memory", action="store_true", help="Enable if you have less than 16 GB of (V)RAM to use gradient checkpointing (slower but more memory efficient)")
     parser.add_argument("--checkpoint", type=str, default=None, help=f"Checkpoint to resume from. Either a path to a trained RuDALL-E checkpoint or one of {list(MODELS.keys())}.")
@@ -359,12 +361,11 @@ def main(args):
 
     output_name = args.output_name
     if output_name is None:
+        output_name = str(uuid4())[:6]
         if args.input_text != "":
-            output_name = args.input_text.replace(" ", "_")
+            output_name += "_"+args.input_text.replace(" ", "_")
         if args.checkpoint is not None:
-            output_name = Path(args.checkpoint).stem
-        else:
-            output_name = ""
+            output_name += "_"+Path(args.checkpoint).stem
     output_name += "_rudalle"
 
     outputs = generate(

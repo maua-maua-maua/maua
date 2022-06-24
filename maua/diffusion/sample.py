@@ -1,8 +1,9 @@
 # fmt:off
+import sys
 from pathlib import Path
 from uuid import uuid4
-from decord.video_reader import VideoReader
 
+from decord.video_reader import VideoReader
 import numpy as np
 import torch
 from maua.ops.image import match_histogram
@@ -173,28 +174,30 @@ def initialize_image(init, shape):
 
 if __name__ == "__main__":
     with torch.no_grad():
-        W, H = 1984, 1984
+        W, H = 1024-64, 1024-64
+        tile_size = 512-64
         num_images = 1
         scales = 2
-        sf = 4
-        timesteps = 50
-        start_skip = 0.4
-        end_skip = 0.6
-        text = "science-fiction butterfly wings made of crystal trees, vines, and shimmering magical runes, mathemtaical equations, matte painting"
-        init = "/home/hans/datasets/content/nega-pomegranate.jpg"
+        sf = 2
+        timesteps = 250
+        start_skip = 0.6
+        end_skip = 0.7
+        text = sys.argv[2]
+        init = sys.argv[1]
         style_img = None  # "/home/hans/datasets/style/xoyo.png"
-        super_res_model = "latent-diffusion"
+        super_res_model = "SwinIR-L-DFOWMFC-GAN"
         match_hist = False
         sharpness_factor = 0
         stitch = True
         max_batch = 4
-        diffusion_speed = "fast"
+        diffusion_speed = "regular"
         diffusion_sampler = "ddim"
-        clip_scale = 4000
+        clip_scale = 2500
         lpips_scale = 0
         style_scale = 0
         color_match_scale = 0
         device = "cuda"
+        out_dir = '/home/hans/neurout/diffusion/'
 
         # initialize diffusion class
         diffusion = GuidedDiffusion(
@@ -215,13 +218,17 @@ if __name__ == "__main__":
         # calculate size of each scale
         shapes = get_image_sizes(W, H, scales, sf)
 
+        if tile_size is None:
+            tile_size = diffusion.model.image_size
+
         for b in range(num_images):
 
             # build output name based on inputs
-            out_name = build_output_name(init, style_img, text)
+            out_name = build_output_name(init, style_img, text)[:222]
 
             # initialize image
             img = initialize_image(init, shapes[0])
+            content = img.clone()
 
             # maybe apply style image's color histogram to init image
             if match_hist and style_img is not None:
@@ -230,7 +237,7 @@ if __name__ == "__main__":
             for scale, start_step in enumerate(start_steps):
 
                 if scale != 0:
-                    save(img, f"output/{out_name}_{scale}.png")
+                    # save(img, f"{out_dir}/{out_name}_{scale}.png")
 
                     # maybe upsample image with super-resolution model
                     if super_res_model:
@@ -242,12 +249,12 @@ if __name__ == "__main__":
                 print(f"Current size: {shapes[scale][1]}x{shapes[scale][0]}")
 
                 # if the image is larger than diffuison model's size, chop it into tiles
-                needs_stitching = stitch and min(shapes[scale]) > diffusion.model.image_size
+                needs_stitching = stitch and min(shapes[scale]) > tile_size
                 if needs_stitching:
-                    img = destitch(img, tile_size=diffusion.model.image_size)
+                    img = destitch(img, tile_size=tile_size)
 
                 # initialize prompts for diffusion
-                prompts = [ContentPrompt(img=img)]
+                prompts = [ContentPrompt(img=content).to(img)]
                 if text is not None:
                     prompts.append(TextPrompt(text))
                 if style_img is not None:
@@ -271,4 +278,4 @@ if __name__ == "__main__":
                 if sharpness_factor:
                     img = adjust_sharpness(img.add(1).div(2), sharpness_factor=sharpness_factor).mul(2).sub(1)
 
-            save(img, f"output/{out_name}.png")
+            save(img, f"{out_dir}/{out_name}.png")

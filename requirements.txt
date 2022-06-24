@@ -29,6 +29,8 @@ librosa
 lpips
 madmom
 matplotlib
+mmflow
+mmcv-full
 more_itertools
 ninja
 npy_append_array
