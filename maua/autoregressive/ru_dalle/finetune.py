@@ -129,9 +129,10 @@ def train(
     text_seq_length, device = model.get_param("text_seq_length"), model.get_param("device")
     h, w = dataset.token_shape
     model.module.total_seq_length = total_seq_length = text_seq_length + w * h
+    model.module.get_image_pos_embeddings = partial(get_image_pos_embeddings, dalle=model.module, width=w)
+    model.module.image_tokens_per_dim = -1  # unused if everything is set up correctly
+    model.module.image_seq_length = w * h
     if w != model.module.image_col_embeddings.weight.shape[0] or h != model.module.image_row_embeddings.weight.shape[0]:
-        model.module.image_tokens_per_dim = -1  # unused if everything is set up correctly
-        model.module.image_seq_length = w * h
         model.module.transformer.row_mask = get_row_mask(text_seq_length, w, h, is_bool_mask=True).to(device)
         model.module.transformer.col_mask = get_col_mask(text_seq_length, w, h, is_bool_mask=True).to(device)
         model.module.transformer.conv_mask = get_conv_mask(text_seq_length, w, h, is_bool_mask=True).to(device)
@@ -141,7 +142,6 @@ def train(
         model.module.image_col_embeddings.weight = torch.nn.Parameter(
             interpolate(model.module.image_col_embeddings.weight.T.unsqueeze(0), w).squeeze(0).T
         )
-        model.module.get_image_pos_embeddings = partial(get_image_pos_embeddings, dalle=model.module, width=w)
 
     model.train()
     model = freeze(model=model, freeze_emb=False, freeze_ln=False, freeze_attn=True, freeze_ff=True, freeze_other=False)
