@@ -2,6 +2,7 @@ import gc
 import os
 import random
 import sys
+from functools import partial
 from glob import glob
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
@@ -10,8 +11,11 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torchvision.transforms as T
+from bitsandbytes.optim import Adam8bit
 from einops import rearrange
 from PIL import Image
+from torch.nn.functional import interpolate
+from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import AdamW, AutoModelForSeq2SeqLM, MarianTokenizer
@@ -25,6 +29,7 @@ from rudalle.dalle.model import DalleModel
 from rudalle.dalle.utils import exists, is_empty
 
 from . import SURREALIST_XL_DICT
+from .generate import get_col_mask, get_conv_mask, get_image_pos_embeddings, get_row_mask
 
 MODELS.update({"Surrealist_XL": SURREALIST_XL_DICT})
 
@@ -36,54 +41,45 @@ def infiniter(dataloader):
 
 
 class RuDalleDataset(Dataset):
-    def __init__(self, images, captions, height, width, stretch, vae, tokenizer, text_seq_length, device):
+    def __init__(self, images, captions, height, width, stretch, random_crop, vae, tokenizer, text_seq_length, device):
         self.text_seq_length = text_seq_length
         self.tokenizer = tokenizer
         self.device = device
+        self.token_shape = (height // 8, width // 8)
 
         self.image_transform = T.Compose(
-            [
-                (
-                    T.Resize((height, width), antialias=True)
-                    if stretch
-                    else T.Compose([T.Resize(max(height, width), antialias=True), T.CenterCrop((height, width))])
-                ),
-                T.ToTensor(),
+            ([T.RandomCrop(random_crop, pad_if_needed=True, padding_mode="reflect")] if random_crop else [])
+            + [
+                T.Resize((height, width), antialias=True)
+                if stretch
+                else T.Compose([T.Resize(max(height, width), antialias=True), T.CenterCrop((height, width))])
             ]
+            + [T.ToTensor()]
         )
 
         mname = "Helsinki-NLP/opus-mt-en-ru"
         translate_tokenizer = MarianTokenizer.from_pretrained(mname)
         translator = AutoModelForSeq2SeqLM.from_pretrained(mname)
 
-        self.samples = list(
-            zip(
-                [
-                    vae.get_codebook_indices(
-                        self.image_transform(
-                            Image.open(image).convert("RGB") if isinstance(image, (str, Path)) else image
-                        )
-                        .unsqueeze(0)
-                        .to(self.device)
-                    )
-                    .cpu()
-                    .squeeze(0)
-                    for image in tqdm(images, desc="preprocessing images...")
-                ],
-                [
-                    self.tokenizer.encode_text(
-                        translate_tokenizer.decode(
-                            translator.generate(translate_tokenizer.encode(text, return_tensors="pt"))[0],
-                            skip_special_tokens=True,
-                        ),
-                        text_seq_length=self.text_seq_length,
-                    ).squeeze(0)
-                    for text in tqdm(captions, desc="preprocessing captions...")
-                ]
-                if len(captions) != 0
-                else [self.tokenizer.encode_text("", text_seq_length=self.text_seq_length).squeeze(0)] * len(images),
+        if len(captions) == 0:
+            text_tokens = [self.tokenizer.encode_text("", text_seq_length=self.text_seq_length).squeeze(0)] * len(
+                images
             )
-        )
+        else:
+            text_tokens = []
+            for text in tqdm(captions, desc="preprocessing captions..."):
+                translate_tokens = translator.generate(translate_tokenizer.encode(text, return_tensors="pt"))[0]
+                translated = translate_tokenizer.decode(translate_tokens, skip_special_tokens=True)
+                tokens = self.tokenizer.encode_text(translated, text_seq_length=self.text_seq_length).squeeze(0)
+                text_tokens.append(tokens)
+
+        image_tokens = []
+        for image in tqdm(images, desc="preprocessing images..."):
+            image = self.image_transform(Image.open(image).convert("RGB") if isinstance(image, (str, Path)) else image)
+            tokens = vae.get_codebook_indices(image.unsqueeze(0).to(self.device)).cpu().squeeze(0)
+            image_tokens.append(tokens)
+
+        self.samples = list(zip(image_tokens, text_tokens))
 
     def __len__(self):
         return len(self.samples)
@@ -120,23 +116,40 @@ def train(
     model,
     dataset,
     model_name,
-    lr=1e-4,
-    steps=100,
+    lr=1e-5,
+    steps=500,
     batch_size=1,
     train_text=False,
     gradient_checkpointing=False,
     save_dir="modelzoo/",
+    adam8bit=False,
 ):
     train_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 
+    text_seq_length, device = model.get_param("text_seq_length"), model.get_param("device")
+    h, w = dataset.token_shape
+    model.module.total_seq_length = total_seq_length = text_seq_length + w * h
+    if w != model.module.image_col_embeddings.weight.shape[0] or h != model.module.image_row_embeddings.weight.shape[0]:
+        model.module.image_tokens_per_dim = -1  # unused if everything is set up correctly
+        model.module.image_seq_length = w * h
+        model.module.transformer.row_mask = get_row_mask(text_seq_length, w, h, is_bool_mask=True).to(device)
+        model.module.transformer.col_mask = get_col_mask(text_seq_length, w, h, is_bool_mask=True).to(device)
+        model.module.transformer.conv_mask = get_conv_mask(text_seq_length, w, h, is_bool_mask=True).to(device)
+        model.module.image_row_embeddings.weight = torch.nn.Parameter(
+            interpolate(model.module.image_row_embeddings.weight.T.unsqueeze(0), h).squeeze(0).T
+        )
+        model.module.image_col_embeddings.weight = torch.nn.Parameter(
+            interpolate(model.module.image_col_embeddings.weight.T.unsqueeze(0), w).squeeze(0).T
+        )
+        model.module.get_image_pos_embeddings = partial(get_image_pos_embeddings, dalle=model.module, width=w)
+
     model.train()
     model = freeze(model=model, freeze_emb=False, freeze_ln=False, freeze_attn=True, freeze_ff=True, freeze_other=False)
-    optimizer = AdamW(model.parameters(), lr=lr)
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+
+    optimizer = (Adam8bit if adam8bit else AdamW)(model.parameters(), lr=lr)
+    scheduler = OneCycleLR(
         optimizer, max_lr=lr, final_div_factor=500, steps_per_epoch=int(np.ceil(steps / 30)), epochs=30
     )
-
-    total_seq_length = model.get_param("total_seq_length")
 
     try:
         step = 0
@@ -238,10 +251,7 @@ def forward(self, input_ids, attention_mask, return_loss=False, use_cache=False,
                 else x[0],
                 torch.mul(
                     attention_mask,
-                    t._get_layer_mask(i)[
-                        : attention_mask.size(2),
-                        : attention_mask.size(3),
-                    ],
+                    t._get_layer_mask(i)[: attention_mask.size(2), : attention_mask.size(3)],
                 ),
                 use_cache=False,
             )
@@ -278,14 +288,16 @@ def finetune(
     images: List[Union[str, Path, Image.Image]],
     captions: List[str] = [],
     model_name="rudalle",
-    steps=100,
-    lr=1e-4,
+    steps=500,
+    lr=1e-5,
     batch_size=1,
     height=256,
     width=256,
     stretch=False,
+    random_crop=None,
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     low_memory=False,
+    adam8bit=False,
     checkpoint: Optional[Union[str, Path]] = None,
     save_dir="modelzoo/",
 ) -> Tuple[Union[FP16Module, DalleModel], Optional[Tuple[int, int]]]:
@@ -301,6 +313,7 @@ def finetune(
         height (int, optional): Height for output images. If set to more than 256, generation will be significantly slower and the model will sample more tokens than it is trained for. This can lead to unexpected results. Defaults to 256.
         width (int, optional): Width for output images. If set to more than 256, generation will be significantly slower and the model will sample more tokens than it is trained for. This can lead to unexpected results. Defaults to 256.
         stretch (bool, optional): Squash images down to fixed size for training and stretch back to original size after sampling. This can significantly improve training/sampling time while still yielding good results. All training images should have the same aspect ratio. Defaults to False.
+        random_crop (bool, optional): Randomly crop sections of this size during training. None disables random cropping.
         device (torch.device, optional): The device to train on, using 'cpu' will take a long time!. Defaults to torch.device("cuda" if torch.cuda.is_available() else "cpu").
         low_memory (bool, optional): Enable if you have less than 16 GB of (V)RAM to use gradient checkpointing (slower but more memory efficient). Defaults to False.
         checkpoint (Optional[Union[str, Path]], optional): Checkpoint to resume from. Either a path to a trained RuDALL-E checkpoint or one of {list(MODELS.keys())}.
@@ -315,8 +328,6 @@ def finetune(
     ), "When specifying captions, the number of images must match exactly."
 
     low_mem = low_memory
-    if width != 256 or height != 256:
-        low_mem = True
 
     stretched_size = None
     if stretch:
@@ -332,8 +343,22 @@ def finetune(
     if checkpoint in list(MODELS.keys()):
         model = get_rudalle_model(checkpoint, pretrained=True, fp16=True, device=device, cache_dir="modelzoo/")
     else:
-        model = get_rudalle_model("Malevich", pretrained=True, fp16=True, device=device, cache_dir="modelzoo/")
-        model.load_state_dict(torch.load(checkpoint))
+        model = get_rudalle_model("Malevich", pretrained=False, fp16=True, device=device, cache_dir="modelzoo/")
+        ckpt = torch.load(checkpoint)
+        model.module.image_row_embeddings.weight = torch.nn.Parameter(
+            torch.zeros_like(ckpt["image_row_embeddings.weight"])
+        )
+        model.module.image_col_embeddings.weight = torch.nn.Parameter(
+            torch.zeros_like(ckpt["image_col_embeddings.weight"])
+        )
+        model.module.transformer.row_mask = torch.zeros_like(ckpt["transformer.row_mask"])
+        model.module.transformer.col_mask = torch.zeros_like(ckpt["transformer.col_mask"])
+        model.module.transformer.conv_mask = torch.zeros_like(ckpt["transformer.conv_mask"])
+        model.module.image_seq_length = (
+            model.module.image_col_embeddings.weight.shape[0] * model.module.image_row_embeddings.weight.shape[0]
+        )
+        model.module.total_seq_length = model.module.text_seq_length + model.module.image_seq_length
+        model.load_state_dict(ckpt)
         print(f"Loaded from {checkpoint}")
 
     tokenizer = get_tokenizer()
@@ -346,7 +371,8 @@ def finetune(
             height=height,
             width=width,
             stretch=stretch,
-            vae=get_vae().to(device),
+            random_crop=random_crop,
+            vae=get_vae(cache_dir="modelzoo/").to(device),
             tokenizer=tokenizer,
             text_seq_length=model.get_param("text_seq_length"),
             device=device,
@@ -358,6 +384,7 @@ def finetune(
         train_text=len(captions) > 0,
         gradient_checkpointing=low_mem,
         save_dir=save_dir,
+        adam8bit=adam8bit,
     )
     gc.collect()
     torch.cuda.empty_cache()
@@ -382,10 +409,12 @@ def argument_parser():
     parser.add_argument("--inference_batch_size", type=int, default=1, help="Number of images to sample at once. Higher batch size requires more memory, but will be faster per sample overall. Inference batches can be bigger as we don't need to store gradients for training.")
     parser.add_argument("--size", type=str, default='256,256', help="width,height of images to generate")
     parser.add_argument("--stretch", action="store_true", help="Squash images down to fixed size for training and stretch back to original size after sampling. This can significantly improve training/sampling time while still yielding good results. All training images should have the same aspect ratio.")
+    parser.add_argument("--random_crop", type=int, default=None, help="Randomly crop sections of this size during training. None disables random cropping.")
     parser.add_argument("--upscale", type=int, default=1, choices=[1, 2, 4, 8], help="Use RealESRGAN to upscale outputs.")
     parser.add_argument("--top_p", type=float, default=0.99, help="Effects how closely sampled images match training data. Lower values might give higher quality images at the cost of variation. A good range is between 0.9 and 0.999.")
     parser.add_argument("--device", type=str, default="cuda:0", help="The device to train on, using 'cpu' will take a long time!")
     parser.add_argument("--low_memory", action="store_true", help="Enable if you have less than 16 GB of (V)RAM to use gradient checkpointing (slower but more memory efficient)")
+    parser.add_argument("--adam8bit", action="store_true", help="Enable for even more memory-efficient training.")
     parser.add_argument("--checkpoint", type=str, default=None, help=f"Checkpoint to resume from. Either a path to a trained RuDALL-E checkpoint or one of {list(MODELS.keys())}.")
     parser.add_argument("--save_dir", type=str, default="modelzoo/", help="Directory to save finetuned checkpoints in.")
     parser.add_argument("--model_name", type=str, default=None, help="Name for finetuned checkpoints. Will default to the name of input_dir or the first input_img.")
@@ -408,8 +437,9 @@ def main(args):
         if args.num_examples is not None:
             images = random.choices(images, k=args.num_examples)
 
-    model_name = f"{Path(args.input_dir).stem if args.input_dir is not None else Path(args.input_imgs[0]).stem}_rudalle_finetuned"
     width, height = [int(v) for v in args.size.split(",")]
+    stem = Path(args.input_dir).stem if args.input_dir is not None else Path(args.input_imgs[0]).stem
+    model_name = f"{stem}_{width}x{height}_lr={args.lr}_steps={args.steps}_rudalle_finetuned"
 
     model, stretched_size = finetune(
         images,
@@ -421,6 +451,7 @@ def main(args):
         height=height,
         width=width,
         stretch=args.stretch,
+        random_crop=args.random_crop,
         device=torch.device(args.device),
         low_memory=args.low_memory,
         checkpoint=args.checkpoint,
@@ -430,7 +461,7 @@ def main(args):
     from maua.autoregressive.ru_dalle.generate import generate
 
     outputs = generate(
-        model,
+        model.eval(),
         model_name=model_name,
         input_text=args.input_text,
         num_outputs=args.num_outputs,
@@ -443,6 +474,7 @@ def main(args):
         device=args.device,
         output_dir=args.output_dir,
         save_intermediate=True,
+        oversample=False,
     )
     for id, im in enumerate(outputs):
         im.save(f"{args.output_dir}/{model_name}_{id}.png")

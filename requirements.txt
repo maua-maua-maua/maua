@@ -1,6 +1,7 @@
 auraloss
 av
 basicsr
+bitsandbytes-cuda113
 black
 click
 cupy-cuda113==9.6
