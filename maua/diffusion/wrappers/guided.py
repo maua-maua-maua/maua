@@ -4,11 +4,9 @@ from dataclasses import dataclass
 from functools import partial
 
 import torch
-from torchvision.transforms.functional import to_pil_image
 from tqdm import tqdm
 
 from ...utility import download
-from ..conditioning import GradientGuidedConditioning
 from .base import DiffusionWrapper
 
 sys.path += [os.path.dirname(__file__) + "/../../submodules/guided_diffusion"]
@@ -208,6 +206,71 @@ def create_models(
     return diffusion_model, diffusion, secondary_model
 
 
+class GradientGuidedConditioning(torch.nn.Module):
+    def __init__(self, diffusion, model, grad_modules, speed="fast"):
+        super().__init__()
+        self.speed = speed
+        if speed == "hyper":
+            pass
+        elif speed == "fast":
+            self.model = model
+        else:
+            self.model = partial(diffusion.p_mean_variance, model=model, clip_denoised=False)
+
+        self.grad_modules = torch.nn.ModuleList(grad_modules)
+        self.timestep_map = diffusion.timestep_map
+
+        sqrt_alphas_cumprod = torch.from_numpy(diffusion.sqrt_alphas_cumprod).float()
+        sqrt_one_minus_alphas_cumprod = torch.from_numpy(diffusion.sqrt_one_minus_alphas_cumprod).float()
+        self.register_buffer("sqrt_alphas_cumprod", sqrt_alphas_cumprod)
+        self.register_buffer("sqrt_one_minus_alphas_cumprod", sqrt_one_minus_alphas_cumprod)
+
+    def set_targets(self, prompts, noise):
+        self.noise = noise
+        for grad_module in self.grad_modules:
+            grad_module.set_targets(prompts)
+
+    def forward(self, x, t, y=None):
+        ot = t.clone()
+        t = torch.tensor([self.timestep_map.index(t) for t in t.long()], device=x.device, dtype=torch.long)
+
+        with torch.enable_grad():
+            x = x.detach().requires_grad_()
+
+            alpha = self.sqrt_alphas_cumprod[t]
+            sigma = self.sqrt_one_minus_alphas_cumprod[t]
+
+            if torch.isnan(x).any():
+                print("x NaN")
+
+            if self.speed == "hyper":
+                img = (x - sigma.reshape(-1, 1, 1, 1) * self.noise).div(alpha.reshape(-1, 1, 1, 1))
+            elif self.speed == "fast":
+                cosine_t = torch.atan2(sigma, alpha) * 2 / torch.pi
+                out = self.model(x, cosine_t).pred
+                img = out * sigma.reshape(-1, 1, 1, 1) + x * (1 - sigma.reshape(-1, 1, 1, 1))
+            else:
+                out = self.model(x=x, t=t, model_kwargs={"y": y})["pred_xstart"]
+                img = out * sigma.reshape(-1, 1, 1, 1) + x * (1 - sigma.reshape(-1, 1, 1, 1))
+
+            if torch.isnan(img).any():
+                print("img NaN")
+
+            img_grad = torch.zeros_like(img)
+            for grad_mod in self.grad_modules:
+                sub_grad = grad_mod(img, ot)
+
+                if torch.isnan(sub_grad).any():
+                    print(grad_mod.__class__.__name__, "NaN")
+                    sub_grad = torch.zeros_like(img)
+
+                img_grad += sub_grad
+
+            grad = -torch.autograd.grad(img, x, img_grad)[0]
+
+        return grad
+
+
 class GuidedDiffusion(DiffusionWrapper):
     def __init__(
         self,
@@ -247,6 +310,8 @@ class GuidedDiffusion(DiffusionWrapper):
         self.device = device
         self.model = self.model.to(device)
         self.conditioning = self.conditioning.to(device)
+        self.original_num_steps = self.diffusion.original_num_steps
+        self.timestep_map = self.diffusion.timestep_map
 
     @torch.no_grad()
     def sample(

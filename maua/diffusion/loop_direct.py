@@ -1,4 +1,6 @@
 # fmt:off
+import sys
+
 import decord
 import numpy as np
 import torch
@@ -17,14 +19,14 @@ decord.bridge.set_bridge("torch")
 
 
 if __name__ == "__main__":
-    W, H = 256, 256
+    W, H = 512, 512
     timesteps = 40
     skip = 0.6
-    blend_every = 8
+    blend_every = 16
     blend = 2
     consistency_trust = 0.75
-    text = "a very very very beautiful watercolor painting of an epic galaxy filled with pulsars and gas giants"
-    init = "/home/hans/datasets/video/dreams.mp4"
+    text = sys.argv[2]
+    init = sys.argv[1]
     style_img = None
     fps = 12
     clip_scale = 2500
@@ -32,9 +34,9 @@ if __name__ == "__main__":
     style_scale = 0
     color_match_scale = 0
     diffusion_speed = "fast"
-    diffusion_sampler = "p"
-    turbo = 8
-    diffusion_model = "uncondImageNet256"
+    diffusion_sampler = "ddim"
+    turbo = 1
+    diffusion_model = "large"
     device = "cuda"
 
     # process user inputs

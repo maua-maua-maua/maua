@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from decord.video_reader import VideoReader
 import numpy as np
+from maua.diffusion.wrappers.latent import LatentDiffusion
 import torch
 from maua.ops.image import match_histogram
 from PIL import Image, ImageOps
@@ -77,10 +78,10 @@ def save(tensor, filename):
     to_pil_image(tensor.squeeze().add(1).div(2).clamp(0, 1)).save(filename)
 
 
-def destitch(img, tile_size):
+def destitch(img, tile_size, overtile=1):
     _, _, H, W = img.shape
-    n_rows = round(np.floor(H / tile_size) + 1)
-    n_cols = round(np.floor(W / tile_size) + 1)
+    n_rows = round(np.floor(H / tile_size) + overtile)
+    n_cols = round(np.floor(W / tile_size) + overtile)
     tiled = []
     for y in torch.linspace(0, H - tile_size, n_rows).round().long():
         for x in torch.linspace(0, W - tile_size, n_cols).round().long():
@@ -106,10 +107,10 @@ def blend_weight1d(total_size, fade_in, fade_out):
     )
 
 
-def restitch(tiled, H, W):
+def restitch(tiled, H, W, overtile=1):
     _, C, _, tile_size = tiled.shape
-    n_rows = round(np.floor(H / tile_size) + 1)
-    n_cols = round(np.floor(W / tile_size) + 1)
+    n_rows = round(np.floor(H / tile_size) + overtile)
+    n_cols = round(np.floor(W / tile_size) + overtile)
     out = torch.zeros((1, C, H, W), device=tiled.device)
     rescale = torch.zeros_like(out)  # required to ensure rounding errors don't cause blending artifacts
     i = 0
@@ -146,11 +147,9 @@ def get_image_sizes(width, height, scales, scale_factor):
     return shapes
 
 
-def get_start_steps(start_skip, end_skip, scales):
-    skips = np.linspace(start_skip, end_skip, scales)
+def get_start_steps(skips, diffusion):
     start_steps = np.argmax(
-        diffusion.diffusion.original_num_steps * (1 - skips[:, None])
-        < np.array(diffusion.diffusion.timestep_map)[None, :],
+        diffusion.original_num_steps * (1 - np.array(skips)[:, None]) <= np.array(diffusion.timestep_map)[None, :],
         axis=1,
     )
     return start_steps
@@ -174,18 +173,17 @@ def initialize_image(init, shape):
 
 if __name__ == "__main__":
     with torch.no_grad():
-        W, H = 1024-64, 1024-64
-        tile_size = 512-64
-        num_images = 1
-        scales = 2
-        sf = 2
-        timesteps = 250
-        start_skip = 0.6
-        end_skip = 0.7
+        W, H = 4096, 2304
+        tile_size = 512
+        num_images = 128
+        scales = 3
+        sf = 3
+        timesteps = 100
+        skips = [0, 0.7, 0.7]
         text = sys.argv[2]
         init = sys.argv[1]
-        style_img = None  # "/home/hans/datasets/style/xoyo.png"
-        super_res_model = "SwinIR-L-DFOWMFC-GAN"
+        style_img = None
+        super_res_model = "SwinIR-M-DFO-GAN"
         match_hist = False
         sharpness_factor = 0
         stitch = True
@@ -197,23 +195,24 @@ if __name__ == "__main__":
         style_scale = 0
         color_match_scale = 0
         device = "cuda"
-        out_dir = '/home/hans/neurout/diffusion/'
+        out_dir = "/home/hans/neurout/diffusion/"
 
         # initialize diffusion class
-        diffusion = GuidedDiffusion(
-            [
-                CLIPGrads(scale=clip_scale),
-                LPIPSGrads(scale=lpips_scale),
-                VGGGrads(scale=style_scale),
-                ColorMatchGrads(scale=color_match_scale),
-            ],
-            sampler=diffusion_sampler,
-            timesteps=timesteps,
-            speed=diffusion_speed,
-        ).to(device)
+        # diffusion = GuidedDiffusion(
+        #     [
+        #         CLIPGrads(scale=clip_scale),
+        #         LPIPSGrads(scale=lpips_scale),
+        #         VGGGrads(scale=style_scale),
+        #         ColorMatchGrads(scale=color_match_scale),
+        #     ],
+        #     sampler=diffusion_sampler,
+        #     timesteps=timesteps,
+        #     speed=diffusion_speed,
+        # ).to(device)
+        diffusion = LatentDiffusion(sampler=diffusion_sampler, timesteps=timesteps).to(device)
 
         # calculate steps to start from (supports compound timestep respacing like '30,20,10')
-        start_steps = get_start_steps(start_skip, end_skip, scales)
+        start_steps = get_start_steps(skips, diffusion)
 
         # calculate size of each scale
         shapes = get_image_sizes(W, H, scales, sf)
@@ -237,7 +236,7 @@ if __name__ == "__main__":
             for scale, start_step in enumerate(start_steps):
 
                 if scale != 0:
-                    # save(img, f"{out_dir}/{out_name}_{scale}.png")
+                    save(img, f"{out_dir}/{out_name}_{scale}.png")
 
                     # maybe upsample image with super-resolution model
                     if super_res_model:
@@ -256,14 +255,16 @@ if __name__ == "__main__":
                 # initialize prompts for diffusion
                 prompts = [ContentPrompt(img=content).to(img)]
                 if text is not None:
-                    prompts.append(TextPrompt(text))
+                    prompts.append(TextPrompt(text, weight=3))
                 if style_img is not None:
                     prompts.append(StylePrompt(path=style_img, size=shapes[scale]))
 
                 # run diffusion sampling (in multiple batches if necessary)
                 if img.shape[0] > max_batch:
                     img = [
-                        diffusion.sample(im_batch.to(device), prompts, start_step, verbose=False)
+                        diffusion.sample(
+                            im_batch.to(device), prompts=prompts, start_step=start_step, n_steps=start_step
+                        )
                         for im_batch in tqdm(img.split(max_batch))
                     ]
                     img = torch.cat(img)
