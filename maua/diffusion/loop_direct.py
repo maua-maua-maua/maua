@@ -13,22 +13,23 @@ from .loop import (VideoFrames, initialize_cache_files,
                    initialize_optical_flow, warp)
 from .sample import build_output_name, round64
 from .wrappers.guided import GuidedDiffusion
+from .wrappers.latent import LatentDiffusion
 # fmt:on
 
 decord.bridge.set_bridge("torch")
 
 
 if __name__ == "__main__":
-    W, H = 512, 512
-    timesteps = 40
+    W, H = 384, 384
+    timesteps = 100
     skip = 0.6
-    blend_every = 16
+    blend_every = None
     blend = 2
     consistency_trust = 0.75
     text = sys.argv[2]
     init = sys.argv[1]
     style_img = None
-    fps = 12
+    fps = 24
     clip_scale = 2500
     lpips_scale = 2000
     style_scale = 0
@@ -42,7 +43,11 @@ if __name__ == "__main__":
     # process user inputs
     W, H = round64(W), round64(H)
     n_steps = round((1 - skip) * timesteps)
-    blend_every = round(blend_every * timesteps) if blend_every < 1 else blend_every
+    blend_every = (
+        round((1 - skip) * timesteps)
+        if blend_every is None
+        else (round(blend_every * timesteps) if blend_every < 1 else blend_every)
+    )
 
     # build output name based on inputs
     out_name = build_output_name(init, style_img, text)
@@ -74,18 +79,23 @@ if __name__ == "__main__":
     # exit()
 
     # initialize diffuser
-    diffusion = GuidedDiffusion(
-        [
-            CLIPGrads(scale=clip_scale),
-            LPIPSGrads(scale=lpips_scale),
-            VGGGrads(scale=style_scale),
-            ColorMatchGrads(scale=color_match_scale),
-        ],
+    # diffusion = GuidedDiffusion(
+    #     [
+    #         CLIPGrads(scale=clip_scale),
+    #         LPIPSGrads(scale=lpips_scale),
+    #         VGGGrads(scale=style_scale),
+    #         ColorMatchGrads(scale=color_match_scale),
+    #     ],
+    #     sampler=diffusion_sampler,
+    #     timesteps=timesteps,
+    #     model_checkpoint=diffusion_model,
+    #     speed=diffusion_speed,
+    # ).to(device)
+    diffusion = LatentDiffusion(
         sampler=diffusion_sampler,
         timesteps=timesteps,
         model_checkpoint=diffusion_model,
-        speed=diffusion_speed,
-    )
+    ).to(device)
 
     start_idx, direction = 0, 1
     total_steps = len(content) * n_steps
@@ -135,7 +145,7 @@ if __name__ == "__main__":
 
                     prompts = [ContentPrompt(content[(start_idx + f_n * direction) % len(content)])]
                     if text is not None:
-                        prompts.append(TextPrompt(text))
+                        prompts.append(TextPrompt(text, weight=5))
                     if style_img is not None:
                         prompts.append(StylePrompt(path=style_img, size=(H, W)))
 
