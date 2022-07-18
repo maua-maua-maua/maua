@@ -89,7 +89,7 @@ class LatentDiffusion(DiffusionWrapper):
         self.timestep_map = np.linspace(0, sampler.ddpm_num_timesteps, timesteps + 1).round().astype(np.long)
 
     @torch.no_grad()
-    def sample(self, img, prompts, start_step, n_steps=None, q_sample=None, noise=None, verbose=True):
+    def sample(self, img, prompts, start_step, n_steps=None, verbose=True):
         if n_steps is None:
             n_steps = start_step
 
@@ -98,11 +98,8 @@ class LatentDiffusion(DiffusionWrapper):
         with self.model.ema_scope():
             x_T = self.model.get_first_stage_encoding(self.model.encode_first_stage(img))
 
-            if q_sample is None:
-                q_sample = start_step
-            if q_sample > 0:
-                t = torch.ones([x_T.shape[0]], device=self.device, dtype=torch.long) * self.timestep_map[q_sample]
-                x_T = self.model.q_sample(x_T, t - 1, noise)
+            t = torch.ones([x_T.shape[0]], device=self.device, dtype=torch.long) * self.timestep_map[start_step]
+            x_T = self.model.q_sample(x_T, t - 1, torch.randn_like(x_T))
 
             samples, _ = self.sample_fn(
                 x_T=x_T,

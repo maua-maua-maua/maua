@@ -3,6 +3,7 @@ import sys
 
 import decord
 import numpy as np
+from maua.diffusion.wrappers.glide import GLIDE
 import torch
 from tqdm import tqdm
 
@@ -20,16 +21,17 @@ decord.bridge.set_bridge("torch")
 
 
 if __name__ == "__main__":
-    W, H = 384, 384
+    W, H = 256, 256
     timesteps = 100
-    skip = 0.6
+    skip = 0.4
     blend_every = None
     blend = 2
     consistency_trust = 0.75
     text = sys.argv[2]
     init = sys.argv[1]
     style_img = None
-    fps = 24
+    fps = 12
+    cfg_scale = 3
     clip_scale = 2500
     lpips_scale = 2000
     style_scale = 0
@@ -91,11 +93,12 @@ if __name__ == "__main__":
     #     model_checkpoint=diffusion_model,
     #     speed=diffusion_speed,
     # ).to(device)
-    diffusion = LatentDiffusion(
-        sampler=diffusion_sampler,
-        timesteps=timesteps,
-        model_checkpoint=diffusion_model,
-    ).to(device)
+    # diffusion = LatentDiffusion(
+    #     sampler=diffusion_sampler,
+    #     timesteps=timesteps,
+    #     model_checkpoint=diffusion_model,
+    # ).to(device)
+    diffusion = GLIDE(sampler=diffusion_sampler, timesteps=timesteps).to(device)
 
     start_idx, direction = 0, 1
     total_steps = len(content) * n_steps
@@ -145,7 +148,7 @@ if __name__ == "__main__":
 
                     prompts = [ContentPrompt(content[(start_idx + f_n * direction) % len(content)])]
                     if text is not None:
-                        prompts.append(TextPrompt(text, weight=5))
+                        prompts.append(TextPrompt(text, weight=cfg_scale))
                     if style_img is not None:
                         prompts.append(StylePrompt(path=style_img, size=(H, W)))
 

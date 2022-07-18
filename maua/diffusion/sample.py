@@ -3,11 +3,8 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
-from decord.video_reader import VideoReader
 import numpy as np
-from maua.diffusion.wrappers.latent import LatentDiffusion
 import torch
-from maua.ops.image import match_histogram
 from PIL import Image, ImageOps
 from resize_right import resize
 from resize_right.interp_methods import lanczos3
@@ -16,12 +13,16 @@ from torchvision.transforms.functional import (adjust_sharpness, autocontrast,
                                                to_pil_image, to_tensor)
 from tqdm import tqdm, trange
 
+from ..ops.image import match_histogram
 from ..ops.loss import range_loss, tv_loss
 from ..super.image.single import upscale_image
 from .conditioning import (CLIPGrads, ColorMatchGrads, ContentPrompt,
-                           LossGrads, LPIPSGrads, VGGGrads, StylePrompt,
-                           TextPrompt)
+                           LossGrads, LPIPSGrads, StylePrompt, TextPrompt,
+                           VGGGrads)
+from .wrappers.glide import GLIDE
 from .wrappers.guided import GuidedDiffusion
+from .wrappers.latent import LatentDiffusion
+
 # fmt:on
 
 
@@ -173,13 +174,13 @@ def initialize_image(init, shape):
 
 if __name__ == "__main__":
     with torch.no_grad():
-        W, H = 4096, 2304
-        tile_size = 512
-        num_images = 128
-        scales = 3
+        W, H = 768, 768
+        tile_size = 256
+        num_images = 1
+        scales = 2
         sf = 3
-        timesteps = 100
-        skips = [0, 0.7, 0.7]
+        timesteps = 50
+        skips = [0.0, 0.5]
         text = sys.argv[2]
         init = sys.argv[1]
         style_img = None
@@ -189,7 +190,8 @@ if __name__ == "__main__":
         stitch = True
         max_batch = 4
         diffusion_speed = "regular"
-        diffusion_sampler = "ddim"
+        diffusion_sampler = "plms"
+        cfg_scale = 5
         clip_scale = 2500
         lpips_scale = 0
         style_scale = 0
@@ -209,7 +211,8 @@ if __name__ == "__main__":
         #     timesteps=timesteps,
         #     speed=diffusion_speed,
         # ).to(device)
-        diffusion = LatentDiffusion(sampler=diffusion_sampler, timesteps=timesteps).to(device)
+        # diffusion = LatentDiffusion(sampler=diffusion_sampler, timesteps=timesteps).to(device)
+        diffusion = GLIDE(sampler=diffusion_sampler, timesteps=timesteps).to(device)
 
         # calculate steps to start from (supports compound timestep respacing like '30,20,10')
         start_steps = get_start_steps(skips, diffusion)
@@ -255,7 +258,7 @@ if __name__ == "__main__":
                 # initialize prompts for diffusion
                 prompts = [ContentPrompt(img=content).to(img)]
                 if text is not None:
-                    prompts.append(TextPrompt(text, weight=3))
+                    prompts.append(TextPrompt(text, weight=cfg_scale))
                 if style_img is not None:
                     prompts.append(StylePrompt(path=style_img, size=shapes[scale]))
 
@@ -263,7 +266,11 @@ if __name__ == "__main__":
                 if img.shape[0] > max_batch:
                     img = [
                         diffusion.sample(
-                            im_batch.to(device), prompts=prompts, start_step=start_step, n_steps=start_step
+                            im_batch.to(device),
+                            prompts=prompts,
+                            start_step=start_step,
+                            n_steps=start_step,
+                            verbose=False,
                         )
                         for im_batch in tqdm(img.split(max_batch))
                     ]

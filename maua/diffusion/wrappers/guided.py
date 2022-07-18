@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from functools import partial
 
 import torch
-from tqdm import tqdm
+from tqdm import trange
 
 from ...utility import download
 from .base import DiffusionWrapper
@@ -314,50 +314,20 @@ class GuidedDiffusion(DiffusionWrapper):
         self.timestep_map = self.diffusion.timestep_map
 
     @torch.no_grad()
-    def sample(
-        self,
-        img,
-        prompts,
-        start_step,
-        n_steps=None,
-        model_kwargs={},
-        randomize_class=False,
-        verbose=True,
-        q_sample=None,
-        noise=None,
-        stop_conditioning_under=0,  # zero conditions
-    ):
+    def sample(self, img, prompts, start_step, n_steps=None, verbose=True):
         if n_steps is None:
             n_steps = start_step
-        if stop_conditioning_under < n_steps:
-            self.conditioning.set_targets([p.to(img) for p in prompts], noise)
+        t = torch.tensor([start_step] * img.shape[0], device=self.device, dtype=torch.long)
 
-        if q_sample is None:
-            q_sample = start_step
-        if q_sample > 0:
-            t = torch.ones([img.shape[0]], device=self.device, dtype=torch.long) * q_sample
-            img = self.diffusion.q_sample(img, t, noise)
-
-        steps = range(start_step, start_step - n_steps, -1)
-        if verbose:
-            steps = tqdm(steps)
+        noise = torch.randn_like(img)
+        self.conditioning.set_targets([p.to(img) for p in prompts], noise)
+        img = self.diffusion.q_sample(img, t, noise)
 
         out = None
-        for i in steps:
-            if randomize_class and "y" in model_kwargs:
-                model_kwargs["y"] = torch.randint(
-                    low=0, high=self.model.num_classes, size=model_kwargs["y"].shape, device=self.device
-                )
-
-            t = torch.tensor([i] * img.shape[0], device=self.device, dtype=torch.long)
-            out = self.sample_fn(out)(
-                self.model,
-                img,
-                t,
-                cond_fn=self.conditioning if i > stop_conditioning_under else None,
-                model_kwargs=model_kwargs,
-            )
+        for _ in (trange if verbose else range)(n_steps):
+            out = self.sample_fn(out)(self.model, img, t, cond_fn=self.conditioning)
             img = out["sample"]
+            t -= 1
 
         return out["pred_xstart"]
 

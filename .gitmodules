@@ -76,3 +76,6 @@
 [submodule "maua/submodules/mmflow"]
 	path = maua/submodules/mmflow
 	url = https://github.com/open-mmlab/mmflow
+[submodule "maua/submodules/GLIDE"]
+	path = maua/submodules/GLIDE
+	url = https://github.com/Penguin-jpg/glide-text2im
