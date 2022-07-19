@@ -69,7 +69,7 @@
 	url = https://github.com/inducer/pycuda.git
 [submodule "maua/submodules/butterfly"]
 	path = src/submodules/butterfly
-	url = https://github.com/HazyResearch/butterfly
+	url = https://github.com/JCBrouwer/butterfly
 [submodule "maua/submodules/rq_vae_transformer"]
 	path = src/submodules/rq_vae_transformer
 	url = https://github.com/kakaobrain/rq-vae-transformer
