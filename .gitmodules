@@ -1,84 +1,84 @@
 [submodule "maua/submodules/spynet"]
-	path = maua/submodules/spynet
+	path = src/submodules/spynet
 	url = https://github.com/sniklaus/pytorch-spynet.git
 [submodule "maua/submodules/pwc"]
-	path = maua/submodules/pwc
+	path = src/submodules/pwc
 	url = https://github.com/sniklaus/pytorch-pwc.git
 [submodule "maua/submodules/unflow"]
-	path = maua/submodules/unflow
+	path = src/submodules/unflow
 	url = https://github.com/sniklaus/pytorch-unflow.git
 [submodule "maua/submodules/liteflownet"]
-	path = maua/submodules/liteflownet
+	path = src/submodules/liteflownet
 	url = https://github.com/sniklaus/pytorch-liteflownet.git
 [submodule "maua/submodules/CLIP"]
-	path = maua/submodules/CLIP
+	path = src/submodules/CLIP
 	url = https://github.com/openai/CLIP
 [submodule "maua/submodules/VQGAN"]
-	path = maua/submodules/VQGAN
+	path = src/submodules/VQGAN
 	url = https://github.com/CompVis/taming-transformers
 [submodule "maua/submodules/FrozenInTime"]
-	path = maua/submodules/FrozenInTime
+	path = src/submodules/FrozenInTime
 	url = https://github.com/m-bain/frozen-in-time.git
 [submodule "maua/submodules/ic_gan"]
-	path = maua/submodules/ic_gan
+	path = src/submodules/ic_gan
 	url = https://github.com/facebookresearch/ic_gan.git
 [submodule "maua/submodules/guided_diffusion"]
-	path = maua/submodules/guided_diffusion
+	path = src/submodules/guided_diffusion
 	url = https://github.com/crowsonkb/guided-diffusion
 [submodule "maua/submodules/RealESRGAN"]
-	path = maua/submodules/RealESRGAN
+	path = src/submodules/RealESRGAN
 	url = https://github.com/xinntao/Real-ESRGAN
 [submodule "maua/submodules/BSRGAN"]
-	path = maua/submodules/BSRGAN
+	path = src/submodules/BSRGAN
 	url = https://github.com/cszn/BSRGAN
 [submodule "maua/submodules/SwinIR"]
-	path = maua/submodules/SwinIR
+	path = src/submodules/SwinIR
 	url = https://github.com/JingyunLiang/SwinIR
 [submodule "maua/submodules/NIMA"]
-	path = maua/submodules/NIMA
+	path = src/submodules/NIMA
 	url = https://github.com/kentsyx/Neural-IMage-Assessment.git
 [submodule "maua/submodules/ru_dalle"]
-	path = maua/submodules/ru_dalle
+	path = src/submodules/ru_dalle
 	url = https://github.com/neverix/ru-dalle
 [submodule "maua/submodules/v_diffusion"]
-	path = maua/submodules/v_diffusion
+	path = src/submodules/v_diffusion
 	url = https://github.com/crowsonkb/v-diffusion-pytorch.git
 [submodule "maua/submodules/latent_diffusion"]
-	path = maua/submodules/latent_diffusion
+	path = src/submodules/latent_diffusion
 	url = https://github.com/CompVis/latent-diffusion.git
 [submodule "maua/submodules/minDALLE"]
-	path = maua/submodules/minDALLE
+	path = src/submodules/minDALLE
 	url = https://github.com/kakaobrain/minDALL-E.git
 [submodule "maua/submodules/waifu2x"]
-	path = maua/submodules/waifu2x
+	path = src/submodules/waifu2x
 	url = https://github.com/yu45020/Waifu2x.git
 [submodule "maua/audio"]
-	path = maua/audio
+	path = src/audio
 	url = https://github.com/maua-maua-maua/audio
 [submodule "maua/GAN/studio"]
-	path = maua/GAN/studio
+	path = src/GAN/studio
 	url = https://github.com/maua-maua-maua/GAN
 [submodule "maua/submodules/RIFE"]
-	path = maua/submodules/RIFE
+	path = src/submodules/RIFE
 	url = https://github.com/hzwer/arXiv2020-RIFE.git
 [submodule "maua/GAN/nv"]
-	path = maua/GAN/nv
+	path = src/GAN/nv
 	url = https://github.com/maua-maua-maua/nvGAN
 [submodule "maua/submodules/pycuda"]
-	path = maua/submodules/pycuda
+	path = src/submodules/pycuda
 	url = https://github.com/inducer/pycuda.git
 [submodule "maua/submodules/butterfly"]
-	path = maua/submodules/butterfly
+	path = src/submodules/butterfly
 	url = https://github.com/HazyResearch/butterfly
 [submodule "maua/submodules/rq_vae_transformer"]
-	path = maua/submodules/rq_vae_transformer
+	path = src/submodules/rq_vae_transformer
 	url = https://github.com/kakaobrain/rq-vae-transformer
 [submodule "maua/submodules/mmflow"]
-	path = maua/submodules/mmflow
+	path = src/submodules/mmflow
 	url = https://github.com/open-mmlab/mmflow
 [submodule "maua/submodules/GLIDE"]
-	path = maua/submodules/GLIDE
+	path = src/submodules/GLIDE
 	url = https://github.com/Penguin-jpg/glide-text2im
 [submodule "maua/submodules/GLID3XL"]
-	path = maua/submodules/GLID3XL
+	path = src/submodules/GLID3XL
 	url = https://github.com/Jack000/glid-3-xl.git

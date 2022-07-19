@@ -10,21 +10,23 @@ Maua is still under construction for now and so the API and functionality are su
 
 ## Installation
 
-Deep learning is very compute hungry, this means that a decent GPU is practically a requirement. If you have an NVIDIA GPU with the driver installed: set up [Miniconda](https://docs.conda.io/en/latest/miniconda.html) on your machine and run the commands below.
+Deep learning is very compute hungry, this means that a decent GPU is practically a requirement. [Install CUDA](https://developer.nvidia.com/cuda-downloads) and then Maua can be installed using pip as follows: 
 
 ```bash
-git clone --recursive https://github.com/maua-maua-maua/maua.git
-cd maua
-conda create -n maua python=3.9 pytorch torchvision torchaudio cudatoolkit=11.3 cudatoolkit-dev=11.3 cudnn mpi4py boost Cython pip=21.3.1 -c nvidia -c pytorch -c conda-forge
-conda activate maua
-pip install -r requirements.txt
+pip install numpy Cython
+pip install git+https://github.com/maua-maua-maua/maua.git --extra-index-url https://pypi.ngc.nvidia.com --extra-index-url https://download.pytorch.org/whl/cu116
+```
 
+Currently installation has only been tested on a Ubuntu 20.04 machine with NVIDIA GPUs. Other configurations are also possible but might be more involved. If you're running into problems, feel free to open an issue!
+
+### Compiling Extensions
+
+```
 python maua/submodules/pycuda/configure.py --cuda-enable-gl
 mv siteconf.py maua/submodules/pycuda
 pip install -e maua/submodules/pycuda
 ```
 
-Currently installation has only been tested on a Ubuntu 20.04 machine with NVIDIA GPUs. Other configurations are also be possible but might be more involved. If you're running into problems, feel free to open an issue!
 
 ## Usage
 
@@ -67,7 +69,7 @@ from maua.diffusion.guided import guided_diffusion as diffusion
 # from maua.diffusion.cfg import classifier_free as diffusion
 # or 
 # from maua.diffusion.v import v_diffusion as diffusion
-from maua.super.image import upscale
+from ..super.image import upscale
 
 images = [diffusion("A street art mural of a dapper turtle with wings") for i in range(5)]
 

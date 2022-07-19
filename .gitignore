@@ -6,17 +6,17 @@ cache/*
 !cache/.gitkeep
 workspace/*
 workspace/audio_cache/*
-maua/audiovisual/patches/*
-!maua/audiovisual/patches/examples/
-!maua/audiovisual/patches/base/
-!maua/audiovisual/patches/primitives/
+src/audiovisual/patches/*
+!src/audiovisual/patches/examples/
+!src/audiovisual/patches/base/
+!src/audiovisual/patches/primitives/
 !workspace/.gitkeep
 !workspace/Wavefunk - Dwelling in the Kelp.mp3
 !workspace/Wavefunk - Tau Ceti Alpha.mp3
 !workspace/Wavefunk - Temper.mp3
 !workspace/audio_cache/
 !workspace/audio_cache/.gitkeep
-maua/ops/triton
+src/ops/triton
 **__pycache__
 **.pyc
 .vscode/
