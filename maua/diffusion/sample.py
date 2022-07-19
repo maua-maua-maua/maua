@@ -19,10 +19,10 @@ from ..super.image.single import upscale_image
 from .conditioning import (CLIPGrads, ColorMatchGrads, ContentPrompt,
                            LossGrads, LPIPSGrads, StylePrompt, TextPrompt,
                            VGGGrads)
+from .wrappers.glid3xl import GLID3XL
 from .wrappers.glide import GLIDE
 from .wrappers.guided import GuidedDiffusion
 from .wrappers.latent import LatentDiffusion
-
 # fmt:on
 
 
@@ -212,7 +212,8 @@ if __name__ == "__main__":
         #     speed=diffusion_speed,
         # ).to(device)
         # diffusion = LatentDiffusion(sampler=diffusion_sampler, timesteps=timesteps).to(device)
-        diffusion = GLIDE(sampler=diffusion_sampler, timesteps=timesteps).to(device)
+        # diffusion = GLIDE(sampler=diffusion_sampler, timesteps=timesteps).to(device)
+        diffusion = GLID3XL(sampler=diffusion_sampler, timesteps=timesteps).to(device)
 
         # calculate steps to start from (supports compound timestep respacing like '30,20,10')
         start_steps = get_start_steps(skips, diffusion)

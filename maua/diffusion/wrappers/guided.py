@@ -230,7 +230,7 @@ class GradientGuidedConditioning(torch.nn.Module):
         for grad_module in self.grad_modules:
             grad_module.set_targets(prompts)
 
-    def forward(self, x, t, y=None):
+    def forward(self, x, t, kw={}):
         ot = t.clone()
         t = torch.tensor([self.timestep_map.index(t) for t in t.long()], device=x.device, dtype=torch.long)
 
@@ -250,7 +250,7 @@ class GradientGuidedConditioning(torch.nn.Module):
                 out = self.model(x, cosine_t).pred
                 img = out * sigma.reshape(-1, 1, 1, 1) + x * (1 - sigma.reshape(-1, 1, 1, 1))
             else:
-                out = self.model(x=x, t=t, model_kwargs={"y": y})["pred_xstart"]
+                out = self.model(x=x, t=t, model_kwargs=kw)["pred_xstart"]
                 img = out * sigma.reshape(-1, 1, 1, 1) + x * (1 - sigma.reshape(-1, 1, 1, 1))
 
             if torch.isnan(img).any():

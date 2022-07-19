@@ -121,12 +121,13 @@ class GLIDE(DiffusionWrapper):
         self.model.del_cache()
         old_eps = []
         for _ in (trange if verbose else range)(n_steps):
-            out = self.sample_fn(old_eps, scale)(x=img, t=t, model_kwargs=model_kwargs)
-            img = out["sample"]
-            if len(old_eps) >= 3:
-                old_eps.pop(0)
-            if "eps" in out:
+            out = self.sample_fn(old_eps, scale)(x=out["sample"], t=t, model_kwargs=model_kwargs)
+
+            if "eps" in out:  # PLMS bookkeeping
+                if len(old_eps) >= 3:
+                    old_eps.pop(0)
                 old_eps.append(out["eps"])
+
             t -= 1
         self.model.del_cache()
 
