@@ -8,7 +8,7 @@ setup(
     author="Hans Brouwer",
     author_email="hans@wavefunk.xyz",
     url="https://github.com/maua-maua-maua/maua",
-    packages=["src"],
+    packages=["src/maua"],
     install_requires=[
         "apex @ git+https://github.com/NVIDIA/apex",
         "auraloss",
