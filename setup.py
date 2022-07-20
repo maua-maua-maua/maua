@@ -22,7 +22,7 @@ setup(
         "apex @ git+https://github.com/NVIDIA/apex",
         "auraloss",
         "av",
-        "basicsr @ git+https://github.com/JCBrouwer/BasicSR@feature/dynamic-import-torch",  # TODO hopefully basicsr fixes install-time torch dep
+        "basicsr",
         "bitsandbytes-cuda113",
         "cached_conv @ git+https://github.com/caillonantoine/cached_conv",
         "click",
@@ -45,7 +45,7 @@ setup(
         "kornia",
         "librosa",
         "lpips",
-        "madmom @ git+https://github.com/CPJKU/madmom",  # TODO madmom==0.17 includes fix for install-time Cython dep
+        "madmom",
         "matplotlib",
         "medpy",
         "mmflow",
@@ -57,7 +57,7 @@ setup(
         "numpy",
         "nvidia-cuda-runtime-cu116",
         "nvidia-cuda-nvcc-cu116",
-        "nvidia-cudnn",
+        "nvidia-cudnn-cu116",
         "nvidia-tensorrt",
         "omegaconf",
         "openunmix",

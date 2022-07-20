@@ -13,7 +13,7 @@ Maua is still under construction for now and so the API and functionality are su
 Deep learning is very compute hungry, this means that a decent GPU is practically a requirement. [Install CUDA](https://developer.nvidia.com/cuda-downloads) and then Maua can be installed using pip as follows: 
 
 ```bash
-pip install numpy Cython
+pip install numpy Cython torch --extra-index-url https://download.pytorch.org/whl/cu116
 pip install git+https://github.com/maua-maua-maua/maua.git --extra-index-url https://pypi.ngc.nvidia.com --extra-index-url https://download.pytorch.org/whl/cu116
 ```
 
