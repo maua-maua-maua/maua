@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from setuptools import find_packages, setup
+from setuptools import find_namespace_packages, setup
 
 setup(
     name="maua",
@@ -8,7 +8,16 @@ setup(
     author="Hans Brouwer",
     author_email="hans@wavefunk.xyz",
     url="https://github.com/maua-maua-maua/maua",
-    packages=find_packages(include="maua*"),
+    packages=find_namespace_packages(
+        include=["maua*"],
+        exclude=[
+            "maua.submodules.mmflow.tests*",
+            "maua.submodules.mmflow.docs*",
+            "maua.submodules.SwinIR.testsets*",
+            "maua.submodules.VQGAN.data*",
+            "maua.submodules.pycuda.bpl-subset*",
+        ],
+    ),
     install_requires=[
         "apex @ git+https://github.com/NVIDIA/apex",
         "auraloss",
