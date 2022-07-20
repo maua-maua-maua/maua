@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from setuptools import setup
+from setuptools import find_packages, setup
 
 setup(
     name="maua",
@@ -8,7 +8,7 @@ setup(
     author="Hans Brouwer",
     author_email="hans@wavefunk.xyz",
     url="https://github.com/maua-maua-maua/maua",
-    packages=["src/maua"],
+    packages=find_packages(include="maua*"),
     install_requires=[
         "apex @ git+https://github.com/NVIDIA/apex",
         "auraloss",
@@ -40,7 +40,7 @@ setup(
         "matplotlib",
         "medpy",
         "mmflow",
-        "mmcv-full",
+        "mmcv",
         "more_itertools",
         "ninja",
         "npy_append_array",
