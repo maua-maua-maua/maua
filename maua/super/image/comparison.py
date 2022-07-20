@@ -27,11 +27,3 @@ def main(args):
     print("Average time taken:")
     for k, v in times.items():
         print(k.ljust(35), f"{v:.4f} sec".rjust(20))
-
-
-def argument_parser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("images", nargs="+")
-    parser.add_argument("--device", default="cuda:0")
-    parser.add_argument("--out_dir", default="output/")
-    return parser

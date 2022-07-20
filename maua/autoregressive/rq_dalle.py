@@ -215,29 +215,3 @@ def main(
         for i, img in enumerate(images):
             img = Image.fromarray(np.uint8(img.numpy().transpose([1, 2, 0]) * 255))
             img.save(f"{out_dir}/{text_prompts}_{i}_temp_{temperature}_top_k_{top_k}_top_p_{top_p}.jpg")
-
-
-def argument_parser():
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--text_prompts", type=str, required=True)
-    parser.add_argument("--num_samples", type=int, default=64)
-    parser.add_argument("--sampling_ratio", type=int, default=0.1)
-    parser.add_argument("--batch_size", type=int, default=16)
-    parser.add_argument("--temperature", type=float, default=1.0)
-    parser.add_argument("--top_k", type=int, default=1024)
-    parser.add_argument("--top_p", type=float, default=0.95)
-    parser.add_argument("--checkpoint_dir", type=str, default="modelzoo/rqvae_cc3m_cc12m_yfcc")
-    parser.add_argument("--clip_model", type=str, default="ViT-B/32")
-    parser.add_argument("--make_grid", action="store_true")
-    parser.add_argument("--out_dir", type=str, default="output/")
-    parser.set_defaults(func=main)
-    return parser
-
-
-if __name__ == "__main__":
-    args = argument_parser().parse_args()
-    func = args.func
-    del args.func
-    func(**vars(args))

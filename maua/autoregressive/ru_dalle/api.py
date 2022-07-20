@@ -51,18 +51,3 @@ def main(args):
         )
     ):
         img.save(f"{args.out_dir}/{args.input_text.replace(' ', '_')}_rudalle_kandinsky_{i}.png")
-
-
-def argument_parser():
-    # fmt:off
-    parser = argparse.ArgumentParser()
-    parser.add_argument("input_text", help="Text for which an image should be generated (in English, will be translated to Russian)")
-    parser.add_argument("request_url", help="API URL of the Sbercloud RuDALL-E Kandinsky deployment")
-    parser.add_argument("--top_k", type=int, default=1500)
-    parser.add_argument("--top_p", type=float, default=0.99)
-    parser.add_argument("--images_num", type=int, default=4)
-    parser.add_argument("--rerank_top", type=int, default=4)
-    parser.add_argument("--out_dir", default='output/')
-    parser.add_argument("--verbose", action='store_true')
-    # fmt:on
-    return parser

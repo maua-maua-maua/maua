@@ -36,11 +36,3 @@ def main(args):
 
         upscale(video_file, args.model_name, args.device, args.out_dir)
 
-
-def argument_parser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("video_files", nargs="+")
-    parser.add_argument("--model_name", default="latent-diffusion", choices=MODEL_NAMES)
-    parser.add_argument("--device", default="cuda:0")
-    parser.add_argument("--out_dir", default="output/")
-    return parser

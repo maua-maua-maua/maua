@@ -1,6 +1,6 @@
 #!python
 
-from . import argument_parser
+from .cli.entrypoint import argument_parser
 
 
 def main():

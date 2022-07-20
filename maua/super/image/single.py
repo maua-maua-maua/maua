@@ -76,13 +76,3 @@ def main(args):
         if args.postdownsample > 1:
             im = im.resize((im.size[0] // args.postdownsample, im.size[1] // args.postdownsample))
         im.save(f"{args.out_dir}/{Path(path).stem}_{args.model_name}.png")
-
-
-def argument_parser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("images", nargs="+")
-    parser.add_argument("--model_name", default="latent-diffusion", choices=MODEL_NAMES)
-    parser.add_argument("--postdownsample", default=1)
-    parser.add_argument("--device", default="cuda:0")
-    parser.add_argument("--out_dir", default="output/")
-    return parser

@@ -377,28 +377,6 @@ def generate(
     return pil_images
 
 
-def argument_parser():
-    import argparse
-
-    # fmt: off
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--input_text", type=str, default="", help="Input text to sample images for after training. Will only have effect if you train with low number of steps / low learning rate or train with captions.")
-    parser.add_argument("--num_outputs", type=int, default=8, help="Number of images to generate after finetuning")
-    parser.add_argument("--batch_size", type=int, default=1, help="Number of images to sample at once. Higher batch size requires more memory, but will be faster per sample overall. Inference batches can be bigger as we don't need to store gradients for training.")
-    parser.add_argument("--size", type=str, default='256,256', help="width,height of images to sample")
-    parser.add_argument("--stretch_size", type=str, default=None, help="width,height to stretch sampled images to (will only give decent results if model was finetuned with this stretch size).")
-    parser.add_argument("--upscale", type=int, default=1, choices=[1, 2, 4, 8], help="Use RealESRGAN to upscale outputs.")
-    parser.add_argument("--top_p", type=float, default=0.99, help="Effects how closely sampled images match training data. Lower values might give higher quality images at the cost of variation. A good range is between 0.9 and 0.999.")
-    parser.add_argument("--device", type=str, default="cuda:0", help="The device to train on, using 'cpu' will take a long time!")
-    parser.add_argument("--low_memory", action="store_true", help="Enable if you have less than 16 GB of (V)RAM to use gradient checkpointing (slower but more memory efficient)")
-    parser.add_argument("--no_oversample", action="store_true", help="Disable oversampling procedure. Oversampling is slower but works better when sampling shapes different from what the model was trained on.")
-    parser.add_argument("--checkpoint", type=str, default=None, help=f"Checkpoint to resume from. Either a path to a trained RuDALL-E checkpoint or one of {list(MODELS.keys())}.")
-    parser.add_argument("--output_name", type=str, default=None, help="Name to save images under.")
-    parser.add_argument("--output_dir", type=str, default="output/", help="Directory to save output images in.")
-    # fmt: on
-    return parser
-
-
 def main(args):
     device = torch.device(args.device)
 
