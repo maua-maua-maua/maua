@@ -1,11 +1,11 @@
-import os
+import functools
+import pathlib
+import shutil
 import tarfile
-import urllib.request
 import zipfile
-from pathlib import Path
 
 import requests
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 
 def info(x, y=None, label=None):
@@ -55,18 +55,24 @@ def name(s):
     return s.split("/")[-1].split(".")[0]
 
 
-class DownloadProgressBar(tqdm):
-    def update_to(self, b=1, bsize=1, tsize=None):
-        if tsize is not None:
-            self.total = tsize
-        self.update(b * bsize - self.n)
+def download(url, filename):
+    headers = {"User-Agent": "Maua", "From": "https://github.com/maua-maua-maua/maua"}
+    r = requests.get(url, stream=True, allow_redirects=True, headers=headers)
+    if r.status_code != 200:
+        r.raise_for_status()  # Will only raise for 4xx codes, so...
+        raise RuntimeError(f"Request to {url} returned status code {r.status_code}")
+    file_size = int(r.headers.get("Content-Length", 0))
 
+    path = pathlib.Path(filename).expanduser().resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
 
-def download(url, output_path):
-    os.makedirs(Path(output_path).parent, exist_ok=True)
-    with DownloadProgressBar(unit="B", unit_scale=True, miniters=1, desc=output_path) as t:
-        urllib.request.urlretrieve(url, filename=output_path, reporthook=t.update_to)
-    return output_path
+    desc = f"Downloading {filename}" + (" (Unknown total file size)" if file_size == 0 else "")
+    r.raw.read = functools.partial(r.raw.read, decode_content=True)  # Decompress if needed
+    with tqdm.wrapattr(r.raw, "read", total=file_size, desc=desc) as r_raw:
+        with path.open("wb") as f:
+            shutil.copyfileobj(r_raw, f)
+
+    return path
 
 
 def fetch(path_or_url):

@@ -12,8 +12,7 @@ from .base import DiffusionWrapper
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/GLID3XL/")
 from encoders.modules import BERTEmbedder
-from guided_diffusion.script_util import (create_model_and_diffusion,
-                                          model_and_diffusion_defaults)
+from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
 MODEL_URLS = {
     "glid3xl-bert": "https://dall-3.com/models/glid-3-xl/bert.pt",
@@ -56,9 +55,6 @@ def create_models(
         "image_condition": True if model_state_dict["input_blocks.0.0.weight"].shape[1] == 8 else False,
         "super_res_condition": True if "external_block.0.0.weight" in model_state_dict else False,
     }
-    print(f'clip_embed_dim={"clip_proj.weight" in model_state_dict}')
-    print(f'image_condition={model_state_dict["input_blocks.0.0.weight"].shape[1] == 8}')
-    print(f'super_res_condition={"external_block.0.0.weight" in model_state_dict}')
 
     model_config = model_and_diffusion_defaults()
     model_config.update(model_params)
@@ -123,9 +119,16 @@ class LatentGradientGuidedConditioning(torch.nn.Module):
         t = torch.tensor([self.timestep_map.index(t) for t in t.long()], device=x.device, dtype=torch.long)
 
         with torch.enable_grad():
-            x = x[: x.shape[0] // 2].detach().requires_grad_()
+            half = x.shape[0] // 2
+            x = x[:half].detach().requires_grad_()
 
-            out = self.diffusion.p_mean_variance(self.model, x, t, clip_denoised=False, model_kwargs=kw)["pred_xstart"]
+            out = self.diffusion.p_mean_variance(
+                self.model,
+                x,
+                t[:half],
+                clip_denoised=False,
+                model_kwargs={k: (v[:half] if v is not None else None) for k, v in kw.items()},
+            )["pred_xstart"]
             sigma = self.sqrt_one_minus_alphas_cumprod[t].reshape(-1, 1, 1, 1)
             out = out * sigma + x * (1 - sigma)
             img = self.ldm.decode(out / 0.18215)  # TODO where does 0.18215 come from?????
@@ -151,7 +154,7 @@ class GLID3XL(DiffusionWrapper):
         grad_modules=[],
         sampler="ddim",
         timesteps=100,
-        model_checkpoint="finetuned",
+        model_checkpoint="finetune",
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         ddim_eta=0,
     ):
@@ -214,38 +217,43 @@ class GLID3XL(DiffusionWrapper):
     def sample(self, img, prompts, start_step, n_steps=None, verbose=True):
         if n_steps is None:
             n_steps = start_step
-        t = torch.tensor([start_step] * img.shape[0], device=self.device, dtype=torch.long)
+        B = img.shape[0]
+        t = torch.tensor([start_step] * B, device=self.device, dtype=torch.long)
+
+        img = self.ldm.encode(img).sample() * 0.18215
 
         noise = torch.randn_like(img)
         if self.use_backward_guidance:
             self.conditioning.set_targets([p.to(img) for p in prompts], noise)
         img = self.diffusion.q_sample(img, t, noise)
+        img = torch.cat([img, img], dim=0)  # GLIDE uses doubled batch_size
 
         for prompt in prompts:
             if isinstance(prompt, TextPrompt):
                 text, guidance_scale = prompt()
                 break
 
-        negative = ""
-        text_emb = self.bert.encode([text] * img.shape[0])
-        text_blank = self.bert.encode([negative] * img.shape[0])
-        context = torch.cat([text_emb, text_blank], dim=0).float().to(self.device)
+        neg = ""  # TODO recognize/support negative prompts
+        text_emb = self.bert.encode([text] * B)
+        text_blank = self.bert.encode([neg] * B)
+        context = torch.cat([text_emb, text_blank], dim=0).to(self.device)
         if self.model.clip_conditioned:
-            text_emb_clip = self.clip_model.encode_text(clip.tokenize([text] * img.shape[0], truncate=True))
-            text_emb_clip_blank = self.clip_model.encode_text(clip.tokenize([negative] * img.shape[0], truncate=True))
-            clip_context = torch.cat([text_emb_clip, text_emb_clip_blank], dim=0).float().to(self.device)
+            text_emb_clip = self.clip_model.encode_text(clip.tokenize([text] * B, truncate=True).to(self.device))
+            text_emb_clip_blank = self.clip_model.encode_text(clip.tokenize([neg] * B, truncate=True).to(self.device))
+            clip_context = torch.cat([text_emb_clip, text_emb_clip_blank], dim=0)
 
         kw = {
             "context": context,
             "clip_embed": clip_context if self.model.clip_conditioned else None,
-            "image_embed": None,  # TODO implement inpainting
+            "image_embed": image_embed if self.model.image_conditioned else None,  # TODO implement inpainting
         }
 
         t = torch.tensor([start_step] * img.shape[0], device=self.device, dtype=torch.long)
 
         old_eps = []
         for _ in (trange if verbose else range)(n_steps):
-            out = self.sample_fn(old_eps, guidance_scale)(out["sample"], t, cond_fn=self.conditioning, model_kwargs=kw)
+            out = self.sample_fn(old_eps, guidance_scale)(x=img, t=t, cond_fn=self.conditioning, model_kwargs=kw)
+            img = out["sample"]
 
             if "eps" in out:  # PLMS bookkeeping
                 if len(old_eps) >= 3:
@@ -254,7 +262,7 @@ class GLID3XL(DiffusionWrapper):
 
             t -= 1
 
-        return out["pred_xstart"]
+        return self.ldm.decode(out["pred_xstart"][:B] / 0.18215)
 
     def forward(self, shape, prompts, model_kwargs={}):
         img = torch.randn(*shape, device=self.device)

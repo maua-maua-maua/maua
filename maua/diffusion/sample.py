@@ -175,13 +175,13 @@ def initialize_image(init, shape):
 
 if __name__ == "__main__":
     with torch.no_grad():
-        W, H = 768, 768
-        tile_size = 256
+        W, H = 1920, 1088
+        tile_size = 512
         num_images = 1
         scales = 2
-        sf = 3
+        sf = 4
         timesteps = 50
-        skips = [0.0, 0.5]
+        skips = [0.02, 0.7]
         text = sys.argv[2]
         init = sys.argv[1]
         style_img = None
@@ -192,7 +192,7 @@ if __name__ == "__main__":
         max_batch = 4
         diffusion_speed = "regular"
         diffusion_sampler = "plms"
-        cfg_scale = 5
+        cfg_scale = 3
         clip_scale = 2500
         lpips_scale = 0
         style_scale = 0
@@ -217,7 +217,7 @@ if __name__ == "__main__":
         diffusion = GLID3XL(sampler=diffusion_sampler, timesteps=timesteps).to(device)
 
         # calculate steps to start from (supports compound timestep respacing like '30,20,10')
-        start_steps = get_start_steps(skips, diffusion)
+        start_steps = get_start_steps(skips, diffusion)  # TODO fix skip=0.0
 
         # calculate size of each scale
         shapes = get_image_sizes(W, H, scales, sf)
@@ -267,18 +267,12 @@ if __name__ == "__main__":
                 # run diffusion sampling (in multiple batches if necessary)
                 if img.shape[0] > max_batch:
                     img = [
-                        diffusion.sample(
-                            im_batch.to(device),
-                            prompts=prompts,
-                            start_step=start_step,
-                            n_steps=start_step,
-                            verbose=False,
-                        )
+                        diffusion.sample(im_batch.to(device), prompts=prompts, start_step=start_step, verbose=False)
                         for im_batch in tqdm(img.split(max_batch))
                     ]
                     img = torch.cat(img)
                 else:
-                    img = diffusion.sample(img.to(device), prompts=prompts, start_step=start_step, n_steps=start_step)
+                    img = diffusion.sample(img.to(device), prompts=prompts, start_step=start_step)
 
                 # reassemble image tiles to final image
                 if needs_stitching:

@@ -11,8 +11,7 @@ from .base import DiffusionWrapper
 
 sys.path += [os.path.dirname(__file__) + "/../../submodules/guided_diffusion"]
 
-from guided_diffusion.script_util import (create_model_and_diffusion,
-                                          model_and_diffusion_defaults)
+from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
 
 def append_dims(x, n):
@@ -326,7 +325,7 @@ class GuidedDiffusion(DiffusionWrapper):
 
         out = None
         for _ in (trange if verbose else range)(n_steps):
-            out = self.sample_fn(out)(self.model, img, t, cond_fn=self.conditioning)
+            out = self.sample_fn(out)(model=self.model, x=img, t=t, cond_fn=self.conditioning)
             img = out["sample"]
             t -= 1
 

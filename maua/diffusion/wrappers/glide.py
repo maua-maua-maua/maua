@@ -14,8 +14,10 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/
 
 from glide_text2im.download import load_checkpoint
 from glide_text2im.model_creation import (
-    create_model_and_diffusion, model_and_diffusion_defaults,
-    model_and_diffusion_defaults_upsampler)
+    create_model_and_diffusion,
+    model_and_diffusion_defaults,
+    model_and_diffusion_defaults_upsampler,
+)
 
 
 class GLIDE(DiffusionWrapper):
@@ -119,7 +121,8 @@ class GLIDE(DiffusionWrapper):
         self.model.del_cache()
         old_eps = []
         for _ in (trange if verbose else range)(n_steps):
-            out = self.sample_fn(old_eps, scale)(x=out["sample"], t=t, model_kwargs=model_kwargs)
+            out = self.sample_fn(old_eps, scale)(x=img, t=t, model_kwargs=model_kwargs)
+            img = out["sample"]
 
             if "eps" in out:  # PLMS bookkeeping
                 if len(old_eps) >= 3:
