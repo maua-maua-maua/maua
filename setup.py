@@ -18,6 +18,8 @@ setup(
             "maua.submodules.pycuda.bpl-subset*",
         ],
     ),
+    package_data={"": ["*.yml"]},
+    include_package_data=True,
     install_requires=[
         "apex @ git+https://github.com/NVIDIA/apex",
         "auraloss",
