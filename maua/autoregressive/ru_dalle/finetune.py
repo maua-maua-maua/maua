@@ -285,9 +285,11 @@ def forward(self, input_ids, attention_mask, return_loss=False, use_cache=False,
 
 
 def finetune(
-    images: List[Union[str, Path, Image.Image]],
+    input_dir: Union[str, Path] = None,
+    images: List[Union[str, Path, Image.Image]] = [],
     captions: List[str] = [],
-    model_name="rudalle",
+    model_name=None,
+    num_examples=500,
     steps=500,
     lr=1e-5,
     batch_size=1,
@@ -304,9 +306,11 @@ def finetune(
     f"""Finetune a RuDALL-E model on a set of images (and possibly captions).
 
     Args:
-        images (List[Union[str, Path, Image.Image]]): List of PIL.Images or image files to finetune on
+        input_dir (Union[str, Path]): Directory with image files to finetune on. Defaults to None.
+        images (List[Union[str, Path, Image.Image]]): List of PIL.Images or image files to finetune on. Defaults to [].
         captions (List[str], optional): A list of captions for each image. Defaults to [].
-        model_name (str, optional): Model name to save finetuned model with. Defaults to "rudalle".
+        model_name (str, optional): Model name to save finetuned model with. Defaults to None which generates a name based on input settings.
+        num_examples (int, optional): Number of random images to sample (with replacement) from the input_dir. Defaults to 500.
         steps (int, optional): Number of batches to finetune for. More steps will converge to outputs that are closer to the inputs (which also means less variation). Defaults to 100.
         lr ([type], optional): Starting learning rate (decays by a factor of 500 over training). A high learning rate will converge faster (which also means less variation). 1e-4 to 1e-5 is a good starting range (with 1e-5 resulting in more varied outputs). Defaults to 1e-4.
         batch_size (int, optional): Number of images for each training step. Higher batch size requires more memory, but will be faster per sample overall. Defaults to 1.
@@ -322,10 +326,19 @@ def finetune(
     Returns:
         Tuple[Union[FP16Module, DalleModel], Optional[Tuple[int, int]]]: The finetuned model and the size that sampled images should be stretched to if `stretch` is enabled.
     """
-
+    assert len(images) > 0 or input_dir is not None, "Must specify either images or input_dir"
     assert len(captions) == 0 or len(captions) == len(
         images
     ), "When specifying captions, the number of images must match exactly."
+
+    if len(images) == 0:
+        images = glob(input_dir + "/*", recursive=True)
+        if num_examples is not None:
+            images = random.choices(images, k=num_examples)
+
+    if model_name is None:
+        stem = Path(input_dir).stem if input_dir is not None else "custom"
+        model_name = f"{stem}_{width}x{height}_lr={lr}_steps={steps}_rudalle_finetuned"
 
     low_mem = low_memory
 
@@ -389,7 +402,7 @@ def finetune(
     gc.collect()
     torch.cuda.empty_cache()
 
-    return model, stretched_size
+    return model, stretched_size, model_name
 
 
 def argument_parser():
@@ -424,25 +437,11 @@ def argument_parser():
 
 
 def main(args):
-    assert len(args.captions) == 0 or len(args.input_imgs) == len(
-        args.captions
-    ), "When specifying captions, the number of input_imgs must match exactly."
-    assert (
-        len(args.input_imgs) > 0 or args.input_dir is not None
-    ), "You must specify either a list of input_imgs or an input_dir to train with."
-
-    images = args.input_imgs
-    if len(images) == 0:
-        images = glob(args.input_dir + "/*", recursive=True)
-        if args.num_examples is not None:
-            images = random.choices(images, k=args.num_examples)
-
     width, height = [int(v) for v in args.size.split(",")]
-    stem = Path(args.input_dir).stem if args.input_dir is not None else Path(args.input_imgs[0]).stem
-    model_name = f"{stem}_{width}x{height}_lr={args.lr}_steps={args.steps}_rudalle_finetuned"
 
-    model, stretched_size = finetune(
-        images,
+    model, stretched_size, model_name = finetune(
+        images=args.images,
+        input_dir=args.input_dir,
         captions=args.captions,
         model_name=model_name,
         steps=args.steps,
