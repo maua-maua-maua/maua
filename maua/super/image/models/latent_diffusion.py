@@ -31,8 +31,8 @@ def load_model(model_name="latent-diffusion", device=torch.device("cuda" if torc
         with open(file, "w") as f:
             f.write(txt)
 
-    sys.path.append(os.path.dirname(__file__) + "/../../../submodules/latent_diffusion")
-    sys.path.append(os.path.dirname(__file__) + "/../../../submodules/VQGAN")
+    sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/latent_diffusion")
+    sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/VQGAN")
     from ldm.models.diffusion.ddim import DDIMSampler
     from ldm.util import instantiate_from_config
     from omegaconf import OmegaConf

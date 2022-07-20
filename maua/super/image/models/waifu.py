@@ -10,7 +10,7 @@ from torchvision.transforms.functional import to_pil_image
 
 from ....ops.tensor import load_image
 
-sys.path.append(os.path.dirname(__file__) + "/../../../submodules/waifu2x")
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/waifu2x")
 
 from Models import CARN_V2, UpConv_7, Vgg_7, network_to_half  # , DCSCN
 

@@ -7,7 +7,7 @@ from functools import partial
 
 import torch
 
-sys.path.append(os.path.dirname(__file__) + "/nv/")
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/nv/")
 
 from .nv import dnnlib, legacy
 from .nv.networks import stylegan2 as stylegan2_train

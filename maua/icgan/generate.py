@@ -56,11 +56,11 @@ from scipy.stats import truncnorm
 from torch import nn
 from tqdm import tqdm
 
-sys.path.append(os.path.dirname(__file__) + "/../submodules/ic_gan/stylegan2_ada_pytorch")
-sys.path.append(os.path.dirname(__file__) + "/../submodules/ic_gan/inference")
-sys.path.append(os.path.dirname(__file__) + "/../submodules/ic_gan")
-sys.path.append(os.path.dirname(__file__) + "/../submodules/ic_gan")
-sys.path.append(os.path.dirname(__file__) + "/../submodules/Real-ESRGAN")
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../submodules/ic_gan/stylegan2_ada_pytorch")
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../submodules/ic_gan/inference")
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../submodules/ic_gan")
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../submodules/ic_gan")
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../submodules/Real-ESRGAN")
 
 import data_utils.utils as data_utils
 import inference.utils as inference_utils

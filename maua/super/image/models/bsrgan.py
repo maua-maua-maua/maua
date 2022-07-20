@@ -23,7 +23,7 @@ def load_model(model_name="BSRGAN", device=torch.device("cuda" if torch.cuda.is_
     with open(os.path.dirname(__file__) + "/../../../submodules/BSRGAN/models/network_rrdbnet.py", "w") as f:
         f.write(txt)
 
-    sys.path.append(os.path.dirname(__file__) + "/../../../submodules/BSRGAN")
+    sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/BSRGAN")
     from ....submodules.BSRGAN.models.network_rrdbnet import RRDBNet
 
     checkpoint = f"modelzoo/{model_name}.pth"

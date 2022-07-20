@@ -56,7 +56,7 @@ def load_model(model_name="RIFE-2.3", device="cuda", fp16=False):
                     archive.extract(info, model_dir)
         os.remove(f"{model_dir}.zip")
 
-    sys.path.append(os.path.dirname(__file__) + "/../../../submodules/RIFE/")
+    sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/RIFE/")
     if version.startswith("1"):
         from ....submodules.RIFE.model.oldmodel.RIFE_HD import Model
     elif version.startswith("2"):

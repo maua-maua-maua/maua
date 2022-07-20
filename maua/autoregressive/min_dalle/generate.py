@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-sys.path.append(os.path.dirname(__file__) + "/../../submodules/minDALLE")
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/minDALLE")
 from dalle.models import Dalle
 from dalle.utils.utils import clip_score
 

@@ -14,14 +14,12 @@ from torch.nn.functional import interpolate
 from tqdm import tqdm
 from transformers import AutoModelForSeq2SeqLM, MarianTokenizer
 
-sys.path.append(os.path.dirname(__file__) + "/../../submodules/ru_dalle")
-sys.path.append(os.path.dirname(__file__) + "/../../submodules/VQGAN")
-from rudalle import (get_realesrgan, get_rudalle_model, get_tokenizer, get_vae,
-                     utils)
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/ru_dalle")
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/VQGAN")
+from rudalle import get_realesrgan, get_rudalle_model, get_tokenizer, get_vae, utils
 from rudalle.dalle import MODELS
 from rudalle.dalle.fp16 import FP16Module
-from rudalle.dalle.image_attention import (get_col_mask, get_conv_mask,
-                                           get_row_mask)
+from rudalle.dalle.image_attention import get_col_mask, get_conv_mask, get_row_mask
 from rudalle.dalle.model import DalleModel
 from rudalle.pipelines import super_resolution
 

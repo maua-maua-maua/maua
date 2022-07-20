@@ -28,7 +28,7 @@ from tqdm import tqdm
 
 from ..utility import download, unzip
 
-sys.path.append(os.path.dirname(__file__) + "/../submodules/rq_vae_transformer/")
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../submodules/rq_vae_transformer/")
 from rqvae.models import create_model
 from rqvae.txtimg_datasets.tokenizers import create_tokenizer
 from rqvae.utils.config import augment_arch_defaults, load_config

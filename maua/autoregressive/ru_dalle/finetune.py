@@ -20,8 +20,8 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import AdamW, AutoModelForSeq2SeqLM, MarianTokenizer
 
-sys.path.append(os.path.dirname(__file__) + "/../../submodules/ru_dalle")
-sys.path.append(os.path.dirname(__file__) + "/../../submodules/VQGAN")
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/ru_dalle")
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/VQGAN")
 from rudalle import get_rudalle_model, get_tokenizer, get_vae
 from rudalle.dalle import MODELS
 from rudalle.dalle.fp16 import FP16Module
@@ -29,8 +29,7 @@ from rudalle.dalle.model import DalleModel
 from rudalle.dalle.utils import exists, is_empty
 
 from . import SURREALIST_XL_DICT
-from .generate import (get_col_mask, get_conv_mask, get_image_pos_embeddings,
-                       get_row_mask)
+from .generate import get_col_mask, get_conv_mask, get_image_pos_embeddings, get_row_mask
 
 MODELS.update({"Surrealist_XL": SURREALIST_XL_DICT})
 

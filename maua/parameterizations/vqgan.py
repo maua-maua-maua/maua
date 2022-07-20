@@ -28,7 +28,7 @@ for file in [
     with open(file, "w") as f:
         f.write(t)
 
-sys.path.append(os.path.dirname(__file__) + "/../submodules/VQGAN")
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../submodules/VQGAN")
 
 from taming.models import cond_transformer, vqgan
 

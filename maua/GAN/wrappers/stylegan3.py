@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch.nn.functional import interpolate, pad
 
-sys.path.append(os.path.dirname(__file__) + "/../../GAN/nv")
+sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../GAN/nv")
 from ..load import load_network
 from ..nv.networks import stylegan3
 from .stylegan import StyleGAN, StyleGANMapper, StyleGANSynthesizer
