@@ -48,8 +48,6 @@ setup(
         "madmom",
         "matplotlib",
         "medpy",
-        "mmflow",
-        "mmcv-full",
         "more_itertools",
         "ninja",
         "npy_append_array",
@@ -97,4 +95,5 @@ setup(
         "wandb",
         "youtokentome",
     ],
+    extras_require={"flow": ["mmflow", "mmcv-full"]},
 )

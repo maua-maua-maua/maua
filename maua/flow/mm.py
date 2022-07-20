@@ -1,7 +1,6 @@
 import os
 
 import torch
-from mmflow.apis import inference_model, init_model
 
 from ..utility import download
 
@@ -72,6 +71,15 @@ AVAILABLE_MODELS = [
 
 
 def get_prediction_fn(model, device="cuda"):
+    try:
+        from mmflow.apis import inference_model, init_model
+    except:
+        print()
+        print("ERROR: you must install mmflow to use these optical flow models:")
+        print("pip install mmflow mmcv-full")
+        print()
+        exit(1)
+
     config_file = f"{os.path.dirname(os.path.abspath(__file__))}/../submodules/mmflow/configs/{model}.py"
     checkpoint_file = f"modelzoo/{model.split('/')[-1]}.pth"
     if not os.path.exists(checkpoint_file):

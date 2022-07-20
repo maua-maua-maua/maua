@@ -411,11 +411,11 @@ def argument_parser():
     # fmt: off
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_dir", type=str, default=None, help="Directory with images to train on")
-    parser.add_argument("--num_examples", type=int, default=None, help="Number of example images from input_dir to train on (None => All images will be used)")
-    parser.add_argument("--input_imgs", type=list, default=[], nargs="*", help="List of images to train on")
+    parser.add_argument("--images", type=list, default=[], nargs="*", help="List of images to train on")
     parser.add_argument("--captions", type=list, default=[], nargs="*", help="List of a caption for each image")
     parser.add_argument("--input_text", type=str, default="", help="Input text to sample images for after training. Will only have effect if you train with low number of steps / low learning rate or train with captions.")
     parser.add_argument("--num_outputs", type=int, default=8, help="Number of images to generate after finetuning")
+    parser.add_argument("--num_examples", type=int, default=None, help="Number of example images from input_dir to train on (None => All images will be used)")
     parser.add_argument("--steps", type=int, default=500, help="Number of batches to finetune for. More steps will converge to outputs that are closer to the inputs (which also means less variation).")
     parser.add_argument("--lr", type=float, default=1e-5, help="Starting learning rate (decays by a factor of 500 over training). A high learning rate will converge faster (which also means less variation). 1e-4 to 1e-5 is a good starting range (with 1e-5 resulting in more varied outputs).")
     parser.add_argument("--train_batch_size", type=int, default=1, help="Number of images for each training step. Higher batch size requires more memory, but will be faster per sample overall.")
