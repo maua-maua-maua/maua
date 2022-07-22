@@ -2,8 +2,7 @@ from copy import deepcopy
 
 import timm.optim as timm_optim
 import torch_optimizer as more_optim
-from ranger import Ranger, RangerQH, RangerVA
-from ranger21 import Ranger21
+import pytorch_optimizer as even_more_optim
 from torch import optim
 
 optimizer_choices = {
@@ -33,10 +32,10 @@ optimizer_choices = {
     "QHAdam": more_optim.QHAdam,
     "QHM": more_optim.QHM,
     "RAdam": more_optim.RAdam,
-    "Ranger": Ranger,
-    "RangerQH": RangerQH,
-    "RangerVA": RangerVA,
-    "Ranger21": Ranger21,
+    "Ranger": more_optim.Ranger,
+    "RangerQH": more_optim.RangerQH,
+    "RangerVA": more_optim.RangerVA,
+    "Ranger21": even_more_optim.Ranger21,
     "RMSprop": optim.RMSprop,
     "RMSpropTF": timm_optim.RMSpropTF,
     "SGD": optim.SGD,

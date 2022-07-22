@@ -30,8 +30,8 @@ def load_images(*inputs):
     return results
 
 
-def img2tensor(pil_image):
-    return to_tensor(pil_image).unsqueeze(0)
+def img2tensor(pil_image, format: str = "RGB"):
+    return to_tensor(pil_image.convert(format)).unsqueeze(0)
 
 
 def tensor2img(tensor, format: str = "RGB"):

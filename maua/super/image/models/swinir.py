@@ -68,7 +68,7 @@ def load_model(model_name="L-DFOWMFC-GAN", device=torch.device("cuda" if torch.c
 def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
     window_size = 8
     for img in images:
-        img_lq = load_image(img).float().to(model.device)
+        img_lq = load_image(img).float().to(model.device)[:, :3]
 
         _, _, h_old, w_old = img_lq.size()
         h_pad = (h_old // window_size + 1) * window_size - h_old
