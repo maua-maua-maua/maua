@@ -17,19 +17,19 @@ def ru_dalle():
     subparsers = parser.add_subparsers()
     subparsers.add_parser(
         "generate", parents=[ru_dalle_generate()], help="Generate images with RuDALL-E", add_help=False
-    ).set_defaults(func="maua.autoregressive.ru_dalle.generate")
+    ).set_defaults(func=main_function("maua.autoregressive.ru_dalle.generate"))
     subparsers.add_parser(
         "finetune",
         parents=[ru_dalle_finetune()],
         help="Finetune RuDALL-E on a set of images (and captions)",
         add_help=False,
-    ).set_defaults(func="maua.autoregressive.ru_dalle.finetune")
+    ).set_defaults(func=main_function("maua.autoregressive.ru_dalle.finetune"))
     subparsers.add_parser(
         "api",
         parents=[ru_dalle_api()],
         help="Request RuDALL-E Kandinsky images from the Sbercloud API",
         add_help=False,
-    ).set_defaults(func="maua.autoregressive.ru_dalle.api")
+    ).set_defaults(func=main_function("maua.autoregressive.ru_dalle.api"))
     return parser
 
 
