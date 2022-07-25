@@ -30,6 +30,8 @@ pip install -e maua/submodules/pycuda
 
 ## Usage
 
+WARNING: some of the examples below are out of date due to changes in the underlying APIs.
+
 ### Command line
 
 Use --help to find the options available
