@@ -25,6 +25,11 @@ Currently installation has only been tested on a Ubuntu 20.04 machine with NVIDI
 python maua/submodules/pycuda/configure.py --cuda-enable-gl
 mv siteconf.py maua/submodules/pycuda
 pip install -e maua/submodules/pycuda
+
+git clone https://github.com/NVIDIA/apex
+cd apex
+python setup.py install --cuda_ext --cpp_ext 
+cd ..
 ```
 
 
