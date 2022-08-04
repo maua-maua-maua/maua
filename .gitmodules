@@ -82,3 +82,6 @@
 [submodule "maua/submodules/GLID3XL"]
 	path = maua/submodules/GLID3XL
 	url = https://github.com/Jack000/glid-3-xl.git
+[submodule "maua/submodules/CogVideo"]
+	path = maua/submodules/CogVideo
+	url = https://github.com/lkwq007/CogVideo-low-vram.git
