@@ -30,6 +30,8 @@ git clone https://github.com/NVIDIA/apex
 cd apex
 python setup.py install --cuda_ext --cpp_ext 
 cd ..
+
+pip install maua[flow]
 ```
 
 
