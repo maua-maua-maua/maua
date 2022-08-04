@@ -1,10 +1,13 @@
 import argparse
 import logging
 import os
+import random
 import stat
 import sys
 import tempfile
 import time
+from glob import glob
+from pathlib import Path
 
 import torch
 from deep_translator import GoogleTranslator
@@ -14,6 +17,7 @@ from SwissArmyTransformer import get_args
 from SwissArmyTransformer.generation.sampling_strategies import BaseStrategy
 from SwissArmyTransformer.resources import auto_create
 from torchvision.utils import save_image
+from tqdm import tqdm
 
 os.environ["SAT_HOME"] = "modelzoo/"
 cogvideo_submodule = os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/CogVideo/"
@@ -240,7 +244,6 @@ def my_filling_sequence(
     index = 0  # Next forward starting index, also the length of cache.
     mems_buffers_on_GPU = False
     mems_indexs = [0, 0]
-    # mems_len = mem_dict["len"]
     mems_len = [(400 + 74) if limited_spatial_channel_mem else 5 * 400 + 74, 5 * 400 + 74]
     if args.keep_mem_buffers:
         mems_buffers = mem_dict["buffer"]
@@ -272,17 +275,152 @@ def my_filling_sequence(
 
     torch.cuda.empty_cache()
     # step-by-step generation
-    while counter < len(seq[0]) - 1:
-        # we have generated counter+1 tokens
-        # Now, we want to generate seq[counter + 1],
-        # token[:, index: counter+1] needs forwarding.
-        if index == 0:
-            group_size = 2 if (input_tokens.shape[0] == batch_size and not mode_stage1) else batch_size
+    with tqdm(total=len(seq[0])) as progress:
+        while counter < len(seq[0]) - 1:
+            # we have generated counter+1 tokens
+            # Now, we want to generate seq[counter + 1],
+            # token[:, index: counter+1] needs forwarding.
+            if index == 0:
+                group_size = 2 if (input_tokens.shape[0] == batch_size and not mode_stage1) else batch_size
 
-            logits_all = None
-            for batch_idx in range(0, input_tokens.shape[0], group_size):
+                logits_all = None
+                for batch_idx in range(0, input_tokens.shape[0], group_size):
+                    logits, *output_per_layers = model(
+                        input_tokens[batch_idx : batch_idx + group_size, index:],
+                        position_ids[..., index : counter + 1],
+                        attention_mask,  # TODO memlen
+                        mems=mems,
+                        text_len=text_len,
+                        frame_len=frame_len,
+                        counter=counter,
+                        log_text_attention_weights=log_text_attention_weights,
+                        enforce_no_swin=enforce_no_swin,
+                        **kw_args,
+                    )
+                    logits_all = torch.cat((logits_all, logits), dim=0) if logits_all is not None else logits
+                    mem_kv01 = [
+                        [o["mem_kv"][0] for o in output_per_layers],
+                        [o["mem_kv"][1] for o in output_per_layers],
+                    ]
+                    next_tokens_frame_begin_id = calc_next_tokens_frame_begin_id(
+                        text_len, frame_len, mem_kv01[0][0].shape[1]
+                    )
+                    for id, mem_kv in enumerate(mem_kv01):
+                        for layer, mem_kv_perlayer in enumerate(mem_kv):
+                            if limited_spatial_channel_mem and id == 0:
+                                mems_buffers[id][
+                                    layer, batch_idx : batch_idx + group_size, :text_len
+                                ] = mem_kv_perlayer.expand(min(group_size, input_tokens.shape[0] - batch_idx), -1, -1)[
+                                    :, :text_len
+                                ]
+                                mems_buffers[id][
+                                    layer,
+                                    batch_idx : batch_idx + group_size,
+                                    text_len : text_len + mem_kv_perlayer.shape[1] - next_tokens_frame_begin_id,
+                                ] = mem_kv_perlayer.expand(min(group_size, input_tokens.shape[0] - batch_idx), -1, -1)[
+                                    :, next_tokens_frame_begin_id:
+                                ]
+                            else:
+                                mems_buffers[id][
+                                    layer, batch_idx : batch_idx + group_size, : mem_kv_perlayer.shape[1]
+                                ] = mem_kv_perlayer.expand(min(group_size, input_tokens.shape[0] - batch_idx), -1, -1)
+                    mems_indexs[0], mems_indexs[1] = mem_kv01[0][0].shape[1], mem_kv01[1][0].shape[1]
+                    if limited_spatial_channel_mem:
+                        mems_indexs[0] -= next_tokens_frame_begin_id - text_len
+
+                mems = [mems_buffers[id][:, :, : mems_indexs[id]] for id in range(2)]
+                logits = logits_all
+
+                # Guider
+                if guider_seq is not None:
+                    guider_logits_all = None
+                    for batch_idx in range(0, guider_input_tokens.shape[0], group_size):
+                        guider_logits, *guider_output_per_layers = model(
+                            guider_input_tokens[
+                                batch_idx : batch_idx + group_size, max(index - guider_index_delta, 0) :
+                            ],
+                            guider_position_ids[
+                                ..., max(index - guider_index_delta, 0) : counter + 1 - guider_index_delta
+                            ],
+                            guider_attention_mask,
+                            mems=guider_mems,
+                            text_len=guider_text_len,
+                            frame_len=frame_len,
+                            counter=counter - guider_index_delta,
+                            log_text_attention_weights=log_text_attention_weights,
+                            enforce_no_swin=enforce_no_swin,
+                            **kw_args,
+                        )
+                        guider_logits_all = (
+                            torch.cat((guider_logits_all, guider_logits), dim=0)
+                            if guider_logits_all is not None
+                            else guider_logits
+                        )
+                        guider_mem_kv01 = [
+                            [o["mem_kv"][0] for o in guider_output_per_layers],
+                            [o["mem_kv"][1] for o in guider_output_per_layers],
+                        ]
+                        for id, guider_mem_kv in enumerate(guider_mem_kv01):
+                            for layer, guider_mem_kv_perlayer in enumerate(guider_mem_kv):
+                                if limited_spatial_channel_mem and id == 0:
+                                    guider_mems_buffers[id][
+                                        layer, batch_idx : batch_idx + group_size, :guider_text_len
+                                    ] = guider_mem_kv_perlayer.expand(
+                                        min(group_size, input_tokens.shape[0] - batch_idx), -1, -1
+                                    )[
+                                        :, :guider_text_len
+                                    ]
+                                    guider_next_tokens_frame_begin_id = calc_next_tokens_frame_begin_id(
+                                        guider_text_len, frame_len, guider_mem_kv_perlayer.shape[1]
+                                    )
+                                    guider_mems_buffers[id][
+                                        layer,
+                                        batch_idx : batch_idx + group_size,
+                                        guider_text_len : guider_text_len
+                                        + guider_mem_kv_perlayer.shape[1]
+                                        - guider_next_tokens_frame_begin_id,
+                                    ] = guider_mem_kv_perlayer.expand(
+                                        min(group_size, input_tokens.shape[0] - batch_idx), -1, -1
+                                    )[
+                                        :, guider_next_tokens_frame_begin_id:
+                                    ]
+                                else:
+                                    guider_mems_buffers[id][
+                                        layer, batch_idx : batch_idx + group_size, : guider_mem_kv_perlayer.shape[1]
+                                    ] = guider_mem_kv_perlayer.expand(
+                                        min(group_size, input_tokens.shape[0] - batch_idx), -1, -1
+                                    )
+                        guider_mems_indexs[0], guider_mems_indexs[1] = (
+                            guider_mem_kv01[0][0].shape[1],
+                            guider_mem_kv01[1][0].shape[1],
+                        )
+                        if limited_spatial_channel_mem:
+                            guider_mems_indexs[0] -= guider_next_tokens_frame_begin_id - guider_text_len
+                    guider_mems = [guider_mems_buffers[id][:, :, : guider_mems_indexs[id]] for id in range(2)]
+                    guider_logits = guider_logits_all
+            else:
+                if not mems_buffers_on_GPU:
+                    if not mode_stage1:
+                        torch.cuda.empty_cache()
+                        for idx, mem in enumerate(mems):
+                            mems[idx] = mem.to(next(model.parameters()).device)
+                        if guider_seq is not None:
+                            for idx, mem in enumerate(guider_mems):
+                                guider_mems[idx] = mem.to(next(model.parameters()).device)
+                        pass
+                    else:
+                        torch.cuda.empty_cache()
+                        for idx, mem_buffer in enumerate(mems_buffers):
+                            mems_buffers[idx] = mem_buffer.to(next(model.parameters()).device)
+                        mems = [mems_buffers[id][:, :, : mems_indexs[id]] for id in range(2)]
+                        if guider_seq is not None:
+                            for idx, guider_mem_buffer in enumerate(guider_mems_buffers):
+                                guider_mems_buffers[idx] = guider_mem_buffer.to(next(model.parameters()).device)
+                            guider_mems = [guider_mems_buffers[id][:, :, : guider_mems_indexs[id]] for id in range(2)]
+                        mems_buffers_on_GPU = True
+
                 logits, *output_per_layers = model(
-                    input_tokens[batch_idx : batch_idx + group_size, index:],
+                    input_tokens[:, index:],
                     position_ids[..., index : counter + 1],
                     attention_mask,  # TODO memlen
                     mems=mems,
@@ -291,242 +429,118 @@ def my_filling_sequence(
                     counter=counter,
                     log_text_attention_weights=log_text_attention_weights,
                     enforce_no_swin=enforce_no_swin,
+                    limited_spatial_channel_mem=limited_spatial_channel_mem,
                     **kw_args,
                 )
-                logits_all = torch.cat((logits_all, logits), dim=0) if logits_all is not None else logits
-                mem_kv01 = [[o["mem_kv"][0] for o in output_per_layers], [o["mem_kv"][1] for o in output_per_layers]]
-                next_tokens_frame_begin_id = calc_next_tokens_frame_begin_id(
-                    text_len, frame_len, mem_kv01[0][0].shape[1]
-                )
-                for id, mem_kv in enumerate(mem_kv01):
-                    for layer, mem_kv_perlayer in enumerate(mem_kv):
-                        if limited_spatial_channel_mem and id == 0:
-                            mems_buffers[id][
-                                layer, batch_idx : batch_idx + group_size, :text_len
-                            ] = mem_kv_perlayer.expand(min(group_size, input_tokens.shape[0] - batch_idx), -1, -1)[
-                                :, :text_len
-                            ]
-                            mems_buffers[id][
-                                layer,
-                                batch_idx : batch_idx + group_size,
-                                text_len : text_len + mem_kv_perlayer.shape[1] - next_tokens_frame_begin_id,
-                            ] = mem_kv_perlayer.expand(min(group_size, input_tokens.shape[0] - batch_idx), -1, -1)[
-                                :, next_tokens_frame_begin_id:
-                            ]
-                        else:
-                            mems_buffers[id][
-                                layer, batch_idx : batch_idx + group_size, : mem_kv_perlayer.shape[1]
-                            ] = mem_kv_perlayer.expand(min(group_size, input_tokens.shape[0] - batch_idx), -1, -1)
-                mems_indexs[0], mems_indexs[1] = mem_kv01[0][0].shape[1], mem_kv01[1][0].shape[1]
-                if limited_spatial_channel_mem:
-                    mems_indexs[0] -= next_tokens_frame_begin_id - text_len
+                mem_kv0, mem_kv1 = [o["mem_kv"][0] for o in output_per_layers], [
+                    o["mem_kv"][1] for o in output_per_layers
+                ]
 
-            mems = [mems_buffers[id][:, :, : mems_indexs[id]] for id in range(2)]
-            logits = logits_all
-
-            # Guider
-            if guider_seq is not None:
-                guider_logits_all = None
-                for batch_idx in range(0, guider_input_tokens.shape[0], group_size):
+                if guider_seq is not None:
                     guider_logits, *guider_output_per_layers = model(
-                        guider_input_tokens[batch_idx : batch_idx + group_size, max(index - guider_index_delta, 0) :],
+                        guider_input_tokens[:, max(index - guider_index_delta, 0) :],
                         guider_position_ids[..., max(index - guider_index_delta, 0) : counter + 1 - guider_index_delta],
                         guider_attention_mask,
                         mems=guider_mems,
                         text_len=guider_text_len,
                         frame_len=frame_len,
                         counter=counter - guider_index_delta,
-                        log_text_attention_weights=log_text_attention_weights,
+                        log_text_attention_weights=0,
                         enforce_no_swin=enforce_no_swin,
+                        limited_spatial_channel_mem=limited_spatial_channel_mem,
                         **kw_args,
                     )
-                    guider_logits_all = (
-                        torch.cat((guider_logits_all, guider_logits), dim=0)
-                        if guider_logits_all is not None
-                        else guider_logits
-                    )
-                    guider_mem_kv01 = [
-                        [o["mem_kv"][0] for o in guider_output_per_layers],
-                        [o["mem_kv"][1] for o in guider_output_per_layers],
+                    guider_mem_kv0, guider_mem_kv1 = [o["mem_kv"][0] for o in guider_output_per_layers], [
+                        o["mem_kv"][1] for o in guider_output_per_layers
                     ]
-                    for id, guider_mem_kv in enumerate(guider_mem_kv01):
-                        for layer, guider_mem_kv_perlayer in enumerate(guider_mem_kv):
-                            if limited_spatial_channel_mem and id == 0:
-                                guider_mems_buffers[id][
-                                    layer, batch_idx : batch_idx + group_size, :guider_text_len
-                                ] = guider_mem_kv_perlayer.expand(
-                                    min(group_size, input_tokens.shape[0] - batch_idx), -1, -1
-                                )[
-                                    :, :guider_text_len
-                                ]
-                                guider_next_tokens_frame_begin_id = calc_next_tokens_frame_begin_id(
-                                    guider_text_len, frame_len, guider_mem_kv_perlayer.shape[1]
-                                )
-                                guider_mems_buffers[id][
-                                    layer,
-                                    batch_idx : batch_idx + group_size,
-                                    guider_text_len : guider_text_len
-                                    + guider_mem_kv_perlayer.shape[1]
-                                    - guider_next_tokens_frame_begin_id,
-                                ] = guider_mem_kv_perlayer.expand(
-                                    min(group_size, input_tokens.shape[0] - batch_idx), -1, -1
-                                )[
-                                    :, guider_next_tokens_frame_begin_id:
-                                ]
-                            else:
-                                guider_mems_buffers[id][
-                                    layer, batch_idx : batch_idx + group_size, : guider_mem_kv_perlayer.shape[1]
-                                ] = guider_mem_kv_perlayer.expand(
-                                    min(group_size, input_tokens.shape[0] - batch_idx), -1, -1
-                                )
-                    guider_mems_indexs[0], guider_mems_indexs[1] = (
-                        guider_mem_kv01[0][0].shape[1],
-                        guider_mem_kv01[1][0].shape[1],
-                    )
-                    if limited_spatial_channel_mem:
-                        guider_mems_indexs[0] -= guider_next_tokens_frame_begin_id - guider_text_len
-                guider_mems = [guider_mems_buffers[id][:, :, : guider_mems_indexs[id]] for id in range(2)]
-                guider_logits = guider_logits_all
-        else:
-            if not mems_buffers_on_GPU:
-                if not mode_stage1:
-                    torch.cuda.empty_cache()
-                    for idx, mem in enumerate(mems):
-                        mems[idx] = mem.to(next(model.parameters()).device)
-                    if guider_seq is not None:
-                        for idx, mem in enumerate(guider_mems):
-                            guider_mems[idx] = mem.to(next(model.parameters()).device)
-                    pass
-                else:
+
+                if not mems_buffers_on_GPU:
                     torch.cuda.empty_cache()
                     for idx, mem_buffer in enumerate(mems_buffers):
                         mems_buffers[idx] = mem_buffer.to(next(model.parameters()).device)
-                    mems = [mems_buffers[id][:, :, : mems_indexs[id]] for id in range(2)]
                     if guider_seq is not None:
                         for idx, guider_mem_buffer in enumerate(guider_mems_buffers):
                             guider_mems_buffers[idx] = guider_mem_buffer.to(next(model.parameters()).device)
-                        guider_mems = [guider_mems_buffers[id][:, :, : guider_mems_indexs[id]] for id in range(2)]
                     mems_buffers_on_GPU = True
 
-            logits, *output_per_layers = model(
-                input_tokens[:, index:],
-                position_ids[..., index : counter + 1],
-                attention_mask,  # TODO memlen
-                mems=mems,
-                text_len=text_len,
-                frame_len=frame_len,
-                counter=counter,
-                log_text_attention_weights=log_text_attention_weights,
-                enforce_no_swin=enforce_no_swin,
-                limited_spatial_channel_mem=limited_spatial_channel_mem,
-                **kw_args,
-            )
-            mem_kv0, mem_kv1 = [o["mem_kv"][0] for o in output_per_layers], [o["mem_kv"][1] for o in output_per_layers]
-
-            if guider_seq is not None:
-                guider_logits, *guider_output_per_layers = model(
-                    guider_input_tokens[:, max(index - guider_index_delta, 0) :],
-                    guider_position_ids[..., max(index - guider_index_delta, 0) : counter + 1 - guider_index_delta],
-                    guider_attention_mask,
-                    mems=guider_mems,
-                    text_len=guider_text_len,
-                    frame_len=frame_len,
-                    counter=counter - guider_index_delta,
-                    log_text_attention_weights=0,
-                    enforce_no_swin=enforce_no_swin,
-                    limited_spatial_channel_mem=limited_spatial_channel_mem,
-                    **kw_args,
+                mems, mems_indexs = my_update_mems(
+                    [mem_kv0, mem_kv1], mems_buffers, mems_indexs, limited_spatial_channel_mem, text_len, frame_len
                 )
-                guider_mem_kv0, guider_mem_kv1 = [o["mem_kv"][0] for o in guider_output_per_layers], [
-                    o["mem_kv"][1] for o in guider_output_per_layers
-                ]
-
-            if not mems_buffers_on_GPU:
-                torch.cuda.empty_cache()
-                for idx, mem_buffer in enumerate(mems_buffers):
-                    mems_buffers[idx] = mem_buffer.to(next(model.parameters()).device)
                 if guider_seq is not None:
-                    for idx, guider_mem_buffer in enumerate(guider_mems_buffers):
-                        guider_mems_buffers[idx] = guider_mem_buffer.to(next(model.parameters()).device)
-                mems_buffers_on_GPU = True
+                    guider_mems, guider_mems_indexs = my_update_mems(
+                        [guider_mem_kv0, guider_mem_kv1],
+                        guider_mems_buffers,
+                        guider_mems_indexs,
+                        limited_spatial_channel_mem,
+                        guider_text_len,
+                        frame_len,
+                    )
 
-            mems, mems_indexs = my_update_mems(
-                [mem_kv0, mem_kv1], mems_buffers, mems_indexs, limited_spatial_channel_mem, text_len, frame_len
-            )
+            counter += 1
+            progress.update()
+            index = counter
+
+            logits = logits[:, -1].expand(batch_size, -1)  # [batch size, vocab size]
+            tokens = tokens.expand(batch_size, -1)
             if guider_seq is not None:
-                guider_mems, guider_mems_indexs = my_update_mems(
-                    [guider_mem_kv0, guider_mem_kv1],
-                    guider_mems_buffers,
-                    guider_mems_indexs,
-                    limited_spatial_channel_mem,
-                    guider_text_len,
-                    frame_len,
+                guider_logits = guider_logits[:, -1].expand(batch_size, -1)
+                guider_tokens = guider_tokens.expand(batch_size, -1)
+
+            if seq[-1][counter].item() < 0:
+                # sampling
+                guided_logits = (
+                    guider_logits + (logits - guider_logits) * guidance_alpha if guider_seq is not None else logits
                 )
+                if mode_stage1 and counter < text_len + 400:
+                    tokens, mems = strategy.forward(guided_logits, tokens, mems)
+                else:
+                    tokens, mems = strategy2.forward(guided_logits, tokens, mems)
+                if guider_seq is not None:
+                    guider_tokens = torch.cat((guider_tokens, tokens[:, -1:]), dim=1)
 
-        counter += 1
-        index = counter
+                if seq[0][counter].item() >= 0:
+                    for si in range(seq.shape[0]):
+                        if seq[si][counter].item() >= 0:
+                            tokens[si, -1] = seq[si, counter]
+                            if guider_seq is not None:
+                                guider_tokens[si, -1] = guider_seq[si, counter - guider_index_delta]
 
-        logits = logits[:, -1].expand(batch_size, -1)  # [batch size, vocab size]
-        tokens = tokens.expand(batch_size, -1)
-        if guider_seq is not None:
-            guider_logits = guider_logits[:, -1].expand(batch_size, -1)
-            guider_tokens = guider_tokens.expand(batch_size, -1)
-
-        if seq[-1][counter].item() < 0:
-            # sampling
-            guided_logits = (
-                guider_logits + (logits - guider_logits) * guidance_alpha if guider_seq is not None else logits
-            )
-            if mode_stage1 and counter < text_len + 400:
-                tokens, mems = strategy.forward(guided_logits, tokens, mems)
             else:
-                tokens, mems = strategy2.forward(guided_logits, tokens, mems)
-            if guider_seq is not None:
-                guider_tokens = torch.cat((guider_tokens, tokens[:, -1:]), dim=1)
-
-            if seq[0][counter].item() >= 0:
-                for si in range(seq.shape[0]):
-                    if seq[si][counter].item() >= 0:
-                        tokens[si, -1] = seq[si, counter]
-                        if guider_seq is not None:
-                            guider_tokens[si, -1] = guider_seq[si, counter - guider_index_delta]
-
-        else:
-            tokens = torch.cat(
-                (
-                    tokens,
-                    seq[:, counter : counter + 1]
-                    .clone()
-                    .expand(tokens.shape[0], 1)
-                    .to(device=tokens.device, dtype=tokens.dtype),
-                ),
-                dim=1,
-            )
-            if guider_seq is not None:
-                guider_tokens = torch.cat(
+                tokens = torch.cat(
                     (
-                        guider_tokens,
-                        guider_seq[:, counter - guider_index_delta : counter + 1 - guider_index_delta]
+                        tokens,
+                        seq[:, counter : counter + 1]
                         .clone()
-                        .expand(guider_tokens.shape[0], 1)
-                        .to(device=guider_tokens.device, dtype=guider_tokens.dtype),
+                        .expand(tokens.shape[0], 1)
+                        .to(device=tokens.device, dtype=tokens.dtype),
                     ),
                     dim=1,
                 )
-
-        input_tokens = tokens.clone()
-        if guider_seq is not None:
-            guider_input_tokens = guider_tokens.clone()
-        if (index - text_len - 1) // 400 < (input_tokens.shape[-1] - text_len - 1) // 400:
-            boi_idx = ((index - text_len - 1) // 400 + 1) * 400 + text_len
-            while boi_idx < input_tokens.shape[-1]:
-                input_tokens[:, boi_idx] = tokenizer["<start_of_image>"]
                 if guider_seq is not None:
-                    guider_input_tokens[:, boi_idx - guider_index_delta] = tokenizer["<start_of_image>"]
-                boi_idx += 400
+                    guider_tokens = torch.cat(
+                        (
+                            guider_tokens,
+                            guider_seq[:, counter - guider_index_delta : counter + 1 - guider_index_delta]
+                            .clone()
+                            .expand(guider_tokens.shape[0], 1)
+                            .to(device=guider_tokens.device, dtype=guider_tokens.dtype),
+                        ),
+                        dim=1,
+                    )
 
-        if strategy.is_done:
-            break
+            input_tokens = tokens.clone()
+            if guider_seq is not None:
+                guider_input_tokens = guider_tokens.clone()
+            if (index - text_len - 1) // 400 < (input_tokens.shape[-1] - text_len - 1) // 400:
+                boi_idx = ((index - text_len - 1) // 400 + 1) * 400 + text_len
+                while boi_idx < input_tokens.shape[-1]:
+                    input_tokens[:, boi_idx] = tokenizer["<start_of_image>"]
+                    if guider_seq is not None:
+                        guider_input_tokens[:, boi_idx - guider_index_delta] = tokenizer["<start_of_image>"]
+                    boi_idx += 400
+
+            if strategy.is_done:
+                break
     return strategy.finalize(tokens, mems)
 
 
@@ -777,6 +791,8 @@ def main(args):
         if args.keep_mem_buffers:
             del mem_dict["guider_buffer"]
             del mem_dict["buffer"]
+            mem_dict["guider_buffer"] = None
+            mem_dict["buffer"] = None
 
         # direct super-resolution by CogView2
         logging.info("[Direct super-resolution]")
@@ -1019,30 +1035,33 @@ def main(args):
             mem_dict["guider_buffer"] = tweak_guider_mems_buffers
 
     if args.stage_1 or args.both_stages:
-        path = os.path.join(args.output_path, f"{raw_text}")
-        parent_given_tokens = process_stage1(
-            model_stage1,
-            raw_text,
-            duration=4.0,
-            video_raw_text=raw_text,
-            video_guidance_text="视频",
-            image_text_suffix=" 高清摄影",
-            outputdir=path if args.stage_1 else None,
-            batch_size=args.batch_size,
-        )
-        if args.both_stages:
-            process_stage2(
-                model_stage2,
+        for _ in range(args.number):
+            if args.input_dir is not None:
+                image_prompt = random.choice(glob(f"{args.input_dir}/*"))
+                print(image_prompt)
+            path = os.path.join(args.output_path, f"{Path(image_prompt).stem}_{raw_text}")
+            parent_given_tokens = process_stage1(
+                model_stage1,
                 raw_text,
-                duration=2.0,
-                video_raw_text=raw_text + " 视频",
+                duration=4.0,
+                video_raw_text=raw_text,
                 video_guidance_text="视频",
-                parent_given_tokens=parent_given_tokens,
-                outputdir=path,
-                gpu_rank=0,
-                gpu_parallel_size=1,
+                image_text_suffix=" 高清摄影",
+                outputdir=path + "_stage1",
+                batch_size=args.batch_size,
             )
-
+            if args.both_stages:
+                process_stage2(
+                    model_stage2,
+                    raw_text,
+                    duration=2.0,
+                    video_raw_text=raw_text + " 视频",
+                    video_guidance_text="视频",
+                    parent_given_tokens=parent_given_tokens,
+                    outputdir=path + "_stage2",
+                    gpu_rank=0,
+                    gpu_parallel_size=1,
+                )
     elif args.stage_2:
         sample_dirs = os.listdir(args.output_path)
         for sample in sample_dirs:
@@ -1070,11 +1089,13 @@ if __name__ == "__main__":
     # TODO remove args Namespace object (anti-pattern) and pass actual arguments + refactor process_stage1/2
     # TODO move argparse to cli module and find a way around SwissArmyTransformer's get_args()
 
-    logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
+    logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
     py_parser = argparse.ArgumentParser()
     py_parser.add_argument("--text", type=str, default=None)
     py_parser.add_argument("--image", type=str, default=None)
+    py_parser.add_argument("--input_dir", type=str, default=None)
+    py_parser.add_argument("--number", type=int, default=1)
     py_parser.add_argument("--generate-frame-num", type=int, default=5)
     py_parser.add_argument("--dsr-max-batch-size", type=int, default=4)
     py_parser.add_argument("--keep-mem-buffers", action="store_true")
