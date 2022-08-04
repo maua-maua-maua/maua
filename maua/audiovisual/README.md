@@ -9,4 +9,4 @@ The code can be run like this (from the root of the repo):
 python -m maua.audiovisual.generate --audio_file /path/to/audio.wav --model_file /path/to/sg3.pt --patch_file maua/audiovisual/patches/examples/stylegan3.py
 ```
 
-To change the audio-reactivity you can edit `maua/audiovisual/patches/examples/stylegan3.py`. Tutorials will be made available by Maua version 1.0.
+To change the audio-reactivity you can edit `maua/audiovisual/patches/examples/stylegan3.py` (or make a copy somewhere else and change --patch_file). Tutorials will be made available by Maua version 1.0.
