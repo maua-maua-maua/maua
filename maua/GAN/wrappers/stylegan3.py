@@ -1,7 +1,7 @@
 import os
 import sys
 import warnings
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -25,7 +25,7 @@ class StyleGAN3Mapper(StyleGANMapper):
 
 class StyleGAN3Synthesizer(StyleGANSynthesizer):
     def __init__(
-        self, model_file: str, inference: bool, output_size: Tuple[int, int], strategy: str, layer: int
+        self, model_file: str, inference: bool, output_size: Optional[Tuple[int, int]], strategy: str, layer: int
     ) -> None:
         super().__init__()
 
@@ -33,6 +33,9 @@ class StyleGAN3Synthesizer(StyleGANSynthesizer):
             self.G_synth = stylegan3.SynthesisNetwork(w_dim=512, img_resolution=1024, img_channels=3)
         else:
             self.G_synth: stylegan3.SynthesisNetwork = load_network(model_file).synthesis
+
+        if output_size is None:
+            output_size = (self.G_synth.img_resolution, self.G_synth.img_resolution)
 
         self.w_dim, self.num_ws = self.G_synth.w_dim, self.G_synth.num_ws
 

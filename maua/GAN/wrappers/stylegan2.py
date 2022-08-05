@@ -26,7 +26,7 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
     __constants__ = ["w_dim", "num_ws", "layer_names"]
 
     def __init__(
-        self, model_file: str, inference: bool, output_size: Tuple[int, int], strategy: str, layer: int
+        self, model_file: str, inference: bool, output_size: Optional[Tuple[int, int]], strategy: str, layer: int
     ) -> None:
         super().__init__()
 
@@ -42,6 +42,9 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
             self.G_synth.bs = []
             for res in self.G_synth.block_resolutions:
                 self.G_synth.bs.append(getattr(self.G_synth, f"b{res}"))
+
+        if output_size is None:
+            output_size = (self.G_synth.img_resolution, self.G_synth.img_resolution)
 
         self.w_dim, self.num_ws = self.G_synth.w_dim, self.G_synth.num_ws
         self.layer_names = [

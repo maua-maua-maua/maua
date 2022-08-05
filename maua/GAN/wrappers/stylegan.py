@@ -41,7 +41,7 @@ class StyleGAN(MauaGenerator):
     MapperCls = StyleGANMapper
     SynthesizerCls = StyleGANSynthesizer
 
-    def __init__(self, model_file=None, inference=False, output_size=(1024, 1024), strategy="stretch", layer=0) -> None:
+    def __init__(self, model_file=None, inference=False, output_size=None, strategy="stretch", layer=0) -> None:
         super().__init__(
             mapper_kwargs=dict(model_file=model_file, inference=inference),
             synthesizer_kwargs=dict(

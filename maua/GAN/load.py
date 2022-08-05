@@ -164,11 +164,37 @@ def load_nvidia(path, for_inference=None):
     return G
 
 
+def load_nvidia_pt(
+    path, z_dim=512, c_dim=0, w_dim=512, img_resolution=1024, img_channels=3, map_layers=8, for_inference=False
+):
+    state_dict = torch.load(path)["G_ema"]
+
+    # create new Generator class to avoid the uninformative errors from NVIDIA's persistence system
+    try:
+        G = stylegan3.Generator(
+            z_dim, c_dim, w_dim, img_resolution, img_channels, mapping_kwargs=dict(num_layers=map_layers)
+        )
+        G.load_state_dict(state_dict)
+        try_stylegan2 = False
+    except:
+        try_stylegan2 = True
+
+    if try_stylegan2:
+        G = (stylegan2_inference if for_inference else stylegan2_train).Generator(
+            z_dim, c_dim, w_dim, img_resolution, img_channels, mapping_kwargs=dict(num_layers=map_layers)
+        )
+        G.load_state_dict(state_dict)
+
+    del state_dict
+    return G
+
+
 def load_network(path, for_inference=False):
     errors = {}
 
     for name, loader in [
         ("NVIDIA StyleGAN3 loader", load_nvidia),
+        ("NVIDIA non-persistence loader", load_nvidia_pt),
         ("Rosinality StyleGAN2 to ADA-PT converter", load_rosinality2ada),
         ("Rosinality StyleGAN2 to Inference converter", partial(load_rosinality2ada, for_inference=True)),
     ]:
