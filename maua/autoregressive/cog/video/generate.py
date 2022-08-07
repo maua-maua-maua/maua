@@ -13,7 +13,7 @@ import torch
 from deep_translator import GoogleTranslator
 from icetk import icetk as tokenizer
 from PIL import Image, UnidentifiedImageError
-from SwissArmyTransformer import get_args
+from SwissArmyTransformer import mpu
 from SwissArmyTransformer.generation.sampling_strategies import BaseStrategy
 from SwissArmyTransformer.resources import auto_create
 from torchvision.utils import save_image
@@ -152,10 +152,8 @@ def my_save_multiple_images(imgs, path, subdir, debug=True):
     # imgs: list of tensor images
     if debug:
         imgs = torch.cat(imgs, dim=0)
-        print("\nSave to: ", path, flush=True)
         save_image(imgs, path, normalize=True)
     else:
-        print("\nSave to: ", path, flush=True)
         single_frame_path = os.path.join(path, subdir)
         os.makedirs(single_frame_path, exist_ok=True)
         for i in range(len(imgs)):
@@ -180,12 +178,14 @@ mem_dict = {"len": None, "buffer": None, "guider_buffer": None}
 
 def my_filling_sequence(
     model,
-    args,
     seq,
     batch_size,
     get_masks_and_position_ids,
     text_len,
     frame_len,
+    num_layers,
+    hidden_size,
+    keep_mem_buffers,
     strategy=BaseStrategy(),
     strategy2=BaseStrategy(),
     mems=None,
@@ -245,29 +245,25 @@ def my_filling_sequence(
     mems_buffers_on_GPU = False
     mems_indexs = [0, 0]
     mems_len = [(400 + 74) if limited_spatial_channel_mem else 5 * 400 + 74, 5 * 400 + 74]
-    if args.keep_mem_buffers:
+    if keep_mem_buffers:
         mems_buffers = mem_dict["buffer"]
         for idx, mem_buffer in enumerate(mems_buffers):
             mems_buffers[idx] *= 0
     else:
         mems_buffers = [
-            torch.zeros(
-                args.num_layers, batch_size, mem_len, args.hidden_size * 2, dtype=next(model.parameters()).dtype
-            )
+            torch.zeros(num_layers, batch_size, mem_len, hidden_size * 2, dtype=next(model.parameters()).dtype)
             for mem_len in mems_len
         ]
 
     if guider_seq is not None:
         guider_attention_mask = guider_attention_mask.type_as(next(model.parameters()))  # if fp16
-        if args.keep_mem_buffers:
+        if keep_mem_buffers:
             guider_mems_buffers = mem_dict["guider_buffer"]
             for idx, guider_mem_buffer in enumerate(guider_mems_buffers):
                 guider_mems_buffers[idx] *= 0
         else:
             guider_mems_buffers = [
-                torch.zeros(
-                    args.num_layers, batch_size, mem_len, args.hidden_size * 2, dtype=next(model.parameters()).dtype
-                )
+                torch.zeros(num_layers, batch_size, mem_len, hidden_size * 2, dtype=next(model.parameters()).dtype)
                 for mem_len in mems_len
             ]
         guider_mems_indexs = [0, 0]
@@ -544,13 +540,414 @@ def my_filling_sequence(
     return strategy.finalize(tokens, mems)
 
 
+def process_stage1(
+    model,
+    seq_text,
+    duration,
+    use_guidance_stage1,
+    both_stages,
+    stage1_max_inference_batch_size,
+    max_inference_batch_size,
+    device,
+    image_prompt,
+    strategy_cogview2,
+    strategy_cogvideo,
+    generate_frame_num,
+    guidance_alpha,
+    keep_mem_buffers,
+    num_layers=24,
+    hidden_size=1024,
+    video_raw_text=None,
+    video_guidance_text="视频",
+    image_text_suffix="",
+    outputdir=None,
+    batch_size=1,
+):
+    process_start_time = time.time()
+    use_guide = use_guidance_stage1
+    if both_stages:
+        move_start_time = time.time()
+        logging.debug("moving stage 1 model to cuda")
+        model = model.cuda()
+        logging.debug("moving in model1 takes time: {:.2f}".format(time.time() - move_start_time))
+
+    if video_raw_text is None:
+        video_raw_text = seq_text
+    mbz = stage1_max_inference_batch_size if stage1_max_inference_batch_size > 0 else max_inference_batch_size
+    assert batch_size < mbz or batch_size % mbz == 0
+    frame_len = 400
+
+    # generate the first frame:
+    enc_text = tokenizer.encode(seq_text + image_text_suffix)
+    seq_1st = enc_text + [tokenizer["<start_of_image>"]] + [-1] * 400
+    logging.info("[Generating First Frame with CogView2]Raw text: {:s}".format(tokenizer.decode(enc_text)))
+    text_len_1st = len(seq_1st) - frame_len * 1 - 1
+
+    seq_1st = torch.cuda.LongTensor(seq_1st, device=device).unsqueeze(0)
+    if image_prompt is None:
+        output_list_1st = []
+        for tim in range(max(batch_size // mbz, 1)):
+            start_time = time.time()
+            output_list_1st.append(
+                my_filling_sequence(
+                    model,
+                    seq_1st.clone(),
+                    batch_size=min(batch_size, mbz),
+                    get_masks_and_position_ids=get_masks_and_position_ids_stage1,
+                    text_len=text_len_1st,
+                    frame_len=frame_len,
+                    strategy=strategy_cogview2,
+                    strategy2=strategy_cogvideo,
+                    log_text_attention_weights=1.4,
+                    enforce_no_swin=True,
+                    mode_stage1=True,
+                    num_layers=num_layers,
+                    hidden_size=hidden_size,
+                    keep_mem_buffers=keep_mem_buffers,
+                )[0]
+            )
+            logging.info("[First Frame]Taken time {:.2f}\n".format(time.time() - start_time))
+        output_tokens_1st = torch.cat(output_list_1st, dim=0)
+        given_tokens = output_tokens_1st[:, text_len_1st + 1 : text_len_1st + 401].unsqueeze(1)
+    else:
+        given_tokens = tokenizer.encode(image_path=image_prompt, image_size=160).repeat(batch_size, 1).unsqueeze(1)
+    # given_tokens.shape: [bs, frame_num, 400]
+
+    # generate subsequent frames:
+    total_frames = generate_frame_num
+    enc_duration = tokenizer.encode(str(float(duration)) + "秒")
+    if use_guide:
+        video_raw_text = video_raw_text + " 视频"
+    enc_text_video = tokenizer.encode(video_raw_text)
+    seq = (
+        enc_duration
+        + [tokenizer["<n>"]]
+        + enc_text_video
+        + [tokenizer["<start_of_image>"]]
+        + [-1] * 400 * generate_frame_num
+    )
+    guider_seq = (
+        enc_duration
+        + [tokenizer["<n>"]]
+        + tokenizer.encode(video_guidance_text)
+        + [tokenizer["<start_of_image>"]]
+        + [-1] * 400 * generate_frame_num
+    )
+    logging.info(
+        "[Stage1: Generating Subsequent Frames, Frame Rate {:.1f}]\nraw text: {:s}".format(
+            4 / duration, tokenizer.decode(enc_text_video)
+        )
+    )
+
+    text_len = len(seq) - frame_len * generate_frame_num - 1
+    guider_text_len = len(guider_seq) - frame_len * generate_frame_num - 1
+    seq = torch.cuda.LongTensor(seq, device=device).unsqueeze(0).repeat(batch_size, 1)
+    guider_seq = torch.cuda.LongTensor(guider_seq, device=device).unsqueeze(0).repeat(batch_size, 1)
+
+    for given_frame_id in range(given_tokens.shape[1]):
+        seq[:, text_len + 1 + given_frame_id * 400 : text_len + 1 + (given_frame_id + 1) * 400] = given_tokens[
+            :, given_frame_id
+        ]
+        guider_seq[
+            :, guider_text_len + 1 + given_frame_id * 400 : guider_text_len + 1 + (given_frame_id + 1) * 400
+        ] = given_tokens[:, given_frame_id]
+    output_list = []
+
+    if use_guide:
+        video_log_text_attention_weights = 0
+    else:
+        guider_seq = None
+        video_log_text_attention_weights = 1.4
+
+    for tim in range(max(batch_size // mbz, 1)):
+        start_time = time.time()
+        input_seq = seq[: min(batch_size, mbz)].clone() if tim == 0 else seq[mbz * tim : mbz * (tim + 1)].clone()
+        guider_seq2 = (
+            (
+                guider_seq[: min(batch_size, mbz)].clone()
+                if tim == 0
+                else guider_seq[mbz * tim : mbz * (tim + 1)].clone()
+            )
+            if guider_seq is not None
+            else None
+        )
+        output_list.append(
+            my_filling_sequence(
+                model,
+                input_seq,
+                batch_size=min(batch_size, mbz),
+                get_masks_and_position_ids=get_masks_and_position_ids_stage1,
+                text_len=text_len,
+                frame_len=frame_len,
+                strategy=strategy_cogview2,
+                strategy2=strategy_cogvideo,
+                log_text_attention_weights=video_log_text_attention_weights,
+                guider_seq=guider_seq2,
+                guider_text_len=guider_text_len,
+                guidance_alpha=guidance_alpha,
+                limited_spatial_channel_mem=True,
+                mode_stage1=True,
+                num_layers=num_layers,
+                hidden_size=hidden_size,
+                keep_mem_buffers=keep_mem_buffers,
+            )[0]
+        )
+
+    output_tokens = torch.cat(output_list, dim=0)[:, 1 + text_len :]
+
+    if both_stages:
+        move_start_time = time.time()
+        logging.debug("moving stage 1 model to cpu")
+        model = model.cpu()
+        torch.cuda.empty_cache()
+        logging.debug("moving in model1 takes time: {:.2f}".format(time.time() - move_start_time))
+
+    # decoding
+    imgs, sred_imgs, txts = [], [], []
+    for seq in output_tokens:
+        decoded_imgs = [
+            torch.nn.functional.interpolate(
+                tokenizer.decode(image_ids=seq.tolist()[i * 400 : (i + 1) * 400]), size=(480, 480)
+            )
+            for i in range(total_frames)
+        ]
+        imgs.append(decoded_imgs)  # only the last image (target)
+
+    assert len(imgs) == batch_size
+    save_tokens = output_tokens[:, : +total_frames * 400].reshape(-1, total_frames, 400).cpu()
+    if outputdir is not None:
+        for clip_i in range(len(imgs)):
+            my_save_multiple_images(imgs[clip_i], outputdir, subdir=f"frames/{clip_i}", debug=False)
+            os.system(f"gifmaker -i '{outputdir}'/frames/'{clip_i}'/0*.jpg -o '{outputdir}/{clip_i}.gif' -d 0.25")
+        torch.save(save_tokens, os.path.join(outputdir, "frame_tokens.pt"))
+
+    logging.info("CogVideo Stage1 completed. Taken time {:.2f}\n".format(time.time() - process_start_time))
+
+    return save_tokens
+
+
+def process_stage2(
+    model,
+    seq_text,
+    duration,
+    use_guidance_stage2,
+    both_stages,
+    generate_frame_num,
+    device,
+    max_inference_batch_size,
+    strategy_cogview2,
+    strategy_cogvideo,
+    guidance_alpha,
+    keep_mem_buffers,
+    dsr,
+    num_layers=48,
+    hidden_size=3072,
+    video_guidance_text="视频",
+    parent_given_tokens=None,
+    conddir=None,
+    outputdir=None,
+    gpu_rank=0,
+    gpu_parallel_size=1,
+):
+    stage2_starttime = time.time()
+    use_guidance = use_guidance_stage2
+    if both_stages:
+        move_start_time = time.time()
+        logging.debug("moving stage-2 model to cuda")
+        model = model.cuda()
+        logging.debug("moving in stage-2 model takes time: {:.2f}".format(time.time() - move_start_time))
+
+    try:
+        if parent_given_tokens is None:
+            assert conddir is not None
+            parent_given_tokens = torch.load(os.path.join(conddir, "frame_tokens.pt"), map_location="cpu")
+        sample_num_allgpu = parent_given_tokens.shape[0]
+        sample_num = sample_num_allgpu // gpu_parallel_size
+        assert sample_num * gpu_parallel_size == sample_num_allgpu
+        parent_given_tokens = parent_given_tokens[gpu_rank * sample_num : (gpu_rank + 1) * sample_num]
+    except:
+        logging.critical("No frame_tokens found in interpolation, skip")
+        return False
+
+    # CogVideo Stage2 Generation
+    while duration >= 0.5:  # TODO: You can change the boundary to change the frame rate
+        parent_given_tokens_num = parent_given_tokens.shape[1]
+        generate_batchsize_persample = (parent_given_tokens_num - 1) // 2
+        generate_batchsize_total = generate_batchsize_persample * sample_num
+        total_frames = generate_frame_num
+        frame_len = 400
+        enc_text = tokenizer.encode(seq_text)
+        enc_duration = tokenizer.encode(str(float(duration)) + "秒")
+        seq = (
+            enc_duration
+            + [tokenizer["<n>"]]
+            + enc_text
+            + [tokenizer["<start_of_image>"]]
+            + [-1] * 400 * generate_frame_num
+        )
+        text_len = len(seq) - frame_len * generate_frame_num - 1
+
+        logging.info(
+            "[Stage2: Generating Frames, Frame Rate {:d}]\nraw text: {:s}".format(
+                int(4 / duration), tokenizer.decode(enc_text)
+            )
+        )
+
+        # generation
+        seq = torch.cuda.LongTensor(seq, device=device).unsqueeze(0).repeat(generate_batchsize_total, 1)
+        for sample_i in range(sample_num):
+            for i in range(generate_batchsize_persample):
+                seq[sample_i * generate_batchsize_persample + i][
+                    text_len + 1 : text_len + 1 + 400
+                ] = parent_given_tokens[sample_i][2 * i]
+                seq[sample_i * generate_batchsize_persample + i][
+                    text_len + 1 + 400 : text_len + 1 + 800
+                ] = parent_given_tokens[sample_i][2 * i + 1]
+                seq[sample_i * generate_batchsize_persample + i][
+                    text_len + 1 + 800 : text_len + 1 + 1200
+                ] = parent_given_tokens[sample_i][2 * i + 2]
+
+        if use_guidance:
+            guider_seq = (
+                enc_duration
+                + [tokenizer["<n>"]]
+                + tokenizer.encode(video_guidance_text)
+                + [tokenizer["<start_of_image>"]]
+                + [-1] * 400 * generate_frame_num
+            )
+            guider_text_len = len(guider_seq) - frame_len * generate_frame_num - 1
+            guider_seq = (
+                torch.cuda.LongTensor(guider_seq, device=device).unsqueeze(0).repeat(generate_batchsize_total, 1)
+            )
+            for sample_i in range(sample_num):
+                for i in range(generate_batchsize_persample):
+                    guider_seq[sample_i * generate_batchsize_persample + i][
+                        text_len + 1 : text_len + 1 + 400
+                    ] = parent_given_tokens[sample_i][2 * i]
+                    guider_seq[sample_i * generate_batchsize_persample + i][
+                        text_len + 1 + 400 : text_len + 1 + 800
+                    ] = parent_given_tokens[sample_i][2 * i + 1]
+                    guider_seq[sample_i * generate_batchsize_persample + i][
+                        text_len + 1 + 800 : text_len + 1 + 1200
+                    ] = parent_given_tokens[sample_i][2 * i + 2]
+            video_log_text_attention_weights = 0
+        else:
+            guider_seq = None
+            guider_text_len = 0
+            video_log_text_attention_weights = 1.4
+
+        mbz = max_inference_batch_size
+
+        assert generate_batchsize_total < mbz or generate_batchsize_total % mbz == 0
+        output_list = []
+        start_time = time.time()
+        for tim in range(max(generate_batchsize_total // mbz, 1)):
+            input_seq = (
+                seq[: min(generate_batchsize_total, mbz)].clone()
+                if tim == 0
+                else seq[mbz * tim : mbz * (tim + 1)].clone()
+            )
+            guider_seq2 = (
+                (
+                    guider_seq[: min(generate_batchsize_total, mbz)].clone()
+                    if tim == 0
+                    else guider_seq[mbz * tim : mbz * (tim + 1)].clone()
+                )
+                if guider_seq is not None
+                else None
+            )
+            output_list.append(
+                my_filling_sequence(
+                    model,
+                    input_seq,
+                    batch_size=min(generate_batchsize_total, mbz),
+                    get_masks_and_position_ids=get_masks_and_position_ids_stage2,
+                    text_len=text_len,
+                    frame_len=frame_len,
+                    strategy=strategy_cogview2,
+                    strategy2=strategy_cogvideo,
+                    log_text_attention_weights=video_log_text_attention_weights,
+                    mode_stage1=False,
+                    guider_seq=guider_seq2,
+                    guider_text_len=guider_text_len,
+                    guidance_alpha=guidance_alpha,
+                    limited_spatial_channel_mem=True,
+                    num_layers=num_layers,
+                    hidden_size=hidden_size,
+                    keep_mem_buffers=keep_mem_buffers,
+                )[0]
+            )
+        logging.info("Duration {:.2f}, Taken time {:.2f}\n".format(duration, time.time() - start_time))
+
+        output_tokens = torch.cat(output_list, dim=0)
+        output_tokens = output_tokens[:, text_len + 1 : text_len + 1 + (total_frames) * 400].reshape(
+            sample_num, -1, 400 * total_frames
+        )
+        output_tokens_merge = torch.cat(
+            (
+                output_tokens[:, :, : 1 * 400],
+                output_tokens[:, :, 400 * 3 : 4 * 400],
+                output_tokens[:, :, 400 * 1 : 2 * 400],
+                output_tokens[:, :, 400 * 4 : (total_frames) * 400],
+            ),
+            dim=2,
+        ).reshape(sample_num, -1, 400)
+
+        output_tokens_merge = torch.cat((output_tokens_merge, output_tokens[:, -1:, 400 * 2 : 3 * 400]), dim=1)
+        duration /= 2
+        parent_given_tokens = output_tokens_merge
+
+    if both_stages:
+        move_start_time = time.time()
+        logging.debug("moving stage 2 model to cpu")
+        model = model.cpu()
+        torch.cuda.empty_cache()
+        logging.debug("moving out model2 takes time: {:.2f}".format(time.time() - move_start_time))
+
+    logging.info("CogVideo Stage2 completed. Taken time {:.2f}\n".format(time.time() - stage2_starttime))
+
+    # decoding
+    if keep_mem_buffers:
+        del mem_dict["guider_buffer"]
+        del mem_dict["buffer"]
+        mem_dict["guider_buffer"] = None
+        mem_dict["buffer"] = None
+
+    # direct super-resolution by CogView2
+    logging.info("[Direct super-resolution]")
+    dsr_starttime = time.time()
+    enc_text = tokenizer.encode(seq_text)
+    frame_num_per_sample = parent_given_tokens.shape[1]
+    parent_given_tokens_2d = parent_given_tokens.reshape(-1, 400)
+    text_seq = torch.cuda.LongTensor(enc_text, device=device).unsqueeze(0).repeat(parent_given_tokens_2d.shape[0], 1)
+    sred_tokens = dsr(text_seq, parent_given_tokens_2d)
+    decoded_sr_videos = []
+
+    for sample_i in range(sample_num):
+        decoded_sr_imgs = []
+        for frame_i in range(frame_num_per_sample):
+            decoded_sr_img = tokenizer.decode(image_ids=sred_tokens[frame_i + sample_i * frame_num_per_sample][-3600:])
+            decoded_sr_imgs.append(torch.nn.functional.interpolate(decoded_sr_img, size=(480, 480)))
+        decoded_sr_videos.append(decoded_sr_imgs)
+
+    for sample_i in range(sample_num):
+        my_save_multiple_images(
+            decoded_sr_videos[sample_i], outputdir, subdir=f"frames/{sample_i+sample_num*gpu_rank}", debug=False
+        )
+        os.system(
+            f"gifmaker -i '{outputdir}'/frames/'{sample_i+sample_num*gpu_rank}'/0*.jpg -o '{outputdir}/{sample_i+sample_num*gpu_rank}.gif' -d 0.125"
+        )
+
+    logging.info("Direct super-resolution completed. Taken time {:.2f}\n".format(time.time() - dsr_starttime))
+
+    return True
+
+
 class InferenceModel_Sequential(CogVideoCacheModel):
     def __init__(self, args, transformer=None, parallel_output=True):
         super().__init__(
             args, transformer=transformer, parallel_output=parallel_output, window_size=-1, cogvideo_stage=1
         )
-
-    # TODO: check it
 
     def final_forward(self, logits, **kwargs):
         logits_parallel = logits
@@ -566,8 +963,6 @@ class InferenceModel_Interpolate(CogVideoCacheModel):
             args, transformer=transformer, parallel_output=parallel_output, window_size=10, cogvideo_stage=2
         )
 
-    # TODO: check it
-
     def final_forward(self, logits, **kwargs):
         logits_parallel = logits
         logits_parallel = torch.nn.functional.linear(
@@ -576,29 +971,117 @@ class InferenceModel_Interpolate(CogVideoCacheModel):
         return logits_parallel
 
 
-def main(args):
-    assert int(args.stage_1) + int(args.stage_2) + int(args.both_stages) == 1
-    generate_frame_num = args.generate_frame_num
+def main(
+    output_path,
+    text,
+    translate,
+    image_prompt,
+    input_dir,
+    number,
+    generate_frame_num,
+    use_guidance_stage1,
+    use_guidance_stage2,
+    guidance_alpha,
+    temperature,
+    coglm_temperature2,
+    top_k,
+    stage_1,
+    stage_2,
+    both_stages,
+    batch_size,
+    max_inference_batch_size,
+    stage1_max_inference_batch_size,
+    dsr_max_batch_size,
+    keep_mem_buffers,
+    device,
+):
+    assert int(stage_1) + int(stage_2) + int(both_stages) == 1
+    device = torch.device(device)
 
-    translator = GoogleTranslator(source="en", target="zh-CN")
-    raw_text = translator.translate(args.text)
-    image_prompt = args.image
+    if translate:
+        translator = GoogleTranslator(source="en", target="zh-CN")
+        text = translator.translate(text)
 
-    if args.stage_1 or args.both_stages:
-        model_stage1, args = InferenceModel_Sequential.from_pretrained(args, "cogvideo-stage1")
+    if stage_1 or both_stages:
+        model_stage1, _ = InferenceModel_Sequential.from_pretrained(
+            args=argparse.Namespace(
+                num_layers=24,
+                vocab_size=0,
+                hidden_size=1024,
+                num_attention_heads=16,
+                max_sequence_length=512,
+                additional_seqlen=2000,
+                hidden_dropout=0.1,
+                attention_dropout=0.1,
+                inner_hidden_size=None,
+                hidden_size_per_attention_head=None,
+                checkpoint_activations=False,
+                checkpoint_num_layers=1,
+                layernorm_order="pre",
+                skip_init=True,
+                use_gpu_initialization=False,
+                fp16=True,
+                mode="inference",
+            ),
+            name="cogvideo-stage1",
+        )
         model_stage1.eval()
-        if args.both_stages:
+        if both_stages:
             model_stage1 = model_stage1.cpu()
 
-    if args.stage_2 or args.both_stages:
-        model_stage2, args = InferenceModel_Interpolate.from_pretrained(args, "cogvideo-stage2")
+    if stage_2 or both_stages:
+        model_stage2, _ = InferenceModel_Interpolate.from_pretrained(
+            args=argparse.Namespace(
+                model_class="CogVideoModel",
+                num_layers=48,
+                vocab_size=150010,
+                hidden_size=3072,
+                num_attention_heads=48,
+                max_sequence_length=1024,
+                additional_seqlen=2000,
+                hidden_dropout=0.1,
+                attention_dropout=0.1,
+                inner_hidden_size=None,
+                hidden_size_per_attention_head=None,
+                checkpoint_activations=False,
+                checkpoint_num_layers=1,
+                layernorm_order="sandwich",
+                skip_init=True,
+                use_gpu_initialization=False,
+                fp16=True,
+                mode="inference",
+            ),
+            name="cogvideo-stage2",
+        )
         model_stage2.eval()
-        if args.both_stages:
+        if both_stages:
             model_stage2 = model_stage2.cpu()
 
-    if not args.stage_1:
+    if not stage_1:
         dsr_path = auto_create("cogview2-dsr", path=None)
-        dsr = DirectSuperResolution(args, dsr_path, max_bz=args.dsr_max_batch_size, onCUDA=False)
+        dsr = DirectSuperResolution(
+            argparse.Namespace(
+                num_layers=48,
+                vocab_size=150010,
+                hidden_size=3072,
+                num_attention_heads=48,
+                max_sequence_length=1024,
+                attention_dropout=0.1,
+                hidden_dropout=0.1,
+                inner_hidden_size=None,
+                hidden_size_per_attention_head=None,
+                checkpoint_activations=False,
+                checkpoint_num_layers=1,
+                layernorm_order="sandwich",
+                skip_init=True,
+                use_gpu_initialization=False,
+                fp16=True,
+                mode="inference",
+            ),
+            dsr_path,
+            max_bz=dsr_max_batch_size,
+            onCUDA=False,
+        )
 
     if os.path.exists(str(image_prompt)):
         try:
@@ -615,404 +1098,19 @@ def main(args):
     invalid_slices = [slice(tokenizer.num_image_tokens, None)]
     strategy_cogview2 = CoglmStrategy(invalid_slices, temperature=1.0, top_k=16)
     strategy_cogvideo = CoglmStrategy(
-        invalid_slices, temperature=args.temperature, top_k=args.top_k, temperature2=args.coglm_temperature2
+        invalid_slices, temperature=temperature, top_k=top_k, temperature2=coglm_temperature2
     )
 
-    def process_stage2(
-        model,
-        seq_text,
-        duration,
-        video_raw_text=None,
-        video_guidance_text="视频",
-        parent_given_tokens=None,
-        conddir=None,
-        outputdir=None,
-        gpu_rank=0,
-        gpu_parallel_size=1,
-    ):
-        stage2_starttime = time.time()
-        use_guidance = args.use_guidance_stage2
-        if args.both_stages:
-            move_start_time = time.time()
-            logging.debug("moving stage-2 model to cuda")
-            model = model.cuda()
-            logging.debug("moving in stage-2 model takes time: {:.2f}".format(time.time() - move_start_time))
-
-        try:
-            if parent_given_tokens is None:
-                assert conddir is not None
-                parent_given_tokens = torch.load(os.path.join(conddir, "frame_tokens.pt"), map_location="cpu")
-            sample_num_allgpu = parent_given_tokens.shape[0]
-            sample_num = sample_num_allgpu // gpu_parallel_size
-            assert sample_num * gpu_parallel_size == sample_num_allgpu
-            parent_given_tokens = parent_given_tokens[gpu_rank * sample_num : (gpu_rank + 1) * sample_num]
-        except:
-            logging.critical("No frame_tokens found in interpolation, skip")
-            return False
-
-        # CogVideo Stage2 Generation
-        while duration >= 0.5:  # TODO: You can change the boundary to change the frame rate
-            parent_given_tokens_num = parent_given_tokens.shape[1]
-            generate_batchsize_persample = (parent_given_tokens_num - 1) // 2
-            generate_batchsize_total = generate_batchsize_persample * sample_num
-            total_frames = generate_frame_num
-            frame_len = 400
-            enc_text = tokenizer.encode(seq_text)
-            enc_duration = tokenizer.encode(str(float(duration)) + "秒")
-            seq = (
-                enc_duration
-                + [tokenizer["<n>"]]
-                + enc_text
-                + [tokenizer["<start_of_image>"]]
-                + [-1] * 400 * generate_frame_num
-            )
-            text_len = len(seq) - frame_len * generate_frame_num - 1
-
-            logging.info(
-                "[Stage2: Generating Frames, Frame Rate {:d}]\nraw text: {:s}".format(
-                    int(4 / duration), tokenizer.decode(enc_text)
-                )
-            )
-
-            # generation
-            seq = torch.cuda.LongTensor(seq, device=args.device).unsqueeze(0).repeat(generate_batchsize_total, 1)
-            for sample_i in range(sample_num):
-                for i in range(generate_batchsize_persample):
-                    seq[sample_i * generate_batchsize_persample + i][
-                        text_len + 1 : text_len + 1 + 400
-                    ] = parent_given_tokens[sample_i][2 * i]
-                    seq[sample_i * generate_batchsize_persample + i][
-                        text_len + 1 + 400 : text_len + 1 + 800
-                    ] = parent_given_tokens[sample_i][2 * i + 1]
-                    seq[sample_i * generate_batchsize_persample + i][
-                        text_len + 1 + 800 : text_len + 1 + 1200
-                    ] = parent_given_tokens[sample_i][2 * i + 2]
-
-            if use_guidance:
-                guider_seq = (
-                    enc_duration
-                    + [tokenizer["<n>"]]
-                    + tokenizer.encode(video_guidance_text)
-                    + [tokenizer["<start_of_image>"]]
-                    + [-1] * 400 * generate_frame_num
-                )
-                guider_text_len = len(guider_seq) - frame_len * generate_frame_num - 1
-                guider_seq = (
-                    torch.cuda.LongTensor(guider_seq, device=args.device)
-                    .unsqueeze(0)
-                    .repeat(generate_batchsize_total, 1)
-                )
-                for sample_i in range(sample_num):
-                    for i in range(generate_batchsize_persample):
-                        guider_seq[sample_i * generate_batchsize_persample + i][
-                            text_len + 1 : text_len + 1 + 400
-                        ] = parent_given_tokens[sample_i][2 * i]
-                        guider_seq[sample_i * generate_batchsize_persample + i][
-                            text_len + 1 + 400 : text_len + 1 + 800
-                        ] = parent_given_tokens[sample_i][2 * i + 1]
-                        guider_seq[sample_i * generate_batchsize_persample + i][
-                            text_len + 1 + 800 : text_len + 1 + 1200
-                        ] = parent_given_tokens[sample_i][2 * i + 2]
-                video_log_text_attention_weights = 0
-            else:
-                guider_seq = None
-                guider_text_len = 0
-                video_log_text_attention_weights = 1.4
-
-            mbz = args.max_inference_batch_size
-
-            assert generate_batchsize_total < mbz or generate_batchsize_total % mbz == 0
-            output_list = []
-            start_time = time.time()
-            for tim in range(max(generate_batchsize_total // mbz, 1)):
-                input_seq = (
-                    seq[: min(generate_batchsize_total, mbz)].clone()
-                    if tim == 0
-                    else seq[mbz * tim : mbz * (tim + 1)].clone()
-                )
-                guider_seq2 = (
-                    (
-                        guider_seq[: min(generate_batchsize_total, mbz)].clone()
-                        if tim == 0
-                        else guider_seq[mbz * tim : mbz * (tim + 1)].clone()
-                    )
-                    if guider_seq is not None
-                    else None
-                )
-                output_list.append(
-                    my_filling_sequence(
-                        model,
-                        args,
-                        input_seq,
-                        batch_size=min(generate_batchsize_total, mbz),
-                        get_masks_and_position_ids=get_masks_and_position_ids_stage2,
-                        text_len=text_len,
-                        frame_len=frame_len,
-                        strategy=strategy_cogview2,
-                        strategy2=strategy_cogvideo,
-                        log_text_attention_weights=video_log_text_attention_weights,
-                        mode_stage1=False,
-                        guider_seq=guider_seq2,
-                        guider_text_len=guider_text_len,
-                        guidance_alpha=args.guidance_alpha,
-                        limited_spatial_channel_mem=True,
-                    )[0]
-                )
-            logging.info("Duration {:.2f}, Taken time {:.2f}\n".format(duration, time.time() - start_time))
-
-            output_tokens = torch.cat(output_list, dim=0)
-            output_tokens = output_tokens[:, text_len + 1 : text_len + 1 + (total_frames) * 400].reshape(
-                sample_num, -1, 400 * total_frames
-            )
-            output_tokens_merge = torch.cat(
-                (
-                    output_tokens[:, :, : 1 * 400],
-                    output_tokens[:, :, 400 * 3 : 4 * 400],
-                    output_tokens[:, :, 400 * 1 : 2 * 400],
-                    output_tokens[:, :, 400 * 4 : (total_frames) * 400],
-                ),
-                dim=2,
-            ).reshape(sample_num, -1, 400)
-
-            output_tokens_merge = torch.cat((output_tokens_merge, output_tokens[:, -1:, 400 * 2 : 3 * 400]), dim=1)
-            duration /= 2
-            parent_given_tokens = output_tokens_merge
-
-        if args.both_stages:
-            move_start_time = time.time()
-            logging.debug("moving stage 2 model to cpu")
-            model = model.cpu()
-            torch.cuda.empty_cache()
-            logging.debug("moving out model2 takes time: {:.2f}".format(time.time() - move_start_time))
-
-        logging.info("CogVideo Stage2 completed. Taken time {:.2f}\n".format(time.time() - stage2_starttime))
-
-        # decoding
-        if args.keep_mem_buffers:
-            del mem_dict["guider_buffer"]
-            del mem_dict["buffer"]
-            mem_dict["guider_buffer"] = None
-            mem_dict["buffer"] = None
-
-        # direct super-resolution by CogView2
-        logging.info("[Direct super-resolution]")
-        dsr_starttime = time.time()
-        enc_text = tokenizer.encode(seq_text)
-        frame_num_per_sample = parent_given_tokens.shape[1]
-        parent_given_tokens_2d = parent_given_tokens.reshape(-1, 400)
-        text_seq = (
-            torch.cuda.LongTensor(enc_text, device=args.device).unsqueeze(0).repeat(parent_given_tokens_2d.shape[0], 1)
-        )
-        sred_tokens = dsr(text_seq, parent_given_tokens_2d)
-        decoded_sr_videos = []
-
-        for sample_i in range(sample_num):
-            decoded_sr_imgs = []
-            for frame_i in range(frame_num_per_sample):
-                decoded_sr_img = tokenizer.decode(
-                    image_ids=sred_tokens[frame_i + sample_i * frame_num_per_sample][-3600:]
-                )
-                decoded_sr_imgs.append(torch.nn.functional.interpolate(decoded_sr_img, size=(480, 480)))
-            decoded_sr_videos.append(decoded_sr_imgs)
-
-        for sample_i in range(sample_num):
-            my_save_multiple_images(
-                decoded_sr_videos[sample_i], outputdir, subdir=f"frames/{sample_i+sample_num*gpu_rank}", debug=False
-            )
-            os.system(
-                f"gifmaker -i '{outputdir}'/frames/'{sample_i+sample_num*gpu_rank}'/0*.jpg -o '{outputdir}/{sample_i+sample_num*gpu_rank}.gif' -d 0.125"
-            )
-
-        logging.info("Direct super-resolution completed. Taken time {:.2f}\n".format(time.time() - dsr_starttime))
-
-        return True
-
-    def process_stage1(
-        model,
-        seq_text,
-        duration,
-        video_raw_text=None,
-        video_guidance_text="视频",
-        image_text_suffix="",
-        outputdir=None,
-        batch_size=1,
-    ):
-        process_start_time = time.time()
-        use_guide = args.use_guidance_stage1
-        if args.both_stages:
-            move_start_time = time.time()
-            logging.debug("moving stage 1 model to cuda")
-            model = model.cuda()
-            logging.debug("moving in model1 takes time: {:.2f}".format(time.time() - move_start_time))
-
-        if video_raw_text is None:
-            video_raw_text = seq_text
-        mbz = (
-            args.stage1_max_inference_batch_size
-            if args.stage1_max_inference_batch_size > 0
-            else args.max_inference_batch_size
-        )
-        assert batch_size < mbz or batch_size % mbz == 0
-        frame_len = 400
-
-        # generate the first frame:
-        enc_text = tokenizer.encode(seq_text + image_text_suffix)
-        seq_1st = enc_text + [tokenizer["<start_of_image>"]] + [-1] * 400  # IV!!  # test local!!! # test randboi!!!
-        logging.info("[Generating First Frame with CogView2]Raw text: {:s}".format(tokenizer.decode(enc_text)))
-        text_len_1st = len(seq_1st) - frame_len * 1 - 1
-
-        seq_1st = torch.cuda.LongTensor(seq_1st, device=args.device).unsqueeze(0)
-        if image_prompt is None:
-            output_list_1st = []
-            for tim in range(max(batch_size // mbz, 1)):
-                start_time = time.time()
-                output_list_1st.append(
-                    my_filling_sequence(
-                        model,
-                        args,
-                        seq_1st.clone(),
-                        batch_size=min(batch_size, mbz),
-                        get_masks_and_position_ids=get_masks_and_position_ids_stage1,
-                        text_len=text_len_1st,
-                        frame_len=frame_len,
-                        strategy=strategy_cogview2,
-                        strategy2=strategy_cogvideo,
-                        log_text_attention_weights=1.4,
-                        enforce_no_swin=True,
-                        mode_stage1=True,
-                    )[0]
-                )
-                logging.info("[First Frame]Taken time {:.2f}\n".format(time.time() - start_time))
-            output_tokens_1st = torch.cat(output_list_1st, dim=0)
-            given_tokens = output_tokens_1st[:, text_len_1st + 1 : text_len_1st + 401].unsqueeze(1)
-        else:
-            given_tokens = tokenizer.encode(image_path=image_prompt, image_size=160).repeat(batch_size, 1).unsqueeze(1)
-        # given_tokens.shape: [bs, frame_num, 400]
-
-        # generate subsequent frames:
-        total_frames = generate_frame_num
-        enc_duration = tokenizer.encode(str(float(duration)) + "秒")
-        if use_guide:
-            video_raw_text = video_raw_text + " 视频"
-        enc_text_video = tokenizer.encode(video_raw_text)
-        seq = (
-            enc_duration
-            + [tokenizer["<n>"]]
-            + enc_text_video
-            + [tokenizer["<start_of_image>"]]
-            + [-1] * 400 * generate_frame_num
-        )
-        guider_seq = (
-            enc_duration
-            + [tokenizer["<n>"]]
-            + tokenizer.encode(video_guidance_text)
-            + [tokenizer["<start_of_image>"]]
-            + [-1] * 400 * generate_frame_num
-        )
-        logging.info(
-            "[Stage1: Generating Subsequent Frames, Frame Rate {:.1f}]\nraw text: {:s}".format(
-                4 / duration, tokenizer.decode(enc_text_video)
-            )
-        )
-
-        text_len = len(seq) - frame_len * generate_frame_num - 1
-        guider_text_len = len(guider_seq) - frame_len * generate_frame_num - 1
-        seq = torch.cuda.LongTensor(seq, device=args.device).unsqueeze(0).repeat(batch_size, 1)
-        guider_seq = torch.cuda.LongTensor(guider_seq, device=args.device).unsqueeze(0).repeat(batch_size, 1)
-
-        for given_frame_id in range(given_tokens.shape[1]):
-            seq[:, text_len + 1 + given_frame_id * 400 : text_len + 1 + (given_frame_id + 1) * 400] = given_tokens[
-                :, given_frame_id
-            ]
-            guider_seq[
-                :, guider_text_len + 1 + given_frame_id * 400 : guider_text_len + 1 + (given_frame_id + 1) * 400
-            ] = given_tokens[:, given_frame_id]
-        output_list = []
-
-        if use_guide:
-            video_log_text_attention_weights = 0
-        else:
-            guider_seq = None
-            video_log_text_attention_weights = 1.4
-
-        for tim in range(max(batch_size // mbz, 1)):
-            start_time = time.time()
-            input_seq = seq[: min(batch_size, mbz)].clone() if tim == 0 else seq[mbz * tim : mbz * (tim + 1)].clone()
-            guider_seq2 = (
-                (
-                    guider_seq[: min(batch_size, mbz)].clone()
-                    if tim == 0
-                    else guider_seq[mbz * tim : mbz * (tim + 1)].clone()
-                )
-                if guider_seq is not None
-                else None
-            )
-            output_list.append(
-                my_filling_sequence(
-                    model,
-                    args,
-                    input_seq,
-                    batch_size=min(batch_size, mbz),
-                    get_masks_and_position_ids=get_masks_and_position_ids_stage1,
-                    text_len=text_len,
-                    frame_len=frame_len,
-                    strategy=strategy_cogview2,
-                    strategy2=strategy_cogvideo,
-                    log_text_attention_weights=video_log_text_attention_weights,
-                    guider_seq=guider_seq2,
-                    guider_text_len=guider_text_len,
-                    guidance_alpha=args.guidance_alpha,
-                    limited_spatial_channel_mem=True,
-                    mode_stage1=True,
-                )[0]
-            )
-
-        output_tokens = torch.cat(output_list, dim=0)[:, 1 + text_len :]
-
-        if args.both_stages:
-            move_start_time = time.time()
-            logging.debug("moving stage 1 model to cpu")
-            model = model.cpu()
-            torch.cuda.empty_cache()
-            logging.debug("moving in model1 takes time: {:.2f}".format(time.time() - move_start_time))
-
-        # decoding
-        imgs, sred_imgs, txts = [], [], []
-        for seq in output_tokens:
-            decoded_imgs = [
-                torch.nn.functional.interpolate(
-                    tokenizer.decode(image_ids=seq.tolist()[i * 400 : (i + 1) * 400]), size=(480, 480)
-                )
-                for i in range(total_frames)
-            ]
-            imgs.append(decoded_imgs)  # only the last image (target)
-
-        assert len(imgs) == batch_size
-        save_tokens = output_tokens[:, : +total_frames * 400].reshape(-1, total_frames, 400).cpu()
-        if outputdir is not None:
-            for clip_i in range(len(imgs)):
-                # os.makedirs(output_dir_full_paths[clip_i], exist_ok=True)
-                my_save_multiple_images(imgs[clip_i], outputdir, subdir=f"frames/{clip_i}", debug=False)
-                os.system(f"gifmaker -i '{outputdir}'/frames/'{clip_i}'/0*.jpg -o '{outputdir}/{clip_i}.gif' -d 0.25")
-            torch.save(save_tokens, os.path.join(outputdir, "frame_tokens.pt"))
-
-        logging.info("CogVideo Stage1 completed. Taken time {:.2f}\n".format(time.time() - process_start_time))
-
-        return save_tokens
-
-    # ======================================================================================================
-
-    if args.keep_mem_buffers:
+    if keep_mem_buffers:
         torch.cuda.empty_cache()
         limited_spatial_channel_mem = True
         tweak_mems_len = [(400 + 74) if limited_spatial_channel_mem else 5 * 400 + 74, 5 * 400 + 74]
-        device = torch.device("cuda")
         tweak_mems_buffers = [
             torch.zeros(
-                args.num_layers,
-                args.batch_size,
+                48,
+                batch_size,
                 mem_len,
-                args.hidden_size * 2,
+                3072 * 2,
                 dtype=next(model_stage1.parameters()).dtype,
                 device=device,
             )
@@ -1020,13 +1118,13 @@ def main(args):
         ]
         mem_dict["buffer"] = tweak_mems_buffers
 
-        if args.use_guidance_stage1:
+        if use_guidance_stage1:
             tweak_guider_mems_buffers = [
                 torch.zeros(
-                    args.num_layers,
-                    args.batch_size,
+                    48,
+                    batch_size,
                     mem_len,
-                    args.hidden_size * 2,
+                    3072 * 2,
                     dtype=next(model_stage1.parameters()).dtype,
                     device=device,
                 )
@@ -1034,92 +1132,167 @@ def main(args):
             ]
             mem_dict["guider_buffer"] = tweak_guider_mems_buffers
 
-    if args.stage_1 or args.both_stages:
-        for _ in range(args.number):
-            if args.input_dir is not None:
-                image_prompt = random.choice(glob(f"{args.input_dir}/*"))
+    if stage_1 or both_stages:
+        for n in range(number):
+            if input_dir is not None:
+                image_prompt = random.choice(glob(f"{input_dir}/*"))
                 print(image_prompt)
-            path = os.path.join(args.output_path, f"{Path(image_prompt).stem}_{raw_text}")
+            path = os.path.join(output_path, f"{Path(image_prompt).stem}_{text}")
             parent_given_tokens = process_stage1(
-                model_stage1,
-                raw_text,
+                model=model_stage1,
+                seq_text=text,
                 duration=4.0,
-                video_raw_text=raw_text,
+                use_guidance_stage1=use_guidance_stage1,
+                both_stages=both_stages,
+                stage1_max_inference_batch_size=stage1_max_inference_batch_size,
+                max_inference_batch_size=max_inference_batch_size,
+                device=device,
+                num_layers=24,
+                hidden_size=1024,
+                image_prompt=image_prompt,
+                keep_mem_buffers=keep_mem_buffers,
+                strategy_cogview2=strategy_cogview2,
+                strategy_cogvideo=strategy_cogvideo,
+                generate_frame_num=generate_frame_num,
+                guidance_alpha=guidance_alpha,
+                video_raw_text=text,
                 video_guidance_text="视频",
                 image_text_suffix=" 高清摄影",
                 outputdir=path + "_stage1",
-                batch_size=args.batch_size,
+                batch_size=batch_size,
             )
-            if args.both_stages:
+            if both_stages:
                 process_stage2(
-                    model_stage2,
-                    raw_text,
+                    model=model_stage2,
+                    dsr=dsr,
+                    seq_text=text,
                     duration=2.0,
-                    video_raw_text=raw_text + " 视频",
+                    use_guidance_stage2=use_guidance_stage2,
+                    both_stages=both_stages,
+                    generate_frame_num=generate_frame_num,
+                    device=device,
+                    num_layers=48,
+                    hidden_size=3072,
+                    max_inference_batch_size=max_inference_batch_size,
+                    strategy_cogview2=strategy_cogview2,
+                    strategy_cogvideo=strategy_cogvideo,
+                    guidance_alpha=guidance_alpha,
+                    keep_mem_buffers=keep_mem_buffers,
                     video_guidance_text="视频",
                     parent_given_tokens=parent_given_tokens,
                     outputdir=path + "_stage2",
                     gpu_rank=0,
                     gpu_parallel_size=1,
                 )
-    elif args.stage_2:
-        sample_dirs = os.listdir(args.output_path)
+    elif stage_2:
+        sample_dirs = os.listdir(output_path)
         for sample in sample_dirs:
-            raw_text = sample.split("_")[-1]
-            path = os.path.join(args.output_path, sample, "Interp")
-            parent_given_tokens = torch.load(os.path.join(args.output_path, sample, "frame_tokens.pt"))
+            text = sample.split("_")[-1]
+            path = os.path.join(output_path, sample, "Interp")
+            parent_given_tokens = torch.load(os.path.join(output_path, sample, "frame_tokens.pt"))
             process_stage2(
-                model_stage2,
-                raw_text,
+                model=model_stage2,
+                dsr=dsr,
+                seq_text=text,
                 duration=2.0,
-                video_raw_text=raw_text + " 视频",
+                use_guidance_stage2=use_guidance_stage2,
+                both_stages=both_stages,
+                generate_frame_num=generate_frame_num,
+                device=device,
+                num_layers=48,
+                hidden_size=3072,
+                max_inference_batch_size=max_inference_batch_size,
+                strategy_cogview2=strategy_cogview2,
+                strategy_cogvideo=strategy_cogvideo,
+                guidance_alpha=guidance_alpha,
+                keep_mem_buffers=keep_mem_buffers,
                 video_guidance_text="视频",
                 parent_given_tokens=parent_given_tokens,
-                outputdir=path,
+                outputdir=path + "_stage2",
                 gpu_rank=0,
                 gpu_parallel_size=1,
             )
-
     else:
         assert False
 
 
 if __name__ == "__main__":
+    logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
 
-    # TODO remove args Namespace object (anti-pattern) and pass actual arguments + refactor process_stage1/2
-    # TODO move argparse to cli module and find a way around SwissArmyTransformer's get_args()
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter, allow_abbrev=True)
+    parser.add_argument("--text", type=str, default=None)
+    parser.add_argument("--image", type=str, default=None)
+    parser.add_argument("--input_dir", type=str, default=None)
 
-    logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+    parser.add_argument("--number", type=int, default=1)
 
-    py_parser = argparse.ArgumentParser()
-    py_parser.add_argument("--text", type=str, default=None)
-    py_parser.add_argument("--image", type=str, default=None)
-    py_parser.add_argument("--input_dir", type=str, default=None)
-    py_parser.add_argument("--number", type=int, default=1)
-    py_parser.add_argument("--generate-frame-num", type=int, default=5)
-    py_parser.add_argument("--dsr-max-batch-size", type=int, default=4)
-    py_parser.add_argument("--keep-mem-buffers", action="store_true")
-    py_parser.add_argument("--translate", action="store_true")
-    py_parser.add_argument("--coglm-temperature2", type=float, default=0.89)
-    py_parser.add_argument("--use-guidance-stage1", action="store_true")
-    py_parser.add_argument("--use-guidance-stage2", action="store_true")
-    py_parser.add_argument("--guidance-alpha", type=float, default=3.0)
-    py_parser.add_argument("--stage-1", action="store_true")
-    py_parser.add_argument("--stage-2", action="store_true")
-    py_parser.add_argument("--both-stages", action="store_true")
-    py_parser.add_argument("--parallel-size", type=int, default=1)
-    py_parser.add_argument("--stage1-max-inference-batch-size", type=int, default=1)
-    py_parser.add_argument("--multi-gpu", action="store_true")
+    parser.add_argument("--output-path", type=str, default="output/")
 
-    CogVideoCacheModel.add_model_specific_args(py_parser)
+    parser.add_argument("--generate-frame-num", type=int, default=5)
 
-    known, args_list = py_parser.parse_known_args()
-    args = get_args(args_list)
-    args = argparse.Namespace(**vars(args), **vars(known))
-    args.layout = [int(x) for x in args.layout.split(",")]
-    args.do_train = False
+    parser.add_argument("--keep-mem-buffers", action="store_true")
+
+    parser.add_argument("--translate", action="store_true")
+
+    parser.add_argument("--use-guidance-stage1", action="store_true")
+    parser.add_argument("--use-guidance-stage2", action="store_true")
+    parser.add_argument("--guidance-alpha", type=float, default=3.0)
+
+    parser.add_argument("--stage-1", action="store_true")
+    parser.add_argument("--stage-2", action="store_true")
+    parser.add_argument("--both-stages", action="store_true")
+
+    parser.add_argument("--coglm-temperature2", type=float, default=0.89)
+    parser.add_argument("--temperature", type=float, default=1.075)
+    parser.add_argument("--top-k", type=int, default=16)
+
+    parser.add_argument("--device", type=int, default=-1)
+    parser.add_argument("--multi-gpu", action="store_true")
+    parser.add_argument("--model-parallel-size", type=int, default=1)
+
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--max-inference-batch-size", type=int, default=1)
+    parser.add_argument("--stage1-max-inference-batch-size", type=int, default=1)
+    parser.add_argument("--dsr-max-batch-size", type=int, default=1)
+
+    args = parser.parse_args()
 
     torch.cuda.set_device(args.device)
+    init_method = "tcp://"
+    args.rank = int(os.getenv("RANK", "0"))
+    args.world_size = int(os.getenv("WORLD_SIZE", "1"))
+    if args.device == -1:  # not set manually
+        args.device = args.rank % torch.cuda.device_count()
+    args.master_ip = os.getenv("MASTER_ADDR", "localhost")
+    args.master_port = os.getenv("MASTER_PORT", "6000")
+    init_method += args.master_ip + ":" + args.master_port
+    torch.distributed.init_process_group(
+        backend="nccl", world_size=args.world_size, rank=args.rank, init_method=init_method
+    )
+    mpu.initialize_model_parallel(args.model_parallel_size)
 
     with torch.no_grad():
-        main(args)
+        main(
+            output_path=args.output_path,
+            text=args.text,
+            translate=args.translate,
+            image_prompt=args.image,
+            input_dir=args.input_dir,
+            number=args.number,
+            generate_frame_num=args.generate_frame_num,
+            use_guidance_stage1=args.use_guidance_stage1,
+            use_guidance_stage2=args.use_guidance_stage2,
+            guidance_alpha=args.guidance_alpha,
+            temperature=args.temperature,
+            coglm_temperature2=args.coglm_temperature2,
+            top_k=args.top_k,
+            stage_1=args.stage_1,
+            stage_2=args.stage_2,
+            both_stages=args.both_stages,
+            batch_size=args.batch_size,
+            max_inference_batch_size=args.max_inference_batch_size,
+            stage1_max_inference_batch_size=args.stage1_max_inference_batch_size,
+            dsr_max_batch_size=args.dsr_max_batch_size,
+            keep_mem_buffers=args.keep_mem_buffers,
+            device=args.device,
+        )
