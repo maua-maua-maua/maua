@@ -41,14 +41,17 @@ tokenizer.add_special_tokens(["<start_of_image>", "<start_of_english>", "<start_
 
 
 def get_masks_and_position_ids_stage1(data, textlen, framelen):
+
     # Extract batch size and sequence length.
     tokens = data
     seq_length = len(data[0])
+
     # Attention mask (lower triangular).
     attention_mask = torch.ones((1, textlen + framelen, textlen + framelen), device=data.device)
     attention_mask[:, :textlen, textlen:] = 0
     attention_mask[:, textlen:, textlen:].tril_()
     attention_mask.unsqueeze_(1)
+
     # Unaligned version
     position_ids = torch.zeros(seq_length, dtype=torch.long, device=data.device)
     torch.arange(textlen, out=position_ids[:textlen], dtype=torch.long, device=data.device)
@@ -271,7 +274,7 @@ def my_filling_sequence(
 
     torch.cuda.empty_cache()
     # step-by-step generation
-    with tqdm(total=len(seq[0])) as progress:
+    with tqdm(total=int((seq == -1).sum())) as progress:
         while counter < len(seq[0]) - 1:
             # we have generated counter+1 tokens
             # Now, we want to generate seq[counter + 1],
@@ -473,7 +476,6 @@ def my_filling_sequence(
                     )
 
             counter += 1
-            progress.update()
             index = counter
 
             logits = logits[:, -1].expand(batch_size, -1)  # [batch size, vocab size]
@@ -537,6 +539,9 @@ def my_filling_sequence(
 
             if strategy.is_done:
                 break
+
+            progress.update()
+
     return strategy.finalize(tokens, mems)
 
 
@@ -580,11 +585,10 @@ def process_stage1(
     # generate the first frame:
     enc_text = tokenizer.encode(seq_text + image_text_suffix)
     seq_1st = enc_text + [tokenizer["<start_of_image>"]] + [-1] * 400
-    logging.info("[Generating First Frame with CogView2]Raw text: {:s}".format(tokenizer.decode(enc_text)))
     text_len_1st = len(seq_1st) - frame_len * 1 - 1
-
     seq_1st = torch.cuda.LongTensor(seq_1st, device=device).unsqueeze(0)
     if image_prompt is None:
+        logging.info("[Generating First Frame with CogView2]Raw text: {:s}".format(tokenizer.decode(enc_text)))
         output_list_1st = []
         for tim in range(max(batch_size // mbz, 1)):
             start_time = time.time()
@@ -971,6 +975,39 @@ class InferenceModel_Interpolate(CogVideoCacheModel):
         return logits_parallel
 
 
+SHARED_CONF = dict(
+    additional_seqlen=2000,
+    hidden_dropout=0.1,
+    attention_dropout=0.1,
+    inner_hidden_size=None,
+    hidden_size_per_attention_head=None,
+    checkpoint_activations=False,
+    checkpoint_num_layers=1,
+    skip_init=True,
+    use_gpu_initialization=False,
+    fp16=True,
+    mode="inference",
+)
+SEQ_CONF = argparse.Namespace(
+    num_layers=24,
+    vocab_size=0,
+    hidden_size=1024,
+    num_attention_heads=16,
+    max_sequence_length=512,
+    layernorm_order="pre",
+    **SHARED_CONF,
+)
+BIG_CONF = dict(
+    num_layers=48,
+    vocab_size=150010,
+    hidden_size=3072,
+    num_attention_heads=48,
+    max_sequence_length=1024,
+    layernorm_order="sandwich",
+    **SHARED_CONF,
+)
+
+
 def main(
     output_path,
     text,
@@ -1003,85 +1040,29 @@ def main(
         text = translator.translate(text)
 
     if stage_1 or both_stages:
-        model_stage1, _ = InferenceModel_Sequential.from_pretrained(
-            args=argparse.Namespace(
-                num_layers=24,
-                vocab_size=0,
-                hidden_size=1024,
-                num_attention_heads=16,
-                max_sequence_length=512,
-                additional_seqlen=2000,
-                hidden_dropout=0.1,
-                attention_dropout=0.1,
-                inner_hidden_size=None,
-                hidden_size_per_attention_head=None,
-                checkpoint_activations=False,
-                checkpoint_num_layers=1,
-                layernorm_order="pre",
-                skip_init=True,
-                use_gpu_initialization=False,
-                fp16=True,
-                mode="inference",
-            ),
-            name="cogvideo-stage1",
-        )
+        t = time.time()
+        model_stage1, _ = InferenceModel_Sequential.from_pretrained(args=SEQ_CONF, name="cogvideo-stage1")
         model_stage1.eval()
         if both_stages:
             model_stage1 = model_stage1.cpu()
+        print("sequential loading time:", time.time() - t)
 
     if stage_2 or both_stages:
+        t = time.time()
         model_stage2, _ = InferenceModel_Interpolate.from_pretrained(
-            args=argparse.Namespace(
-                model_class="CogVideoModel",
-                num_layers=48,
-                vocab_size=150010,
-                hidden_size=3072,
-                num_attention_heads=48,
-                max_sequence_length=1024,
-                additional_seqlen=2000,
-                hidden_dropout=0.1,
-                attention_dropout=0.1,
-                inner_hidden_size=None,
-                hidden_size_per_attention_head=None,
-                checkpoint_activations=False,
-                checkpoint_num_layers=1,
-                layernorm_order="sandwich",
-                skip_init=True,
-                use_gpu_initialization=False,
-                fp16=True,
-                mode="inference",
-            ),
+            args=argparse.Namespace(model_class="CogVideoModel", **BIG_CONF),
             name="cogvideo-stage2",
         )
         model_stage2.eval()
         if both_stages:
             model_stage2 = model_stage2.cpu()
+        print("interpolate loading time:", time.time() - t)
 
     if not stage_1:
+        t = time.time()
         dsr_path = auto_create("cogview2-dsr", path=None)
-        dsr = DirectSuperResolution(
-            argparse.Namespace(
-                num_layers=48,
-                vocab_size=150010,
-                hidden_size=3072,
-                num_attention_heads=48,
-                max_sequence_length=1024,
-                attention_dropout=0.1,
-                hidden_dropout=0.1,
-                inner_hidden_size=None,
-                hidden_size_per_attention_head=None,
-                checkpoint_activations=False,
-                checkpoint_num_layers=1,
-                layernorm_order="sandwich",
-                skip_init=True,
-                use_gpu_initialization=False,
-                fp16=True,
-                mode="inference",
-            ),
-            dsr_path,
-            max_bz=dsr_max_batch_size,
-            onCUDA=False,
-        )
+        dsr = DirectSuperResolution(argparse.Namespace(**BIG_CONF), dsr_path, max_bz=dsr_max_batch_size, onCUDA=False)
+        print("superres loading time:", time.time() - t)
 
     if os.path.exists(str(image_prompt)):
         try:
@@ -1101,39 +1082,39 @@ def main(
         invalid_slices, temperature=temperature, top_k=top_k, temperature2=coglm_temperature2
     )
 
-    if keep_mem_buffers:
-        torch.cuda.empty_cache()
-        limited_spatial_channel_mem = True
-        tweak_mems_len = [(400 + 74) if limited_spatial_channel_mem else 5 * 400 + 74, 5 * 400 + 74]
-        tweak_mems_buffers = [
-            torch.zeros(
-                48,
-                batch_size,
-                mem_len,
-                3072 * 2,
-                dtype=next(model_stage1.parameters()).dtype,
-                device=device,
-            )
-            for mem_len in tweak_mems_len
-        ]
-        mem_dict["buffer"] = tweak_mems_buffers
-
-        if use_guidance_stage1:
-            tweak_guider_mems_buffers = [
+    for n in range(number):
+        if keep_mem_buffers:
+            torch.cuda.empty_cache()
+            limited_spatial_channel_mem = True
+            tweak_mems_len = [(400 + 74) if limited_spatial_channel_mem else 5 * 400 + 74, 5 * 400 + 74]
+            tweak_mems_buffers = [
                 torch.zeros(
-                    48,
+                    48,  # num_layers
                     batch_size,
                     mem_len,
-                    3072 * 2,
+                    3072 * 2,  # hidden_size * 2
                     dtype=next(model_stage1.parameters()).dtype,
                     device=device,
                 )
                 for mem_len in tweak_mems_len
             ]
-            mem_dict["guider_buffer"] = tweak_guider_mems_buffers
+            mem_dict["buffer"] = tweak_mems_buffers
 
-    if stage_1 or both_stages:
-        for n in range(number):
+            if use_guidance_stage1:
+                tweak_guider_mems_buffers = [
+                    torch.zeros(
+                        48,  # num_layers
+                        batch_size,
+                        mem_len,
+                        3072 * 2,  # hidden_size * 2
+                        dtype=next(model_stage1.parameters()).dtype,
+                        device=device,
+                    )
+                    for mem_len in tweak_mems_len
+                ]
+                mem_dict["guider_buffer"] = tweak_guider_mems_buffers
+
+        if stage_1 or both_stages:
             if input_dir is not None:
                 image_prompt = random.choice(glob(f"{input_dir}/*"))
                 print(image_prompt)
@@ -1184,36 +1165,36 @@ def main(
                     gpu_rank=0,
                     gpu_parallel_size=1,
                 )
-    elif stage_2:
-        sample_dirs = os.listdir(output_path)
-        for sample in sample_dirs:
-            text = sample.split("_")[-1]
-            path = os.path.join(output_path, sample, "Interp")
-            parent_given_tokens = torch.load(os.path.join(output_path, sample, "frame_tokens.pt"))
-            process_stage2(
-                model=model_stage2,
-                dsr=dsr,
-                seq_text=text,
-                duration=2.0,
-                use_guidance_stage2=use_guidance_stage2,
-                both_stages=both_stages,
-                generate_frame_num=generate_frame_num,
-                device=device,
-                num_layers=48,
-                hidden_size=3072,
-                max_inference_batch_size=max_inference_batch_size,
-                strategy_cogview2=strategy_cogview2,
-                strategy_cogvideo=strategy_cogvideo,
-                guidance_alpha=guidance_alpha,
-                keep_mem_buffers=keep_mem_buffers,
-                video_guidance_text="视频",
-                parent_given_tokens=parent_given_tokens,
-                outputdir=path + "_stage2",
-                gpu_rank=0,
-                gpu_parallel_size=1,
-            )
-    else:
-        assert False
+        elif stage_2:
+            sample_dirs = os.listdir(output_path)
+            for sample in sample_dirs:
+                text = sample.split("_")[-1]
+                path = os.path.join(output_path, sample, "Interp")
+                parent_given_tokens = torch.load(os.path.join(output_path, sample, "frame_tokens.pt"))
+                process_stage2(
+                    model=model_stage2,
+                    dsr=dsr,
+                    seq_text=text,
+                    duration=2.0,
+                    use_guidance_stage2=use_guidance_stage2,
+                    both_stages=both_stages,
+                    generate_frame_num=generate_frame_num,
+                    device=device,
+                    num_layers=48,
+                    hidden_size=3072,
+                    max_inference_batch_size=max_inference_batch_size,
+                    strategy_cogview2=strategy_cogview2,
+                    strategy_cogvideo=strategy_cogvideo,
+                    guidance_alpha=guidance_alpha,
+                    keep_mem_buffers=keep_mem_buffers,
+                    video_guidance_text="视频",
+                    parent_given_tokens=parent_given_tokens,
+                    outputdir=path + "_stage2",
+                    gpu_rank=0,
+                    gpu_parallel_size=1,
+                )
+        else:
+            assert False
 
 
 if __name__ == "__main__":
@@ -1243,8 +1224,8 @@ if __name__ == "__main__":
     parser.add_argument("--both-stages", action="store_true")
 
     parser.add_argument("--coglm-temperature2", type=float, default=0.89)
-    parser.add_argument("--temperature", type=float, default=1.075)
-    parser.add_argument("--top-k", type=int, default=16)
+    parser.add_argument("--temperature", type=float, default=1.05)
+    parser.add_argument("--top-k", type=int, default=12)
 
     parser.add_argument("--device", type=int, default=-1)
     parser.add_argument("--multi-gpu", action="store_true")
