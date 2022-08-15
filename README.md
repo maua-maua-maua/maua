@@ -37,7 +37,7 @@ pip install maua[flow]
 
 ## Usage
 
-WARNING: some of the examples below are out of date due to changes in the underlying APIs.
+WARNING: some of the examples below might be out of date.
 
 ### Command line
 
