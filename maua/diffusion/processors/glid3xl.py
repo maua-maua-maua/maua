@@ -1,3 +1,4 @@
+import importlib
 import os
 import sys
 from functools import partial
@@ -6,13 +7,13 @@ import clip
 import torch
 from tqdm import trange
 
+from ...prompt import TextPrompt
 from ...utility import download
-from ..conditioning import TextPrompt
-from .base import DiffusionWrapper
+from .base import BaseDiffusionProcessor
 
-sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/GLID3XL/")
-from encoders.modules import BERTEmbedder
-from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/GLID3XL/")
+from ...submodules.GLID3XL.encoders.modules import BERTEmbedder
+from ...submodules.GLID3XL.guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
 MODEL_URLS = {
     "glid3xl-bert": "https://dall-3.com/models/glid-3-xl/bert.pt",
@@ -148,10 +149,11 @@ class LatentGradientGuidedConditioning(torch.nn.Module):
         return grad
 
 
-class GLID3XL(DiffusionWrapper):
+class GLID3XL(BaseDiffusionProcessor):
     def __init__(
         self,
         grad_modules=[],
+        cfg_scale=3,
         sampler="ddim",
         timesteps=100,
         model_checkpoint="finetune",
@@ -176,6 +178,7 @@ class GLID3XL(DiffusionWrapper):
             if self.use_backward_guidance
             else None
         )
+        self.cfg_scale = cfg_scale
 
         def model_fn(x_t, ts, scale, **kwargs):
             half = x_t[: len(x_t) // 2]
@@ -212,9 +215,10 @@ class GLID3XL(DiffusionWrapper):
         self.model = self.model.to(device)
         self.original_num_steps = self.diffusion.original_num_steps
         self.timestep_map = self.diffusion.timestep_map
+        self.image_size = self.model.image_size
 
     @torch.no_grad()
-    def sample(self, img, prompts, start_step, n_steps=None, verbose=True):
+    def forward(self, img, prompts, start_step, n_steps=None, verbose=True):
         if n_steps is None:
             n_steps = start_step
         B = img.shape[0]
@@ -230,7 +234,7 @@ class GLID3XL(DiffusionWrapper):
 
         for prompt in prompts:
             if isinstance(prompt, TextPrompt):
-                text, guidance_scale = prompt()
+                text, _ = prompt()
                 break
 
         neg = ""  # TODO recognize/support negative prompts
@@ -252,7 +256,7 @@ class GLID3XL(DiffusionWrapper):
 
         old_eps = []
         for _ in (trange if verbose else range)(n_steps):
-            out = self.sample_fn(old_eps, guidance_scale)(x=img, t=t, cond_fn=self.conditioning, model_kwargs=kw)
+            out = self.sample_fn(old_eps, self.cfg_scale)(x=img, t=t, cond_fn=self.conditioning, model_kwargs=kw)
             img = out["sample"]
 
             if "eps" in out:  # PLMS bookkeeping
@@ -263,8 +267,3 @@ class GLID3XL(DiffusionWrapper):
             t -= 1
 
         return self.ldm.decode(out["pred_xstart"][:B] / 0.18215)
-
-    def forward(self, shape, prompts, model_kwargs={}):
-        img = torch.randn(*shape, device=self.device)
-        steps = len(self.diffusion.use_timesteps)
-        return self.sample(img, prompts, start_step=steps, n_steps=steps, model_kwargs=model_kwargs)

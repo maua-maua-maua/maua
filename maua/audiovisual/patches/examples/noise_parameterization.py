@@ -85,9 +85,9 @@ class NoiseParameterization(StyleGAN2Patch):
         time = random.choice([4, 8])
         space = random.choice([4, 8])
         rotating_noise = rotate(
-            ar.perlin_noise((self.n_frames, s, s), (time, space, space)).unsqueeze(1), angles, padding_mode="reflection"
+            perlin_noise((self.n_frames, s, s), (time, space, space)).unsqueeze(1), angles, padding_mode="reflection"
         )
-        static_noise = ar.perlin_noise((self.n_frames, s, s), (time, space, space)).unsqueeze(1)
+        static_noise = perlin_noise((self.n_frames, s, s), (time, space, space)).unsqueeze(1)
 
         disc_mask = circular_mask(s, s) - circular_mask(s, s, radius=int(s / random.choice([6, 6.5, 7])))
 

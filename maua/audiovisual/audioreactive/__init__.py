@@ -3,7 +3,7 @@ from functools import wraps
 
 import joblib
 
-from ...ops.tensor import hash
+from ...ops.io import hash
 
 
 def cache_to_workspace(name):

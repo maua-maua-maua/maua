@@ -12,11 +12,11 @@ from torch.nn.functional import grid_sample
 from tqdm import tqdm
 
 from ..flow import flow_warp_map, get_flow_model, preprocess_optical_flow
+from ..loss import feature_loss, tv_loss
 from ..ops.image import match_histogram, resample, scaled_height_width
-from ..ops.loss import feature_loss, tv_loss
-from ..ops.tensor import load_images
+from ..ops.io import load_images
 from ..ops.video import write_video
-from ..optimizers import  load_optimizer
+from ..optimizers import load_optimizer
 from ..parameterizations import load_parameterization
 from ..perceptors import load_perceptor
 
@@ -200,7 +200,6 @@ def transfer(
     return np.load(prev_frame_file, mmap_mode="r")
 
 
-
 def main(args):
     if len(args.perceptor_kwargs) > 0:
         perceptor_kwargs = {
@@ -247,4 +246,3 @@ def main(args):
         fps=args.fps,
     )
     write_video(video, output_name, args.fps)
-

@@ -8,12 +8,10 @@ from pathlib import Path
 import numpy as np
 import torch
 import torchvision.transforms as tvt
-from ffcv.fields.decoders import (RandomResizedCropRGBImageDecoder,
-                                  SimpleRGBImageDecoder)
+from ffcv.fields.decoders import RandomResizedCropRGBImageDecoder, SimpleRGBImageDecoder
 from ffcv.transforms import ToTensor, ToTorchImage
 from pytorch_lightning import Trainer as LightningTrainer
-from pytorch_lightning.callbacks import (EarlyStopping, ModelCheckpoint,
-                                         TQDMProgressBar)
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, TQDMProgressBar
 
 from .trainer import LightningGAN, WeightsEMA
 

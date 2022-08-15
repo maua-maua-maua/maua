@@ -7,10 +7,10 @@ import torch
 from resize_right import resize
 from tqdm import trange
 
-from ..conditioning import TextPrompt
-from .base import DiffusionWrapper
+from ...prompt import TextPrompt
+from .base import BaseDiffusionProcessor
 
-sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/GLIDE/")
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/GLIDE/")
 
 from glide_text2im.download import load_checkpoint
 from glide_text2im.model_creation import (
@@ -20,17 +20,20 @@ from glide_text2im.model_creation import (
 )
 
 
-class GLIDE(DiffusionWrapper):
+class GLIDE(BaseDiffusionProcessor):
     def __init__(
         self,
+        cfg_scale=3,
         sampler="plms",
         timesteps=25,
+        model_checkpoint="base",
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         ddim_eta=0,
         temp=1.0,
     ):
         super().__init__()
         self.temp, self.device = temp, device
+        self.cfg_scale = cfg_scale
 
         using_gpu = device.type == "cuda"
 
@@ -43,10 +46,11 @@ class GLIDE(DiffusionWrapper):
         if using_gpu:
             model.convert_to_fp16()
         model.to(device)
-        model.load_state_dict(load_checkpoint("base", device, cache_dir="modelzoo/"))
+        model.load_state_dict(load_checkpoint(model_checkpoint, device, cache_dir="modelzoo/"))
         self.model, self.diffusion = model, diffusion
         self.ctx, self.original_num_steps = options["text_ctx"], options["diffusion_steps"]
         self.timestep_map = np.linspace(0, self.original_num_steps, timesteps + 1).round().astype(np.long)
+        self.image_size = 256
 
         # Create upsampler model.
         options_up = model_and_diffusion_defaults_upsampler()
@@ -93,12 +97,12 @@ class GLIDE(DiffusionWrapper):
             raise NotImplementedError()
 
     @torch.no_grad()
-    def sample(self, img, prompts, start_step, n_steps=None, verbose=True):
+    def forward(self, img, prompts, start_step, n_steps=None, verbose=True):
         B, C, H, W = img.shape
 
         for prompt in prompts:
             if isinstance(prompt, TextPrompt):
-                txt, scale = prompt()
+                txt, _ = prompt()
                 tokens = self.model.tokenizer.encode(txt)
                 tokens, mask = self.model.tokenizer.padded_tokens_and_mask(tokens, self.ctx)
                 uncond_tokens, uncond_mask = self.model.tokenizer.padded_tokens_and_mask([], self.ctx)
@@ -121,7 +125,7 @@ class GLIDE(DiffusionWrapper):
         self.model.del_cache()
         old_eps = []
         for _ in (trange if verbose else range)(n_steps):
-            out = self.sample_fn(old_eps, scale)(x=img, t=t, model_kwargs=model_kwargs)
+            out = self.sample_fn(old_eps, self.cfg_scale)(x=img, t=t, model_kwargs=model_kwargs)
             img = out["sample"]
 
             if "eps" in out:  # PLMS bookkeeping

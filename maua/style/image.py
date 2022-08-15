@@ -11,9 +11,9 @@ from PIL import Image
 from torch import Tensor
 from tqdm import tqdm
 
+from ..loss import tv_loss
 from ..ops.image import match_histogram, resample
-from ..ops.loss import tv_loss
-from ..ops.tensor import load_images, tensor2img
+from ..ops.io import load_images, tensor2img
 from ..optimizers import load_optimizer
 from ..parameterizations import load_parameterization
 from ..perceptors import load_perceptor
@@ -117,7 +117,6 @@ def transfer(
     return pastiche.decode_average()
 
 
-
 def main(args):
     if len(args.perceptor_kwargs) > 0:
         perceptor_kwargs = {
@@ -156,4 +155,3 @@ def main(args):
         device=args.device,
     )
     tensor2img(img).save(f"output/{'_'.join([Path(arg).stem for arg in [args.content] + args.styles])}.png")
-

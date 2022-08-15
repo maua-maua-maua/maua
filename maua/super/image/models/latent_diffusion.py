@@ -10,7 +10,7 @@ from PIL import Image
 from torch import Tensor
 from torchvision.transforms.functional import resize
 
-from ....ops.tensor import load_image
+from ....ops.io import load_image
 from ....utility import download
 
 

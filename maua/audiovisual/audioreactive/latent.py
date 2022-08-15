@@ -106,8 +106,7 @@ if __name__ == "__main__":
     with torch.inference_mode():
         from tqdm import tqdm
 
-        from ...GAN.wrappers.stylegan2 import (StyleGAN2Mapper,
-                                               StyleGAN2Synthesizer)
+        from ...GAN.wrappers.stylegan2 import StyleGAN2Mapper, StyleGAN2Synthesizer
         from ...ops.video import VideoWriter
         from .audio import load_audio
         from .mir import chroma, onsets, tempo

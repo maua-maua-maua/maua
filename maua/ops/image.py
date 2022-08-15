@@ -8,11 +8,67 @@ import torch.nn.functional as F
 from medpy.filter.noise import immerkaer as immerkaer_np
 from PIL import Image
 from resize_right import resize
+from scipy.special import comb
+from torchvision.transforms.functional import adjust_sharpness
+
+
+def destitch(img, tile_size, overtile=1):
+    _, _, H, W = img.shape
+    n_rows = round(np.floor(H / tile_size) + overtile)
+    n_cols = round(np.floor(W / tile_size) + overtile)
+    tiled = []
+    for y in torch.linspace(0, H - tile_size, n_rows).round().long():
+        for x in torch.linspace(0, W - tile_size, n_cols).round().long():
+            tiled.append(img[..., y : y + tile_size, x : x + tile_size])
+    return torch.cat(tiled, dim=0)
+
+
+def smoothstep(x, N=2):
+    result = torch.zeros_like(x)
+    for n in range(0, N + 1):
+        result += comb(N + n, n) * comb(2 * N + 1, N - n) * (-x) ** n
+    result *= x ** (N + 1)
+    return result
+
+
+def blend_weight1d(total_size, fade_in, fade_out):
+    return torch.cat(
+        (
+            smoothstep(torch.linspace(0, 1, fade_in)),
+            torch.ones(total_size - fade_in - fade_out),
+            smoothstep(torch.linspace(1, 0, fade_out)),
+        )
+    )
+
+
+def restitch(tiled, H, W, overtile=1):
+    _, C, _, tile_size = tiled.shape
+    n_rows = round(np.floor(H / tile_size) + overtile)
+    n_cols = round(np.floor(W / tile_size) + overtile)
+    out = torch.zeros((1, C, H, W), device=tiled.device)
+    rescale = torch.zeros_like(out)  # required to ensure rounding errors don't cause blending artifacts
+    i = 0
+    ys = torch.linspace(0, H - tile_size, n_rows).round().long()
+    xs = torch.linspace(0, W - tile_size, n_cols).round().long()
+    fade = tile_size - ys[1]
+    for y in ys:
+        wy = blend_weight1d(tile_size, fade_in=0 if y == 0 else fade, fade_out=0 if y == ys[-1] else fade).to(tiled)
+        for x in xs:
+            wx = blend_weight1d(tile_size, fade_in=0 if x == 0 else fade, fade_out=0 if x == xs[-1] else fade).to(tiled)
+            weight = wy.reshape(1, 1, -1, 1) * wx.reshape(1, 1, 1, -1)
+            out[..., y : y + tile_size, x : x + tile_size] += tiled[i] * weight
+            rescale[..., y : y + tile_size, x : x + tile_size] += weight
+            i += 1
+    return out / rescale
 
 
 def immerkaer(image_batch):  # TODO translate to pytorch
     sigmas = torch.tensor([immerkaer_np(image.permute(1, 2, 0).cpu().numpy()) for image in image_batch])
     return sigmas.to(image_batch)
+
+
+def sharpen(img, strength):
+    return adjust_sharpness(img.add(1).div(2), strength).mul(2).sub(1)
 
 
 def local_std(im, ks=9):
@@ -32,38 +88,6 @@ def original_colors(content, generated):
     generated_channels = list(generated.convert("YCbCr").split())
     content_channels[0] = generated_channels[0]
     return Image.merge("YCbCr", content_channels).convert("RGB")
-
-
-def random_cutouts(input, cut_size=224, cutn=32, cut_pow=1.0):
-    sideY, sideX = input.shape[-2:]
-    max_size = min(sideX, sideY)
-    min_size = min(sideX, sideY, cut_size)
-
-    if sideY < sideX:
-        size = sideY
-        tops = torch.zeros(cutn // 4, dtype=int)
-        lefts = torch.linspace(0, sideX - size, cutn // 4, dtype=int)
-    else:
-        size = sideX
-        tops = torch.linspace(0, sideY - size, cutn // 4, dtype=int)
-        lefts = torch.zeros(cutn // 4, dtype=int)
-
-    cutouts = []
-
-    # 1/4 of cutouts cover the full image (global structure)
-    for offsety, offsetx in zip(tops, lefts):
-        cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
-        cutouts.append(resize(cutout, out_shape=(cut_size, cut_size)))
-
-    # 3/4 of cutouts are random of different zoom ins
-    for _ in range(cutn - len(cutouts)):
-        size = (torch.rand([]) ** cut_pow * max_size).clamp(min_size, max_size).round().long().item()
-        loc = torch.randint(0, (sideX - size + 1) * (sideY - size + 1), ())
-        offsety, offsetx = torch.div(loc, (sideX - size + 1), rounding_mode="floor"), loc % (sideX - size + 1)
-        cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
-        cutouts.append(resize(cutout, out_shape=(cut_size, cut_size)))
-
-    return torch.cat(cutouts)
 
 
 def wrapping_slice(tensor, start, length, return_indices=False):

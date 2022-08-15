@@ -6,15 +6,15 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
+from ..grad import (CLIPGrads, ColorMatchGrads, ContentPrompt, LPIPSGrads,
+                    StylePrompt, TextPrompt, VGGGrads)
 from ..ops.video import write_video
-from .conditioning import (CLIPGrads, ColorMatchGrads, ContentPrompt,
-                           LPIPSGrads, StylePrompt, TextPrompt, VGGGrads)
 from .loop import (VideoFrames, initialize_cache_files,
                    initialize_optical_flow, warp)
+from .processors.glide import GLIDE
+from .processors.guided import GuidedDiffusion
+from .processors.latent import LatentDiffusion
 from .sample import build_output_name, round64
-from .wrappers.glide import GLIDE
-from .wrappers.guided import GuidedDiffusion
-from .wrappers.latent import LatentDiffusion
 
 # fmt:on
 

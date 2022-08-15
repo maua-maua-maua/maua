@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 from omegaconf import OmegaConf
 
-from ..ops.loss import clamp_with_grad, replace_grad
+from ..loss import clamp_with_grad, replace_grad
 from ..utility import download
 from . import Parameterization
 

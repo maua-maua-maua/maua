@@ -1,8 +1,8 @@
 from copy import deepcopy
 
+import pytorch_optimizer as even_more_optim
 import timm.optim as timm_optim
 import torch_optimizer as more_optim
-import pytorch_optimizer as even_more_optim
 from torch import optim
 
 optimizer_choices = {

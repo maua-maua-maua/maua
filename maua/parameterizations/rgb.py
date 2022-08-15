@@ -1,6 +1,6 @@
 import torch
 
-from ..ops.loss import clamp_with_grad
+from ..loss import clamp_with_grad
 from . import Parameterization
 
 

@@ -8,7 +8,7 @@ import torch
 from PIL import Image
 from torch import Tensor
 
-from ....ops.tensor import load_image
+from ....ops.io import load_image
 from ....utility import download
 
 URLS = {

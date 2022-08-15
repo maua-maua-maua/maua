@@ -5,7 +5,37 @@ from torch.nn import functional as F
 from torchvision import transforms as T
 from torchvision.transforms import functional as TF
 
-from ..ops.image import random_cutouts
+
+def random_cutouts(input, cut_size=224, cutn=32, cut_pow=1.0):
+    sideY, sideX = input.shape[-2:]
+    max_size = min(sideX, sideY)
+    min_size = min(sideX, sideY, cut_size)
+
+    if sideY < sideX:
+        size = sideY
+        tops = torch.zeros(cutn // 4, dtype=int)
+        lefts = torch.linspace(0, sideX - size, cutn // 4, dtype=int)
+    else:
+        size = sideX
+        tops = torch.linspace(0, sideY - size, cutn // 4, dtype=int)
+        lefts = torch.zeros(cutn // 4, dtype=int)
+
+    cutouts = []
+
+    # 1/4 of cutouts cover the full image (global structure)
+    for offsety, offsetx in zip(tops, lefts):
+        cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
+        cutouts.append(resize(cutout, out_shape=(cut_size, cut_size)))
+
+    # 3/4 of cutouts are random of different zoom ins
+    for _ in range(cutn - len(cutouts)):
+        size = (torch.rand([]) ** cut_pow * max_size).clamp(min_size, max_size).round().long().item()
+        loc = torch.randint(0, (sideX - size + 1) * (sideY - size + 1), ())
+        offsety, offsetx = torch.div(loc, (sideX - size + 1), rounding_mode="floor"), loc % (sideX - size + 1)
+        cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
+        cutouts.append(resize(cutout, out_shape=(cut_size, cut_size)))
+
+    return torch.cat(cutouts)
 
 
 class MauaCutouts(nn.Module):

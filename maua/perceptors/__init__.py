@@ -3,7 +3,7 @@ from functools import partial
 import torch
 import torch.nn as nn
 
-from ..ops.loss import feature_loss, gram_matrix
+from ..loss import feature_loss, gram_matrix
 
 
 class Perceptor(nn.Module):

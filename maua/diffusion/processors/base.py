@@ -1,7 +1,7 @@
 import torch
 
 
-class DiffusionWrapper(torch.nn.Module):
+class BaseDiffusionProcessor(torch.nn.Module):
     def __init__(self):
         super().__init__()
 

@@ -7,7 +7,7 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
-from ...ops.tensor import tensor2img
+from ...ops.io import tensor2img
 from .models import bsrgan, latent_diffusion, realesrgan, swinir, waifu
 
 MODEL_MODULES = {

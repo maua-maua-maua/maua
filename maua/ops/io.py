@@ -7,7 +7,11 @@ import torch
 from PIL.Image import Image, fromarray
 from PIL.Image import open as open_img
 from torch import Tensor
-from torchvision.transforms.functional import to_tensor
+from torchvision.transforms.functional import to_pil_image, to_tensor
+
+
+def save_image(tensor, filename):
+    to_pil_image(tensor.squeeze().add(1).div(2).clamp(0, 1)).save(filename)
 
 
 def load_image(im: Union[Tensor, Image, Path, str]):

@@ -5,11 +5,12 @@ import numpy as np
 import torch
 from omegaconf import OmegaConf
 
-from ...diffusion.conditioning import TextPrompt
+from ...prompt import TextPrompt
 from ...utility import download
-from .base import DiffusionWrapper
+from .base import BaseDiffusionProcessor
 
-sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/latent_diffusion")
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/VQGAN")
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/latent_diffusion")
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.models.diffusion.plms import PLMSSampler
 from ldm.util import instantiate_from_config
@@ -52,15 +53,16 @@ class LatentConditioning(torch.nn.Module):
     def forward(self, prompts):
         for prompt in prompts:
             if isinstance(prompt, TextPrompt):
-                txt, scale = prompt()
+                txt, _ = prompt()
                 conditioning = self.model.get_learned_conditioning([txt])
-                unconditional = self.model.get_learned_conditioning([""]) if scale != 1 else None
-        return conditioning, unconditional, scale
+                unconditional = self.model.get_learned_conditioning([""])
+        return conditioning, unconditional
 
 
-class LatentDiffusion(DiffusionWrapper):
+class LatentDiffusion(BaseDiffusionProcessor):
     def __init__(
         self,
+        cfg_scale=3,
         sampler="ddim",
         timesteps=100,
         model_checkpoint="large",
@@ -72,6 +74,7 @@ class LatentDiffusion(DiffusionWrapper):
         self.model = get_model(model_checkpoint)
 
         self.conditioning = LatentConditioning(self.model)
+        self.cfg_scale = cfg_scale
 
         if sampler == "plms":
             sampler = PLMSSampler(self.model)
@@ -86,13 +89,14 @@ class LatentDiffusion(DiffusionWrapper):
         self.model = self.model.to(device)
         self.original_num_steps = sampler.ddpm_num_timesteps
         self.timestep_map = np.linspace(0, sampler.ddpm_num_timesteps, timesteps + 1).round().astype(np.long)
+        self.image_size = self.model.image_size
 
     @torch.no_grad()
-    def sample(self, img, prompts, start_step, n_steps=None, verbose=True):
+    def forward(self, img, prompts, start_step, n_steps=None, verbose=True):
         if n_steps is None:
             n_steps = start_step
 
-        conditioning, unconditional, scale = self.conditioning([p.to(img) for p in prompts])
+        conditioning, unconditional = self.conditioning([p.to(img) for p in prompts])
 
         with self.model.ema_scope():
             x_T = self.model.get_first_stage_encoding(self.model.encode_first_stage(img))
@@ -105,8 +109,8 @@ class LatentDiffusion(DiffusionWrapper):
                 shape=x_T.shape,
                 timesteps=n_steps,
                 cond=conditioning.tile(x_T.shape[0], 1, 1),
-                unconditional_guidance_scale=scale,
-                unconditional_conditioning=unconditional.tile(x_T.shape[0], 1, 1),
+                unconditional_guidance_scale=self.cfg_scale,
+                unconditional_conditioning=unconditional.tile(x_T.shape[0], 1, 1) if self.cfg_scale != 1 else None,
             )
             samples_out = self.model.decode_first_stage(samples)
 

@@ -5,7 +5,7 @@ from time import time
 import torch
 from tqdm import tqdm
 
-from ...ops.tensor import tensor2img
+from ...ops.io import tensor2img
 from .single import MODEL_MODULES, MODEL_NAMES
 
 

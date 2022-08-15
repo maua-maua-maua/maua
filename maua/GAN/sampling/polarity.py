@@ -8,8 +8,7 @@ from torch.nn.functional import interpolate
 from torchvision.transforms import Normalize
 from tqdm import tqdm
 
-from ..wrappers.stylegan3 import (StyleGAN3, StyleGAN3Mapper,
-                                  StyleGAN3Synthesizer)
+from ..wrappers.stylegan3 import StyleGAN3, StyleGAN3Mapper, StyleGAN3Synthesizer
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 import clip

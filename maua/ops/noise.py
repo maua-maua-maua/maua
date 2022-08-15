@@ -3,6 +3,8 @@ from functools import reduce
 
 import numpy as np
 import torch
+from PIL import ImageOps
+from torchvision.transforms.functional import to_pil_image, to_tensor
 
 
 def factors(n):
@@ -83,3 +85,48 @@ def perlin_noise(shape, res, tileable=(True, False, False), interpolant=_perlint
     perlin = (1 - t[:, :, :, 2]) * n0 + t[:, :, :, 2] * n1
     perlin = perlin * 2 - 1  # stretch from -1 to 1
     return perlin.cpu()
+
+
+def interp(t):
+    return 3 * t**2 - 2 * t**3
+
+
+def perlin(width, height, scale=10, device="cuda"):
+    # https://gist.github.com/adefossez/0646dbe9ed4005480a2407c62aac8869
+    gx, gy = torch.randn(2, width + 1, height + 1, 1, 1, device=device)
+    xs = torch.linspace(0, 1, scale + 1)[:-1, None].to(device)
+    ys = torch.linspace(0, 1, scale + 1)[None, :-1].to(device)
+    wx = 1 - interp(xs)
+    wy = 1 - interp(ys)
+    dots = 0
+    dots += wx * wy * (gx[:-1, :-1] * xs + gy[:-1, :-1] * ys)
+    dots += (1 - wx) * wy * (-gx[1:, :-1] * (1 - xs) + gy[1:, :-1] * ys)
+    dots += wx * (1 - wy) * (gx[:-1, 1:] * xs - gy[:-1, 1:] * (1 - ys))
+    dots += (1 - wx) * (1 - wy) * (-gx[1:, 1:] * (1 - xs) - gy[1:, 1:] * (1 - ys))
+    return dots.permute(0, 2, 1, 3).contiguous().view(width * scale, height * scale)
+
+
+def perlin_ms(octaves, width, height, grayscale):
+    out_array = [0.5] if grayscale else [0.5, 0.5, 0.5]
+    for i in range(1 if grayscale else 3):
+        scale = 2 ** len(octaves)
+        oct_width = width
+        oct_height = height
+        for oct in octaves:
+            p = perlin(oct_width, oct_height, scale)
+            out_array[i] += p * oct
+            scale //= 2
+            oct_width *= 2
+            oct_height *= 2
+    return torch.cat(out_array)
+
+
+def create_perlin_noise(octaves=[1, 1, 1, 1], width=2, height=2, grayscale=True):
+    out = perlin_ms(octaves, width, height, grayscale)
+    if grayscale:
+        out = to_pil_image(out.clamp(0, 1)).convert("RGB")
+    else:
+        out = out.reshape(-1, 3, out.shape[0] // 3, out.shape[1])
+        out = to_pil_image(out.clamp(0, 1).squeeze())
+    out = ImageOps.autocontrast(out)
+    return to_tensor(out)

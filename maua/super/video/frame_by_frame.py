@@ -35,4 +35,3 @@ def main(args):
             continue
 
         upscale(video_file, args.model_name, args.device, args.out_dir)
-

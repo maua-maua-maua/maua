@@ -6,7 +6,7 @@ import torch
 from PIL import Image
 
 from ..ops.image import match_histogram, resample
-from ..ops.tensor import img2tensor, tensor2img
+from ..ops.io import img2tensor, tensor2img
 from .image import transfer
 
 

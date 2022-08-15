@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from ...ops.tensor import hash
+from ...ops.io import hash
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

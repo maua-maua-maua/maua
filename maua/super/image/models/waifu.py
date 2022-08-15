@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from torchvision.transforms.functional import to_pil_image
 
-from ....ops.tensor import load_image
+from ....ops.io import load_image
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/waifu2x")
 

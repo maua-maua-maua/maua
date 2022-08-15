@@ -13,12 +13,12 @@ from tqdm import tqdm, trange
 
 from ..flow import get_flow_model
 from ..flow.lib import flow_warp_map, get_consistency_map
+from ..grad import (CLIPGrads, ColorMatchGrads, ContentPrompt, LPIPSGrads,
+                    StylePrompt, TextPrompt, VGGGrads)
 from ..ops.video import write_video
 from ..super.video.framerate import rife
-from .conditioning import (CLIPGrads, ColorMatchGrads, ContentPrompt,
-                           LPIPSGrads, StylePrompt, TextPrompt, VGGGrads)
+from .processors.guided import GuidedDiffusion
 from .sample import build_output_name, round64
-from .wrappers.guided import GuidedDiffusion
 
 # fmt:on
 

@@ -9,7 +9,7 @@ from numpy import sqrt
 from torch.nn.functional import one_hot
 
 from ..GAN.sampling import langevin
-from ..ops.tensor import tensor2img
+from ..ops.io import tensor2img
 from .sampling import sample_latents
 from .wrappers import MauaGenerator, get_generator_class
 

@@ -28,7 +28,7 @@ from torch import nn, optim
 from torch.nn import functional as F
 from torchvision.transforms import functional as TF
 
-from ..ops.loss import replace_grad
+from ..loss import replace_grad
 from . import Parameterization
 
 

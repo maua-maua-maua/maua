@@ -1,3 +1,4 @@
+import importlib
 import os
 import sys
 from dataclasses import dataclass
@@ -7,11 +8,13 @@ import torch
 from tqdm import trange
 
 from ...utility import download
-from .base import DiffusionWrapper
+from .base import BaseDiffusionProcessor
 
-sys.path += [os.path.dirname(__file__) + "/../../submodules/guided_diffusion"]
-
-from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
+sys.path.insert(0, os.path.dirname(__file__) + "/../../submodules/guided_diffusion")
+from ...submodules.guided_diffusion.guided_diffusion.script_util import (
+    create_model_and_diffusion,
+    model_and_diffusion_defaults,
+)
 
 
 def append_dims(x, n):
@@ -271,7 +274,7 @@ class GradientGuidedConditioning(torch.nn.Module):
         return grad
 
 
-class GuidedDiffusion(DiffusionWrapper):
+class GuidedDiffusion(BaseDiffusionProcessor):
     def __init__(
         self,
         grad_modules,
@@ -297,12 +300,14 @@ class GuidedDiffusion(DiffusionWrapper):
         )
 
         if sampler == "p":
-            self.sample_fn = lambda _: partial(self.diffusion.p_sample, clip_denoised=False)
+            self.sample_fn = lambda _: partial(self.diffusion.p_sample, clip_denoised=False, model_kwargs={})
         elif sampler == "ddim":
-            self.sample_fn = lambda _: partial(self.diffusion.ddim_sample, eta=ddim_eta, clip_denoised=False)
+            self.sample_fn = lambda _: partial(
+                self.diffusion.ddim_sample, eta=ddim_eta, clip_denoised=False, model_kwargs={}
+            )
         elif sampler == "plms":
             self.sample_fn = lambda old_out: partial(
-                self.diffusion.plms_sample, order=plms_order, old_out=old_out, clip_denoised=False
+                self.diffusion.plms_sample, order=plms_order, old_out=old_out, clip_denoised=False, model_kwargs={}
             )
         else:
             raise NotImplementedError()
@@ -312,9 +317,10 @@ class GuidedDiffusion(DiffusionWrapper):
         self.conditioning = self.conditioning.to(device)
         self.original_num_steps = self.diffusion.original_num_steps
         self.timestep_map = self.diffusion.timestep_map
+        self.image_size = self.model.image_size
 
     @torch.no_grad()
-    def sample(self, img, prompts, start_step, n_steps=None, verbose=True):
+    def forward(self, img, prompts, start_step, n_steps=None, verbose=True):
         if n_steps is None:
             n_steps = start_step
         t = torch.tensor([start_step] * img.shape[0], device=self.device, dtype=torch.long)
@@ -330,8 +336,3 @@ class GuidedDiffusion(DiffusionWrapper):
             t -= 1
 
         return out["pred_xstart"]
-
-    def forward(self, shape, prompts, model_kwargs={}):
-        img = torch.randn(*shape, device=self.device)
-        steps = len(self.diffusion.use_timesteps)
-        return self.sample(img, prompts, start_step=steps, n_steps=steps, model_kwargs=model_kwargs)

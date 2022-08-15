@@ -9,7 +9,7 @@ import numpy as np
 import torch
 
 from .image import resample
-from .tensor import tensor2bytes
+from .io import tensor2bytes
 
 
 class WriteWorker(Thread):
