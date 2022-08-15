@@ -215,7 +215,7 @@ class GLID3XL(BaseDiffusionProcessor):
         self.model = self.model.to(device)
         self.original_num_steps = self.diffusion.original_num_steps
         self.timestep_map = self.diffusion.timestep_map
-        self.image_size = self.model.image_size
+        self.image_size = self.model.image_size * 8
 
     @torch.no_grad()
     def forward(self, img, prompts, start_step, n_steps=None, verbose=True):

@@ -1,6 +1,6 @@
 from functools import partial
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 from uuid import uuid4
 
 import torch
@@ -10,6 +10,7 @@ from ..ops.image import match_histogram, sharpen
 from ..ops.io import save_image
 from ..prompt import StylePrompt
 from .multires import MultiResolutionDiffusionProcessor
+from .processors.base import BaseDiffusionProcessor
 from .processors.glid3xl import GLID3XL
 from .processors.glide import GLIDE
 from .processors.guided import GuidedDiffusion
@@ -45,7 +46,7 @@ def main(
     stitch: bool = False,
     tile_size: Optional[int] = None,
     max_batch: int = 4,
-    diffusion: str = "guided",
+    diffusion: Union[str, BaseDiffusionProcessor] = "guided",
     sampler: str = "plms",
     guidance_speed: str = "fast",
     clip_scale: float = 2500.0,
@@ -76,11 +77,12 @@ def main(
     elif diffusion == "glid3xl":
         diffusion = GLID3XL(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
     else:
-        raise NotImplementedError()
+        assert isinstance(diffusion, BaseDiffusionProcessor)
 
     pre_hook = partial(match_histogram, source_tensor=StylePrompt(path=style).img) if match_hist else None
     post_hook = partial(sharpen, strength=sharpness) if sharpness > 0 else None
 
+    assert len(sizes) == len(skips), "`sizes` and `skips` must have equal length!"
     schedule = {shape: skip for shape, skip in zip(sizes, skips)}
 
     img = MultiResolutionDiffusionProcessor()(

@@ -88,8 +88,8 @@ class LatentDiffusion(BaseDiffusionProcessor):
         self.device = device
         self.model = self.model.to(device)
         self.original_num_steps = sampler.ddpm_num_timesteps
-        self.timestep_map = np.linspace(0, sampler.ddpm_num_timesteps, timesteps + 1).round().astype(np.long)
-        self.image_size = self.model.image_size
+        self.timestep_map = np.linspace(0, sampler.ddpm_num_timesteps, timesteps + 1).round().astype(int)
+        self.image_size = self.model.image_size * 8
 
     @torch.no_grad()
     def forward(self, img, prompts, start_step, n_steps=None, verbose=True):

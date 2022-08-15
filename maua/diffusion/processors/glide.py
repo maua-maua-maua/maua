@@ -49,7 +49,7 @@ class GLIDE(BaseDiffusionProcessor):
         model.load_state_dict(load_checkpoint(model_checkpoint, device, cache_dir="modelzoo/"))
         self.model, self.diffusion = model, diffusion
         self.ctx, self.original_num_steps = options["text_ctx"], options["diffusion_steps"]
-        self.timestep_map = np.linspace(0, self.original_num_steps, timesteps + 1).round().astype(np.long)
+        self.timestep_map = np.linspace(0, self.original_num_steps, timesteps + 1).round().astype(int)
         self.image_size = 256
 
         # Create upsampler model.

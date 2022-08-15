@@ -22,7 +22,8 @@ def round64(x):
 
 def get_start_steps(skips, diffusion):
     start_steps = np.argmax(
-        diffusion.original_num_steps * (1 - np.array(skips)[:, None]) <= np.array(diffusion.timestep_map)[None, :],
+        diffusion.original_num_steps * (1 - np.array(skips)[:, None])
+        <= np.array(list(diffusion.timestep_map[1:]) + [diffusion.original_num_steps])[None, :],
         axis=1,
     )
     return start_steps
