@@ -1,5 +1,7 @@
 import argparse
+import gc
 import random
+from copy import deepcopy
 from glob import glob
 from math import ceil
 from pathlib import Path
@@ -17,14 +19,14 @@ from tqdm import tqdm
 
 
 def cover_crop(im):
-    c, h, w = im.shape
+    b, c, h, w = im.shape
     imgs = []
     if w > h:
         for x in torch.linspace(0, w - h, ceil(w / h), dtype=torch.long):
-            imgs.append(im[:, :, x : x + h])
+            imgs.append(im[:, :, :, x : x + h])
     else:
         for y in torch.linspace(0, h - w, ceil(h / w), dtype=torch.long):
-            imgs.append(im[:, y : y + w, :])
+            imgs.append(im[:, :, y : y + w, :])
     return torch.stack(imgs)
 
 
@@ -45,23 +47,26 @@ class MultiCropDataset(Dataset):
         file = self.files[index]
 
         try:
-            im = Image.open(file).convert("RGB")
-            L = min(im.size)
-            im = to_tensor(im)
+
+            img = Image.open(file).convert("RGB")
+            L = min(img.size)
+            img = to_tensor(img).unsqueeze(0)
 
             crops = []
 
             if self.cover:
-                crops.append(cover_crop(im))
+                crops.append(cover_crop(img))
 
             if self.random:
                 for _ in range(self.number):
+                    im = img.clone()
                     if self.rotate:
                         im = ReflectionPad2d(L - 1)(im)
                         im = RandomRotation(self.rotate)(im)
                         im = center_crop(im, round(L * sqrt(2)))
                     im = RandomCrop(random.choice(self.sizes), pad_if_needed=True, padding_mode="reflect")(im)
-                    crops.append(im.unsqueeze(0))
+                    crops.append(im)
+
         except Exception as e:
             print()
             print("ERROR", e)
@@ -73,7 +78,7 @@ class MultiCropDataset(Dataset):
 
 
 def collate_fn(batch):
-    return batch[0][0], sum([[b.squeeze(0)] if b.shape[0] == 1 else list(b.unbind(0)) for b in batch[0][1]], [])
+    return batch[0][0], sum([([b.squeeze(0)] if b.shape[0] == 1 else list(b.unbind(0))) for b in batch[0][1]], [])
 
 
 if __name__ == "__main__":
@@ -88,6 +93,7 @@ if __name__ == "__main__":
     parser.add_argument("--rotate", type=int, default=0, help="Max angle of random rotations before crops (+/-)")
     parser.add_argument("--no-cover", action="store_true", help="Disable default square crops which span the entire image")
     parser.add_argument("--no-uuid", action="store_true", help="Disable prepending of unique strings to output file names")
+    parser.add_argument("--num-workers", type=int, default=torch.multiprocessing.cpu_count(), help="Number of workers to use in dataloader. Decrease when running into memory issues.")
     args = parser.parse_args()
     # fmt:on
 
@@ -99,18 +105,21 @@ if __name__ == "__main__":
         number=args.number,
         rotate=args.rotate,
     )
-    dataloader = DataLoader(dataset, shuffle=True, num_workers=torch.multiprocessing.cpu_count(), collate_fn=collate_fn)
+    dataloader = DataLoader(dataset, shuffle=True, num_workers=args.num_workers, collate_fn=collate_fn)
 
     def save(file_crops):
-        file, crops = file_crops
+        file_, crops_ = file_crops
+        file, crops = deepcopy(file_), deepcopy(crops_)
+        del file_, crops_, file_crops
+        gc.collect()
         if len(crops) == 0:
             return
         for img in crops:
             out_name = f"{Path(args.in_dir).stem}_{Path(file).stem}"
             if not args.no_uuid:
                 out_name = f"{str(uuid4())[:6]}_{out_name}"
-            to_pil_image(img).save(f"{args.out_dir}/{out_name}.{args.extension}")
+            to_pil_image(img.squeeze()).save(f"{args.out_dir}/{out_name}.{args.extension}")
 
-    with torch.multiprocessing.Pool(torch.multiprocessing.cpu_count()) as pool:
+    with torch.multiprocessing.Pool(max(1, args.num_workers)) as pool:
         for _ in tqdm(pool.imap_unordered(save, dataloader), total=len(dataloader)):
             pass

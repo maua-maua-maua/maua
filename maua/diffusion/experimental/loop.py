@@ -1,4 +1,3 @@
-# fmt:off
 import os
 import shutil
 
@@ -11,16 +10,14 @@ from torch.nn.functional import grid_sample
 from torch.utils.data import Dataset
 from tqdm import tqdm, trange
 
-from ..flow import get_flow_model
-from ..flow.lib import flow_warp_map, get_consistency_map
-from ..grad import (CLIPGrads, ColorMatchGrads, ContentPrompt, LPIPSGrads,
-                    StylePrompt, TextPrompt, VGGGrads)
-from ..ops.video import write_video
-from ..super.video.framerate import rife
-from .processors.guided import GuidedDiffusion
-from .sample import build_output_name, round64
-
-# fmt:on
+from ...flow import get_flow_model
+from ...flow.lib import flow_warp_map, get_consistency_map
+from ...grad import CLIPGrads, ColorMatchGrads, ContentPrompt, LPIPSGrads, StylePrompt, TextPrompt, VGGGrads
+from ...ops.video import write_video
+from ...super.video.framerate import rife
+from ..processors.guided import GuidedDiffusion
+from ..sample import build_output_name
+from ..multires import round64
 
 decord.bridge.set_bridge("torch")
 

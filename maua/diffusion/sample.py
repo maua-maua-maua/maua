@@ -33,6 +33,40 @@ def width_height(arg: str):
     return int(w), int(h)
 
 
+def get_diffusion_model(
+    diffusion: Union[str, BaseDiffusionProcessor] = "guided",
+    timesteps: int = 50,
+    sampler: str = "plms",
+    guidance_speed: str = "fast",
+    clip_scale: float = 2500.0,
+    lpips_scale: float = 0.0,
+    style_scale: float = 0.0,
+    color_match_scale: float = 0.0,
+    cfg_scale: float = 5.0,
+):
+    if diffusion == "guided":
+        diffusion = GuidedDiffusion(
+            [
+                CLIPGrads(scale=clip_scale),
+                LPIPSGrads(scale=lpips_scale),
+                VGGGrads(scale=style_scale),
+                ColorMatchGrads(scale=color_match_scale),
+            ],
+            sampler=sampler,
+            timesteps=timesteps,
+            speed=guidance_speed,
+        )
+    elif diffusion == "latent":
+        diffusion = LatentDiffusion(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
+    elif diffusion == "glide":
+        diffusion = GLIDE(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
+    elif diffusion == "glid3xl":
+        diffusion = GLID3XL(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
+    else:
+        assert isinstance(diffusion, BaseDiffusionProcessor)
+    return diffusion
+
+
 @torch.no_grad()
 def main(
     init: str = "random",
@@ -58,26 +92,17 @@ def main(
     sharpness: float = 0.0,
     device: str = "cuda",
 ):
-    if diffusion == "guided":
-        diffusion = GuidedDiffusion(
-            [
-                CLIPGrads(scale=clip_scale),
-                LPIPSGrads(scale=lpips_scale),
-                VGGGrads(scale=style_scale),
-                ColorMatchGrads(scale=color_match_scale),
-            ],
-            sampler=sampler,
-            timesteps=timesteps,
-            speed=guidance_speed,
-        )
-    elif diffusion == "latent":
-        diffusion = LatentDiffusion(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
-    elif diffusion == "glide":
-        diffusion = GLIDE(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
-    elif diffusion == "glid3xl":
-        diffusion = GLID3XL(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
-    else:
-        assert isinstance(diffusion, BaseDiffusionProcessor)
+    diffusion = get_diffusion_model(
+        diffusion=diffusion,
+        timesteps=timesteps,
+        sampler=sampler,
+        guidance_speed=guidance_speed,
+        clip_scale=clip_scale,
+        lpips_scale=lpips_scale,
+        style_scale=style_scale,
+        color_match_scale=color_match_scale,
+        cfg_scale=cfg_scale,
+    )
 
     pre_hook = partial(match_histogram, source_tensor=StylePrompt(path=style).img) if match_hist else None
     post_hook = partial(sharpen, strength=sharpness) if sharpness > 0 else None

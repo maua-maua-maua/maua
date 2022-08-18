@@ -41,6 +41,7 @@ setup(
         "filetype",
         "ftfy",
         "gdown",
+        "gfpgan",
         "glumpy",
         "gputil",
         "h5py",
