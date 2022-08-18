@@ -125,7 +125,8 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         style: str = None,
         size: Tuple[int] = (256, 256),
         timesteps: int = 100,
-        skip: float = 0.4,
+        first_skip: float = 0.4,
+        skip: float = 0.7,
         blend: float = 2,
         consistency_trust: float = 0.75,
         wrap_around: int = 0,
@@ -135,6 +136,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         # process user inputs
         width, height = [round64(s) for s in size]
         n_steps = round((1 - skip) * timesteps)
+        first_steps = round((1 - first_skip) * timesteps)
 
         # load init video
         frames = VideoFrames(init, height, width, device)
@@ -149,7 +151,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         initialize_optical_flow(cache, frames)
 
         with torch.no_grad(), cache.out:
-            for f_n in trange(N):
+            for f_n in trange(N + wrap_around):
 
                 if f_n % turbo != 0:
                     out_img = warp(out_img, cache.flow[f_n % N])
@@ -177,14 +179,16 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
                 if style is not None:
                     prompts.append(StylePrompt(path=style, size=(height, width)))
 
-                out_img = diffusion(init_img, prompts=prompts, start_step=n_steps, verbose=False)
+                out_img = diffusion(
+                    init_img, prompts=prompts, start_step=first_steps if f_n == 0 else n_steps, verbose=False
+                )
 
                 cache.out.append(out_img)
 
         output = np.load(cache.out.file, mmap_mode="r+") * 0.5 + 0.5
         if wrap_around > 0:
             fade = np.linspace(0, 1, wrap_around).reshape(-1, 1, 1, 1)
-            output[:wrap_around] = (1 - fade) * output[:wrap_around] + fade * output[-wrap_around:]
+            output[:wrap_around] = fade * output[:wrap_around] + (1 - fade) * output[-wrap_around:]
 
         return output[:N]
 
@@ -196,7 +200,8 @@ def main(
     style: Optional[str] = None,
     size: Tuple[int] = (256, 256),
     timesteps: int = 50,
-    skip: float = 0.4,
+    first_skip: float = 0.4,
+    skip: float = 0.7,
     blend: float = 2,
     consistency_trust: float = 0.75,
     wrap_around: int = 0,
@@ -228,6 +233,7 @@ def main(
         style=style,
         size=size,
         timesteps=timesteps,
+        first_skip=first_skip,
         skip=skip,
         blend=blend,
         consistency_trust=consistency_trust,
@@ -246,11 +252,12 @@ if __name__ == "__main__":
     parser.add_argument("--text", type=str, default=None)
     parser.add_argument("--style", type=str, default=None)
     parser.add_argument("--size", type=width_height, default=(256, 256))
-    parser.add_argument("--skip", type=float, default=0.4)
+    parser.add_argument("--first-skip", type=float, default=0.4)
+    parser.add_argument("--skip", type=float, default=0.7)
     parser.add_argument("--timesteps", type=int, default=50)
     parser.add_argument("--blend", type=float, default=2)
-    parser.add_argument("--consistency_trust", type=float, default=0.75)
-    parser.add_argument("--wrap_around", type=int, default=0)
+    parser.add_argument("--consistency-trust", type=float, default=0.75)
+    parser.add_argument("--wrap-around", type=int, default=0)
     parser.add_argument("--turbo", type=int, default=1)
     parser.add_argument("--diffusion", type=str, default="guided", choices=["guided", "latent", "glide", "glid3xl"])
     parser.add_argument("--sampler", type=str, default="plms", choices=["p", "ddim", "plms"])
