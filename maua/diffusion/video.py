@@ -23,9 +23,8 @@ from ..flow import get_flow_model
 from ..flow.lib import flow_warp_map, get_consistency_map
 from ..ops.video import write_video
 from ..prompt import ContentPrompt, StylePrompt, TextPrompt
-from .multires import round64
 from .processors.base import BaseDiffusionProcessor
-from .sample import build_output_name, get_diffusion_model, width_height
+from .sample import build_output_name, get_diffusion_model, round64, width_height
 
 
 class VideoFrames(Dataset):

@@ -1,20 +1,37 @@
 from functools import partial
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 from uuid import uuid4
 
+import numpy as np
 import torch
+from maua.diffusion.processors.base import BaseDiffusionProcessor
+from PIL import Image
+from resize_right import resize
+from resize_right.interp_methods import lanczos3
+from torchvision.transforms.functional import to_tensor
+from tqdm import tqdm
 
 from ..grad import CLIPGrads, ColorMatchGrads, LPIPSGrads, VGGGrads
-from ..ops.image import match_histogram, sharpen
+from ..ops.image import destitch, match_histogram, restitch, sharpen
 from ..ops.io import save_image
-from ..prompt import StylePrompt
-from .multires import MultiResolutionDiffusionProcessor
+from ..ops.noise import create_perlin_noise
+from ..prompt import ContentPrompt, StylePrompt, TextPrompt
+from ..super.image.single import upscale_image
 from .processors.base import BaseDiffusionProcessor
 from .processors.glid3xl import GLID3XL
 from .processors.glide import GLIDE
 from .processors.guided import GuidedDiffusion
 from .processors.latent import LatentDiffusion
+
+
+def round64(x):
+    return round(x / 64) * 64
+
+
+def width_height(arg: str):
+    w, h = arg.split(",")
+    return int(w), int(h)
 
 
 def build_output_name(init=None, style=None, text=None):
@@ -28,9 +45,29 @@ def build_output_name(init=None, style=None, text=None):
     return out_name
 
 
-def width_height(arg: str):
-    w, h = arg.split(",")
-    return int(w), int(h)
+def get_start_steps(skips, diffusion):
+    start_steps = np.argmax(
+        diffusion.original_num_steps * (1 - np.array(skips)[:, None])
+        <= np.array(list(diffusion.timestep_map[1:]) + [diffusion.original_num_steps])[None, :],
+        axis=1,
+    )
+    return start_steps
+
+
+def initialize_image(init, shape):
+    if init == "random":
+        img = torch.randn((1, 3, *shape))
+    elif init is not None:
+        img = resize(to_tensor(Image.open(init).convert("RGB")).unsqueeze(0).mul(2).sub(1), out_shape=shape)
+    elif init == "perlin":
+        img = (
+            resize(create_perlin_noise([1.5**-i * 0.5 for i in range(12)], 1, 1, False), out_shape=shape)
+            + resize(create_perlin_noise([1.5**-i * 0.5 for i in range(8)], 4, 4, True), out_shape=shape)
+            - 1
+        ).unsqueeze(0)
+    else:
+        raise Exception("init strategy not recognized!")
+    return img
 
 
 def get_diffusion_model(
@@ -65,6 +102,81 @@ def get_diffusion_model(
     else:
         assert isinstance(diffusion, BaseDiffusionProcessor)
     return diffusion
+
+
+class MultiResolutionDiffusionProcessor(torch.nn.Module):
+    def forward(
+        self,
+        diffusion: BaseDiffusionProcessor,
+        init: str,
+        text: str = None,
+        content: str = None,
+        style: str = None,
+        schedule: Dict[Tuple[int, int], float] = {(512, 512), 0.5},
+        pre_hook: Callable = None,
+        post_hook: Callable = None,
+        super_res_model: str = None,
+        tile_size: int = None,
+        stitch: bool = True,
+        max_batch: int = 4,
+        verbose: bool = True,
+    ):
+        shapes = [(round64(h), round64(w)) for h, w in list(schedule.keys())]
+        start_steps = get_start_steps(list(schedule.values()), diffusion)
+
+        if tile_size is None:
+            tile_size = diffusion.image_size
+
+        # initialize image
+        img = initialize_image(init, shapes[0])
+        if content is None:
+            content = dict(img=img.clone())
+        else:
+            content = dict(path=content)
+
+        for scale, start_step in enumerate(start_steps):
+            if verbose:
+                print(f"Current size: {shapes[scale][1]}x{shapes[scale][0]}")
+
+            if scale != 0:
+                # maybe upsample image with super-resolution model
+                if super_res_model:
+                    img = upscale_image(img.add(1).div(2), model_name=super_res_model).mul(2).sub(1)
+
+                # resize image for next scale
+                img = resize(img, out_shape=shapes[scale], interp_method=lanczos3).cpu()
+
+            if pre_hook:  # user-supplied pre-processing function
+                img = pre_hook(img)
+
+            # if the image is larger than specified size, chop it into tiles
+            needs_stitching = stitch and min(shapes[scale]) > tile_size
+            if needs_stitching:
+                img = destitch(img, tile_size=tile_size)
+
+            # initialize prompts for diffusion (we don't support stitched content yet)
+            prompts = [ContentPrompt(**content).to(img)] if not needs_stitching else []
+            if text is not None:
+                prompts.append(TextPrompt(text))
+            if style is not None:
+                prompts.append(StylePrompt(path=style, size=shapes[scale]))
+
+            # run diffusion sampling (in multiple batches if necessary)
+            dev = diffusion.device
+            if img.shape[0] > max_batch:
+                tiles = tqdm(img.split(max_batch)) if verbose else img.split(max_batch)
+                img = torch.cat([diffusion(ims.to(dev), prompts, start_step, verbose=False) for ims in tiles])
+            else:
+                img = diffusion(img.to(dev), prompts, start_step, verbose=verbose)
+
+            # reassemble image tiles to final image
+            if needs_stitching:
+                img = restitch(img, *shapes[scale])
+
+            if post_hook:  # user-supplied post-processing function
+                img = post_hook(img)
+
+        return img
 
 
 @torch.no_grad()
@@ -129,26 +241,27 @@ def main(
 
 
 if __name__ == "__main__":
+    # fmt:off
     import argparse
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter, allow_abbrev=True)
-    parser.add_argument("--init", type=str, default="random")
-    parser.add_argument("--text", type=str, default=None)
-    parser.add_argument("--content", type=str, default=None)
-    parser.add_argument("--style", type=str, default=None)
-    parser.add_argument("--sizes", type=width_height, nargs="+", default=(512, 512))
-    parser.add_argument("--skips", type=float, nargs="+", default=0)
-    parser.add_argument("--timesteps", type=int, default=50)
-    parser.add_argument("--super-res", type=str, default="SwinIR-M-DFO-GAN")
-    parser.add_argument("--stitch", action="store_true")
-    parser.add_argument("--tile-size", type=int, default=None)
-    parser.add_argument("--max-batch", type=int, default=4)
+    parser.add_argument("--init", type=str, default="random", help='How to initialize the image "random", "perlin", or a path to an image file.')
+    parser.add_argument("--text", type=str, default=None, help='A text prompt to visualize.')
+    parser.add_argument("--content", type=str, default=None, help='A content image whose structure to adapt in the output image (only works with "guided" diffusion at the moment, see --lpips-scale).')
+    parser.add_argument("--style", type=str, default=None, help='An image whose style should be optimized for in the output image (only works with "guided" diffusion at the moment, see --style-scale).')
+    parser.add_argument("--sizes", type=width_height, nargs="+", default=(512, 512), help='Sequence of sizes to synthesize the image at.')
+    parser.add_argument("--skips", type=float, nargs="+", default=0, help='Sequence of skip fractions for each size. Lower fractions will stray further from the original image, while higher fractions will hallucinate less detail.')
+    parser.add_argument("--timesteps", type=int, default=50, help='Number of timesteps to sample the diffusion process at. Higher values will take longer but are generally of higher quality.')
+    parser.add_argument("--super-res", type=str, default="SwinIR-M-DFO-GAN", help='Super resolution model to upscale intermediate results with before applying next diffusion resolution (see maua.super.image --model-help for full list of possibilities, None to perform simple resizing).')
+    parser.add_argument("--stitch", action="store_true", help='Enable tiled synthesis of images which are larger than the specified --tile-size.')
+    parser.add_argument("--tile-size", type=int, default=None, help='The maximum size of tiles the image is cut into.')
+    parser.add_argument("--max-batch", type=int, default=4, help='Maximum batch of tiles to synthesize at one time (lower values use less memory, but will be slower).')
     parser.add_argument("--diffusion", type=str, default="guided", choices=["guided", "latent", "glide", "glid3xl"])
     parser.add_argument("--sampler", type=str, default="plms", choices=["p", "ddim", "plms"])
     parser.add_argument("--guidance-speed", type=str, default="fast", choices=["regular", "fast", "hyper"])
     parser.add_argument("--clip-scale", type=float, default=2500.0)
-    parser.add_argument("--lpips-scale", type=float, default=0.0)
-    parser.add_argument("--style-scale", type=float, default=0.0)
+    parser.add_argument("--lpips-scale", type=float, default=0.0, help='Controls the apparent influence of the content image.')
+    parser.add_argument("--style-scale", type=float, default=0.0, help='A higher --style-scale enforces textural similarity to the style, while a lower value will be conceptually similar to the style.')
     parser.add_argument("--color-match-scale", type=float, default=0.0)
     parser.add_argument("--cfg-scale", type=float, default=5.0)
     parser.add_argument("--match-hist", action="store_true")
@@ -156,6 +269,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--out-dir", type=str, default="output/")
     args = parser.parse_args()
+    # fmt:on
 
     out_name = build_output_name(args.init, args.style, args.text)[:222]
     out_dir = args.out_dir
