@@ -166,7 +166,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         # initialize cache files
         cache = initialize_cache_files(
             names=["out", "flow", "consistency"],
-            out_name=build_output_name(init, style, text, unique=False),
+            out_name=build_output_name(init, style=None, text=None, unique=False),
             length=N,
             height=height,
             width=width,
