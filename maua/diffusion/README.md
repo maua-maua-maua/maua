@@ -10,9 +10,11 @@ See `python -m maua.diffusion.image --help` for information on all of the parame
 
 `video.py` supports styling videos, keeping coherence over time by using optical flow (similar to [Disco Diffusion Warp by @sxela](https://github.com/Sxela/DiscoDiffusion-Warp)).
 This script also supports all of the diffusion models.
-See `python -m maua.video.video --help` for information on all of the parameters.
+See `python -m maua.diffusion.video --help` for information on all of the parameters.
 
 ## Basic Usage
+
+Generating a 1024px image with GLID3-XL.
 
 ```bash
 python -m maua.diffusion.image \
@@ -25,6 +27,8 @@ python -m maua.diffusion.image \
     --stitch \
     --tile-size 256
 ```
+
+Stylizing a video with a text and image using Disco-like secondary model diffusion.
 
 ```bash
 python -m maua.diffusion.video \
@@ -42,6 +46,8 @@ python -m maua.diffusion.video \
     --first-skip 0.2 \
     --skip 0.7
 ```
+
+Stylizing a video with Stable Diffusion.
 
 ```bash
 python -m maua.diffusion.video \

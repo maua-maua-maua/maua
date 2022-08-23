@@ -27,10 +27,6 @@ SAMPLERS = ["p", "ddim", "plms"]
 DIFFUSION_IDS = [f"{tup[0]}-{tup[1]}".replace("-n/a", "") for tup in DIFFUSION_SPEEDS]
 SIZE_ID = lambda x: "->".join(["x".join([str(sz) for sz in tup]) for tup in x])
 
-# ======================================================================================================================
-# ==================================================== SAMPLE TESTS ====================================================
-# ======================================================================================================================
-
 
 @pytest.fixture(scope="module", params=DIFFUSION_SPEEDS, ids=DIFFUSION_IDS)
 def diffusion_model(request):
@@ -40,6 +36,26 @@ def diffusion_model(request):
     del diffusion_model
     gc.collect()
     torch.cuda.empty_cache()
+
+
+# =====================================================================================================================
+# ==================================================== VIDEO TESTS ====================================================
+# =====================================================================================================================
+
+
+def test_video_init(diffusion_model):
+    video_sample(
+        diffusion=diffusion_model,
+        init="/home/hans/datasets/video/dreams24.mp4",
+        text="beautiful rainforest leaves with silver veins, digital art",
+        size=(256, 256),
+        timesteps=5,
+    )
+
+
+# ======================================================================================================================
+# ==================================================== IMAGE TESTS =====================================================
+# ======================================================================================================================
 
 
 @pytest.mark.parametrize("sizes", SIZES, ids=SIZE_ID)
@@ -79,7 +95,7 @@ def test_samplers(diffusion_model, sampler):
 
 
 @pytest.mark.parametrize(
-    "sampler", ["p", "ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms"]
+    "sampler", ["ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms"]
 )
 def test_stable_samplers(sampler):
     image_sample(
@@ -88,19 +104,4 @@ def test_stable_samplers(sampler):
         sizes=[(512, 512)],
         skips=[0],
         sampler=sampler,
-    )
-
-
-# =====================================================================================================================
-# ==================================================== VIDEO TESTS ====================================================
-# =====================================================================================================================
-
-
-def test_video_init(diffusion_model):
-    video_sample(
-        diffusion=diffusion_model,
-        init="/home/hans/datasets/video/dreams24.mp4",
-        text="beautiful rainforest leaves with silver veins, digital art",
-        size=(256, 256),
-        timesteps=5,
     )

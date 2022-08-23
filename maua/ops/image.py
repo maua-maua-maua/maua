@@ -140,7 +140,7 @@ def match_histogram(target_tensor, source_tensor, mode="avg"):
                 frame = target[idx].unsqueeze(0) if elementwise else target
                 _, t, Ct = get_histogram(frame + 1e-3 * torch.randn(size=frame.shape, device=frame.device))
                 mu_s, _, Cs = get_histogram(
-                    source.to(frame.device) + 1e-3 * torch.randn(size=source.shape, device=frame.device)
+                    source.to(frame) + 1e-3 * torch.randn(size=source.shape, device=frame.device)
                 )
 
                 # PCA
@@ -168,7 +168,9 @@ def match_histogram(target_tensor, source_tensor, mode="avg"):
         traceback.print_exc()
         print("Skipping histogram matching...")
         output_tensor = backup
-    return output_tensor.clamp(min([s.min() for s in source_tensor]), max([s.max() for s in source_tensor]))
+    return output_tensor.clamp(
+        min([s.min().item() for s in source_tensor]), max([s.max().item() for s in source_tensor])
+    )
 
 
 def luminance(tensor):

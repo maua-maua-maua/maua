@@ -1,10 +1,13 @@
 import functools
 import pathlib
+import random
 import shutil
 import tarfile
 import zipfile
 
+import numpy as np
 import requests
+import torch
 from tqdm.auto import tqdm
 
 
@@ -49,6 +52,13 @@ def info(x, y=None, label=None):
                 f"{y.max().detach().cpu().item():.2f}",
                 y.shape,
             )
+
+
+def seed_everything(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 
 def name(s):

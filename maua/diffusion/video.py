@@ -1,3 +1,5 @@
+from functools import partial
+
 import torch
 
 torch.cuda.is_available()
@@ -10,20 +12,21 @@ decord.bridge.set_bridge("torch")
 
 import os
 import shutil
-from typing import Optional, Tuple, Union
+from typing import Callable, Optional, Tuple, Union
 
 import easydict
 import numpy as np
 from npy_append_array import NpyAppendArray
-from pytorch_lightning import seed_everything
 from torch.nn.functional import grid_sample
 from torch.utils.data import Dataset
 from tqdm import trange
 
 from ..flow import get_flow_model
 from ..flow.lib import flow_warp_map, get_consistency_map
+from ..ops.image import match_histogram
 from ..ops.video import write_video
 from ..prompt import ContentPrompt, StylePrompt, TextPrompt
+from ..utility import seed_everything
 from .image import build_output_name, get_diffusion_model, round64, width_height
 from .processors.base import BaseDiffusionProcessor
 
@@ -147,6 +150,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         consistency_trust: float = 0.75,
         wrap_around: int = 0,
         turbo: int = 1,
+        pre_hook: Optional[Callable] = None,
         constant_seed: Optional[int] = None,
         device: str = "cuda",
     ):
@@ -177,6 +181,9 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         with cache.out:
             for f_n in trange(f_start, N + wrap_around):
 
+                if constant_seed:
+                    seed_everything(constant_seed)
+
                 if f_n % turbo != 0:
                     out_img = warp(out_img, cache.flow[f_n % N])
                     cache.out.append(out_img)
@@ -202,22 +209,27 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
                     fade_val = fade[f_n % N].to(init_img)
                     init_img = fade_val * init_img + (1 - fade_val) * prev_img
 
+                if pre_hook:
+                    init_img = pre_hook(init_img)
+
                 prompts = [ContentPrompt(frames[f_n % N])]
                 if text is not None:
                     prompts.append(TextPrompt(text))
                 if style is not None:
                     prompts.append(StylePrompt(path=style, size=(height, width)))
 
-                if constant_seed:
-                    seed_everything(constant_seed)
                 out_img = diffusion(
                     init_img, prompts=prompts, start_step=first_steps if f_n == 0 else n_steps, verbose=False
                 )
 
                 cache.out.append(out_img)
 
-        output = np.load(cache.out.file, mmap_mode="r+") * 0.5 + 0.5
-        return np.concatenate((output[-wrap_around:], output[wrap_around:-wrap_around]))
+        output = np.load(cache.out.file, mmap_mode="r+")
+        output *= 0.5
+        output += 0.5
+        if wrap_around > 0:
+            output[:wrap_around] = output[-wrap_around:]
+        return output[:N]
 
 
 @torch.no_grad()
@@ -241,6 +253,7 @@ def video_sample(
     style_scale: float = 0.0,
     color_match_scale: float = 0.0,
     cfg_scale: float = 5.0,
+    match_hist: bool = False,
     constant_seed: Optional[int] = None,
     device: str = "cuda",
 ):
@@ -255,6 +268,7 @@ def video_sample(
         color_match_scale=color_match_scale,
         cfg_scale=cfg_scale,
     )
+    pre_hook = partial(match_histogram, source_tensor=StylePrompt(path=style).img) if match_hist else None
     video = VideoFlowDiffusionProcessor()(
         diffusion=diffusion,
         init=init,
@@ -268,6 +282,7 @@ def video_sample(
         consistency_trust=consistency_trust,
         wrap_around=wrap_around,
         turbo=turbo,
+        pre_hook=pre_hook,
         constant_seed=constant_seed,
         device=device,
     )
@@ -297,6 +312,7 @@ if __name__ == "__main__":
     parser.add_argument("--style-scale", type=float, default=0.0, help='When using "guided" diffusion and a --style image, a higher --style-scale enforces textural similarity to the style, while a lower value will be conceptually similar to the style.')
     parser.add_argument("--color-match-scale", type=float, default=0.0, help='When using "guided" diffusion, the --color-match-scale guides the output\'s colors to match the --style image.')
     parser.add_argument("--cfg-scale", type=float, default=7.5, help='Classifier-free guidance strength. Higher values will match the text prompt more closely at the cost of output variability.')
+    parser.add_argument("--match-hist", action="store_true", help='Match the histogram of the initialization image to the --style image before starting diffusion.')
     parser.add_argument("--constant-seed", type=int, default=None, help='Use a fixed noise seed for all frames (None to disable).')
     parser.add_argument("--device", type=str, default="cuda", help='Which device to use (e.g. "cpu" or "cuda:1")')
     parser.add_argument("--fps", type=int, default=12, help='Framerate of output video.')
