@@ -8,9 +8,9 @@ The `processors/` folder contains a number of wrappers around state-of-the-art d
 It also contains functionality for progressively increasing the size of the image as well as scaling to arbitrary sizes through automatic tiling.
 See `python -m maua.diffusion.image --help` for information on all of the parameters.
 
-`video.py` supports styling videos, keeping coherence over time by using optical flow (similar to [Warp Fusion by @sxela](https://github.com/Sxela/DiscoDiffusion-Warp)).
+`video.py` supports styling videos, keeping coherence over time by using optical flow (similar to [Disco Diffusion Warp by @sxela](https://github.com/Sxela/DiscoDiffusion-Warp)).
 This script also supports all of the diffusion models.
-See `python -m maua.video.image --help` for information on all of the parameters.
+See `python -m maua.video.video --help` for information on all of the parameters.
 
 ## Basic Usage
 
