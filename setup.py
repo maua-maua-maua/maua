@@ -21,6 +21,7 @@ setup(
     package_data={"": ["*.yml", "*.yaml"], "maua.submodules.waifu2x*": ["*.zip", "*.7z"]},
     include_package_data=True,
     install_requires=[
+        "accelerate",
         "apex @ git+https://github.com/NVIDIA/apex",
         "auraloss",
         "av",

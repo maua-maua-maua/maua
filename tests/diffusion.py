@@ -3,11 +3,11 @@ import gc
 import numpy as np
 import pytest
 import torch
-
-from maua.diffusion.sample import get_diffusion_model, main as sample
-from maua.diffusion.video import main as video
+from maua.diffusion.image import get_diffusion_model, image_sample
+from maua.diffusion.video import video_sample
 
 DIFFUSION_SPEEDS = [
+    ("stable", "n/a"),
     ("latent", "n/a"),
     ("glid3xl", "n/a"),
     ("glide", "n/a"),
@@ -44,7 +44,7 @@ def diffusion_model(request):
 
 @pytest.mark.parametrize("sizes", SIZES, ids=SIZE_ID)
 def test_various_sizes(diffusion_model, sizes):
-    img = sample(
+    img = image_sample(
         text="beautiful rainforest leaves with silver veins, digital art",
         diffusion=diffusion_model,
         sizes=sizes,
@@ -56,7 +56,7 @@ def test_various_sizes(diffusion_model, sizes):
 
 @pytest.mark.parametrize("tile_size", TILE_SIZES, ids=lambda x: f"tile{x}")
 def test_stitching(diffusion_model, tile_size):
-    img = sample(
+    img = image_sample(
         text="beautiful rainforest leaves with silver veins, digital art",
         diffusion=diffusion_model,
         sizes=[(256, 256)],
@@ -69,10 +69,23 @@ def test_stitching(diffusion_model, tile_size):
 
 @pytest.mark.parametrize("sampler", SAMPLERS)
 def test_samplers(diffusion_model, sampler):
-    sample(
+    image_sample(
         text="beautiful rainforest leaves with silver veins, digital art",
         diffusion=diffusion_model,
         sizes=[(256, 256)],
+        skips=[0],
+        sampler=sampler,
+    )
+
+
+@pytest.mark.parametrize(
+    "sampler", ["p", "ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms"]
+)
+def test_stable_samplers(sampler):
+    image_sample(
+        text="beautiful rainforest leaves with silver veins, digital art",
+        diffusion="stable",
+        sizes=[(512, 512)],
         skips=[0],
         sampler=sampler,
     )
@@ -84,7 +97,7 @@ def test_samplers(diffusion_model, sampler):
 
 
 def test_video_init(diffusion_model):
-    video(
+    video_sample(
         diffusion=diffusion_model,
         init="/home/hans/datasets/video/dreams24.mp4",
         text="beautiful rainforest leaves with silver veins, digital art",

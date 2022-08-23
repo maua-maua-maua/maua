@@ -1,5 +1,6 @@
 import os
 import sys
+import warnings
 
 import numpy as np
 import torch
@@ -16,20 +17,29 @@ from ldm.models.diffusion.plms import PLMSSampler
 from ldm.util import instantiate_from_config
 
 
-def load_model_from_config(config, ckpt, verbose=False):
-    print(f"Loading model from {ckpt}")
-    pl_sd = torch.load(ckpt, map_location="cpu")
-    sd = pl_sd["state_dict"]
-    model = instantiate_from_config(config.model)
-    m, u = model.load_state_dict(sd, strict=False)
-    if len(m) > 0 and verbose:
-        print("missing keys:")
-        print(m)
-    if len(u) > 0 and verbose:
-        print("unexpected keys:")
-        print(u)
-    model.cuda()
-    model.eval()
+class Silence:
+    def __enter__(self):
+        from transformers import logging
+
+        logging.set_verbosity_error()
+        self._original_stdout = sys.stdout
+        sys.stdout = open(os.devnull, "w")
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.close()
+        sys.stdout = self._original_stdout
+        from transformers import logging
+
+        logging.set_verbosity_warning()
+
+
+def load_model_from_config(config, ckpt):
+    with Silence():
+        sd = torch.load(ckpt, map_location="cpu")["state_dict"]
+        model = instantiate_from_config(config.model)
+        model.load_state_dict(sd, strict=False)
+        model.cuda()
+        model.eval()
     return model
 
 

@@ -85,3 +85,9 @@
 [submodule "maua/submodules/CogVideo"]
 	path = maua/submodules/CogVideo
 	url = https://github.com/lkwq007/CogVideo-low-vram.git
+[submodule "maua/submodules/stable_diffusion"]
+	path = maua/submodules/stable_diffusion
+	url = https://github.com/DamascusGit/stable-diffusion
+[submodule "maua/submodules/k_diffusion"]
+	path = maua/submodules/k_diffusion
+	url = https://github.com/crowsonkb/k-diffusion

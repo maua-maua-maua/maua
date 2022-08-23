@@ -16,7 +16,7 @@ from ...grad import CLIPGrads, ColorMatchGrads, ContentPrompt, LPIPSGrads, Style
 from ...ops.video import write_video
 from ...super.video.framerate import rife
 from ..processors.guided import GuidedDiffusion
-from ..sample import build_output_name
+from ..image import build_output_name
 from ..multires import round64
 
 decord.bridge.set_bridge("torch")

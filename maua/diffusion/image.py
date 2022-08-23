@@ -23,6 +23,7 @@ from .processors.glid3xl import GLID3XL
 from .processors.glide import GLIDE
 from .processors.guided import GuidedDiffusion
 from .processors.latent import LatentDiffusion
+from .processors.stable import StableDiffusion
 
 
 def round64(x):
@@ -34,8 +35,8 @@ def width_height(arg: str):
     return int(w), int(h)
 
 
-def build_output_name(init=None, style=None, text=None):
-    out_name = str(uuid4())[:6]
+def build_output_name(init=None, style=None, text=None, unique=True):
+    out_name = str(uuid4())[:6] if unique else "video"
     if text is not None:
         out_name = f"{text.replace(' ','_')}_{out_name}"
     if style is not None:
@@ -57,14 +58,14 @@ def get_start_steps(skips, diffusion):
 def initialize_image(init, shape):
     if init == "random":
         img = torch.randn((1, 3, *shape))
-    elif init is not None:
-        img = resize(to_tensor(Image.open(init).convert("RGB")).unsqueeze(0).mul(2).sub(1), out_shape=shape)
     elif init == "perlin":
         img = (
             resize(create_perlin_noise([1.5**-i * 0.5 for i in range(12)], 1, 1, False), out_shape=shape)
             + resize(create_perlin_noise([1.5**-i * 0.5 for i in range(8)], 4, 4, True), out_shape=shape)
             - 1
         ).unsqueeze(0)
+    elif init is not None:
+        img = resize(to_tensor(Image.open(init).convert("RGB")).unsqueeze(0).mul(2).sub(1), out_shape=shape)
     else:
         raise Exception("init strategy not recognized!")
     return img
@@ -95,6 +96,8 @@ def get_diffusion_model(
         )
     elif diffusion == "latent":
         diffusion = LatentDiffusion(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
+    elif diffusion == "stable":
+        diffusion = StableDiffusion(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
     elif diffusion == "glide":
         diffusion = GLIDE(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
     elif diffusion == "glid3xl":
@@ -180,7 +183,7 @@ class MultiResolutionDiffusionProcessor(torch.nn.Module):
 
 
 @torch.no_grad()
-def main(
+def image_sample(
     init: str = "random",
     text: str = None,
     content: Optional[str] = None,
@@ -243,7 +246,6 @@ def main(
 if __name__ == "__main__":
     # fmt:off
     import argparse
-
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter, allow_abbrev=True)
     parser.add_argument("--init", type=str, default="random", help='How to initialize the image "random", "perlin", or a path to an image file.')
     parser.add_argument("--text", type=str, default=None, help='A text prompt to visualize.')
@@ -256,18 +258,18 @@ if __name__ == "__main__":
     parser.add_argument("--stitch", action="store_true", help='Enable tiled synthesis of images which are larger than the specified --tile-size.')
     parser.add_argument("--tile-size", type=int, default=None, help='The maximum size of tiles the image is cut into.')
     parser.add_argument("--max-batch", type=int, default=4, help='Maximum batch of tiles to synthesize at one time (lower values use less memory, but will be slower).')
-    parser.add_argument("--diffusion", type=str, default="guided", choices=["guided", "latent", "glide", "glid3xl"])
-    parser.add_argument("--sampler", type=str, default="plms", choices=["p", "ddim", "plms"])
-    parser.add_argument("--guidance-speed", type=str, default="fast", choices=["regular", "fast", "hyper"])
-    parser.add_argument("--clip-scale", type=float, default=2500.0)
-    parser.add_argument("--lpips-scale", type=float, default=0.0, help='Controls the apparent influence of the content image.')
-    parser.add_argument("--style-scale", type=float, default=0.0, help='A higher --style-scale enforces textural similarity to the style, while a lower value will be conceptually similar to the style.')
-    parser.add_argument("--color-match-scale", type=float, default=0.0)
-    parser.add_argument("--cfg-scale", type=float, default=5.0)
-    parser.add_argument("--match-hist", action="store_true")
-    parser.add_argument("--sharpness", type=float, default=0.0)
-    parser.add_argument("--device", type=str, default="cuda")
-    parser.add_argument("--out-dir", type=str, default="output/")
+    parser.add_argument("--diffusion", type=str, default="stable", choices=["guided", "latent", "glide", "glid3xl", "stable"], help='Which diffusion model to use.')
+    parser.add_argument("--sampler", type=str, default="dpm_2", choices=["p", "ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms"], help='Which sampling method to use. "p", "ddim", and "plms" work for all diffusion models, the rest are currently only supported with "stable" diffusion.')
+    parser.add_argument("--guidance-speed", type=str, default="fast", choices=["regular", "fast"], help='How to perform "guided" diffusion. "regular" is slower but can be higher quality, "fast" corresponds to the secondary model method (a.k.a. Disco Diffusion).')
+    parser.add_argument("--clip-scale", type=float, default=2500.0, help='Controls strength of CLIP guidance when using "guided" diffusion.')
+    parser.add_argument("--lpips-scale", type=float, default=0.0, help='Controls the apparent influence of the content image when using "guided" diffusion and a --content image.')
+    parser.add_argument("--style-scale", type=float, default=0.0, help='When using "guided" diffusion and a --style image, a higher --style-scale enforces textural similarity to the style, while a lower value will be conceptually similar to the style.')
+    parser.add_argument("--color-match-scale", type=float, default=0.0, help='When using "guided" diffusion, the --color-match-scale guides the output\'s colors to match the --style image.')
+    parser.add_argument("--cfg-scale", type=float, default=7.5, help='Classifier-free guidance strength. Higher values will match the text prompt more closely at the cost of output variability.')
+    parser.add_argument("--match-hist", action="store_true", help='Match the histogram of the initialization image to the --style image before starting diffusion.')
+    parser.add_argument("--sharpness", type=float, default=0.0, help='Sharpen the image by this amount after each diffusion scale (a value of 1.0 will leave the image unchanged, higher values will be sharper).')
+    parser.add_argument("--device", type=str, default="cuda", help='Which device to use (e.g. "cpu" or "cuda:1")')
+    parser.add_argument("--out-dir", type=str, default="output/", help='Directory to save output images to.')
     args = parser.parse_args()
     # fmt:on
 
@@ -275,6 +277,6 @@ if __name__ == "__main__":
     out_dir = args.out_dir
     del args.out_dir
 
-    img = main(**vars(args))
+    img = image_sample(**vars(args))
 
     save_image(img, f"{out_dir}/{out_name}.png")
