@@ -26,7 +26,7 @@ setup(
         "auraloss",
         "av",
         "basicsr",
-        "bitsandbytes-cuda113",
+        "bitsandbytes",
         "cached_conv @ git+https://github.com/caillonantoine/cached_conv",
         "clean-fid",
         "click",

@@ -392,7 +392,7 @@ def main(args):
     if args.checkpoint in list(MODELS.keys()):
         model = get_rudalle_model(args.checkpoint, pretrained=True, fp16=True, device=device, cache_dir="modelzoo/")
     else:
-        model = get_rudalle_model("Malevich", pretrained=False, fp16=True, device=device, cache_dir="modelzoo/")
+        model = get_rudalle_model("Surrealist_XL", pretrained=True, fp16=True, device=device, cache_dir="modelzoo/")
         ckpt = torch.load(args.checkpoint)
         model.module.image_row_embeddings.weight = torch.nn.Parameter(
             torch.zeros_like(ckpt["image_row_embeddings.weight"])

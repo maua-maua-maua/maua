@@ -24,7 +24,10 @@ def get_model(checkpoint):
     if checkpoint in ["1.1", "1.2", "1.3", "1.4"]:
         version = checkpoint.replace(".", "-")
         ckpt = f"modelzoo/stable-diffusion-v{version}.ckpt"
-        config = "maua/submodules/stable_diffusion/configs/stable-diffusion/v1-inference.yaml"
+        config = (
+            os.path.abspath(os.path.dirname(__file__))
+            + "/../../submodules/stable_diffusion/configs/stable-diffusion/v1-inference.yaml"
+        )
         if not os.path.exists(ckpt):
             hf_hub_download(
                 repo_id=f"CompVis/stable-diffusion-v-{version}-original",
