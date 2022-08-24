@@ -63,7 +63,7 @@ python -m maua.diffusion.video \
     --skip 0.8 \
     --flow-exaggeration 5 \
     --sharpness 2 \
-    --hist-presist
+    --hist-persist
 ```
 
 More advanced tutorials will be added soon.

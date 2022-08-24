@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from ...ops.video import VideoWriter
 from ...super.image import MODEL_NAMES
-from ...super.image import upscale as upscale_images
+from ...super.image.single import upscale as upscale_images
 
 
 def upscale(video_file, model_name, device, out_dir):
