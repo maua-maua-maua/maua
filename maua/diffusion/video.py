@@ -15,15 +15,17 @@ import shutil
 from typing import Callable, Optional, Tuple, Union
 
 import easydict
+import matplotlib.pyplot as plt
 import numpy as np
 from npy_append_array import NpyAppendArray
 from torch.nn.functional import grid_sample
 from torch.utils.data import Dataset
+from torchvision.transforms.functional import to_pil_image
 from tqdm import trange
 
 from ..flow import get_flow_model
 from ..flow.lib import flow_warp_map, get_consistency_map
-from ..ops.image import match_histogram
+from ..ops.image import match_histogram, sharpen
 from ..ops.video import write_video
 from ..prompt import ContentPrompt, StylePrompt, TextPrompt
 from ..utility import seed_everything
@@ -121,13 +123,14 @@ def initialize_optical_flow(cache, frames):
 
     flow_model = get_flow_model()
     N = len(frames)
-    with cache.flow, cache.consistency:
+    with cache.flow, cache.reverse, cache.consistency:
         for f_n in trange(N, desc="Calculating optical flow..."):
             prev = frames[(f_n - 1) % N].add(1).div(2)
             curr = frames[f_n].add(1).div(2)
             ff = flow_model(curr, prev)
             bf = flow_model(prev, curr)
-            cache.flow.append(flow_warp_map(ff))
+            cache.flow.append(ff)
+            cache.reverse.append(bf)
             cache.consistency.append(get_consistency_map(ff, bf))
 
 
@@ -150,9 +153,13 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         consistency_trust: float = 0.75,
         wrap_around: int = 0,
         turbo: int = 1,
+        flow_exaggeration: float = 1,
         pre_hook: Optional[Callable] = None,
+        post_hook: Optional[Callable] = None,
+        hist_persist: bool = False,
         constant_seed: Optional[int] = None,
         device: str = "cuda",
+        preview: bool = False,
     ):
         # process user inputs
         width, height = [round64(s) for s in size]
@@ -165,7 +172,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
 
         # initialize cache files
         cache = initialize_cache_files(
-            names=["out", "flow", "consistency"],
+            names=["out", "flow", "reverse", "consistency"],
             out_name=build_output_name(init, style=None, text=None, unique=False),
             length=N,
             height=height,
@@ -176,53 +183,75 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         # calculate optical flow
         initialize_optical_flow(cache, frames)
 
-        f_start = len(cache.out)
-        fade = torch.linspace(1, 0, wrap_around).reshape(-1, 1, 1, 1)
-        with cache.out:
-            for f_n in trange(f_start, N + wrap_around):
+        try:
+            f_start = len(cache.out)
+            fade = torch.linspace(1, 0, wrap_around).reshape(-1, 1, 1, 1)
+            with cache.out:
+                for f_n in trange(f_start, N + wrap_around):
 
-                if constant_seed:
-                    seed_everything(constant_seed)
+                    if constant_seed:
+                        seed_everything(constant_seed)
 
-                if f_n % turbo != 0:
-                    out_img = warp(out_img, cache.flow[f_n % N])
+                    if f_n % turbo != 0:
+                        out_img = warp(out_img, flow_warp_map(cache.flow[f_n % N] * flow_exaggeration))
+                        cache.out.append(out_img)
+                        continue
+
+                    init_img = frames[f_n % N]
+
+                    if blend > 0:
+                        flow_mask = cache.consistency[f_n % N]
+                        flow_mask *= consistency_trust
+                        flow_mask += 1 - consistency_trust
+                        flow_mask *= blend
+
+                        flow = flow_warp_map(cache.flow[f_n % N] * flow_exaggeration)
+
+                        prev_img = frames[(f_n - 1) % N] if f_n == 0 else out_img
+                        prev_warp = warp(prev_img, flow)
+
+                        init_img += flow_mask * prev_warp
+                        init_img /= 1 + flow_mask
+
+                    if f_n / N >= 1:
+                        last_round = torch.from_numpy(np.load(cache.out.file, mmap_mode="r")[f_n % N].copy()).to(
+                            init_img
+                        )
+                        fade_val = fade[f_n % N].to(init_img)
+                        init_img = fade_val * init_img + (1 - fade_val) * last_round
+
+                    if pre_hook:
+                        init_img = pre_hook(init_img)
+
+                    prompts = [ContentPrompt(frames[f_n % N])]
+                    if text is not None:
+                        prompts.append(TextPrompt(text))
+                    if style is not None:
+                        prompts.append(StylePrompt(path=style, size=(height, width)))
+
+                    if hist_persist and f_n > 0:
+                        init_img = match_histogram(init_img, hist_img)
+
+                    out_img = diffusion(
+                        init_img, prompts=prompts, start_step=first_steps if f_n == 0 else n_steps, verbose=False
+                    )
+
+                    if hist_persist and f_n == 0:
+                        hist_img = out_img.clone()
+
+                    if post_hook:
+                        out_img = post_hook(out_img)
+
+                    if preview:
+                        plt.imshow(to_pil_image(out_img.squeeze().add(1).div(2).clamp(0, 1)))
+                        plt.axis("off")
+                        plt.show(block=False)
+                        plt.pause(0.1)
+
                     cache.out.append(out_img)
-                    continue
 
-                init_img = frames[f_n % N]
-
-                if blend > 0:
-                    flow_mask = cache.consistency[f_n % N]
-                    flow_mask *= consistency_trust
-                    flow_mask += 1 - consistency_trust
-                    flow_mask *= blend
-
-                    flow = cache.flow[f_n % N]
-
-                    prev_img = frames[(f_n - 1) % N] if f_n == 0 else out_img
-
-                    init_img += flow_mask * warp(prev_img, flow)
-                    init_img /= 1 + flow_mask
-
-                if f_n / N >= 1:
-                    prev_img = torch.from_numpy(np.load(cache.out.file, mmap_mode="r")[f_n % N].copy()).to(init_img)
-                    fade_val = fade[f_n % N].to(init_img)
-                    init_img = fade_val * init_img + (1 - fade_val) * prev_img
-
-                if pre_hook:
-                    init_img = pre_hook(init_img)
-
-                prompts = [ContentPrompt(frames[f_n % N])]
-                if text is not None:
-                    prompts.append(TextPrompt(text))
-                if style is not None:
-                    prompts.append(StylePrompt(path=style, size=(height, width)))
-
-                out_img = diffusion(
-                    init_img, prompts=prompts, start_step=first_steps if f_n == 0 else n_steps, verbose=False
-                )
-
-                cache.out.append(out_img)
+        except KeyboardInterrupt:
+            return np.load(cache.out.file, mmap_mode="r") * 0.5 + 0.5
 
         output = np.load(cache.out.file, mmap_mode="r+")
         output *= 0.5
@@ -246,6 +275,7 @@ def video_sample(
     consistency_trust: float = 0.75,
     wrap_around: int = 0,
     turbo: int = 1,
+    flow_exaggeration: float = 1,
     sampler: str = "plms",
     guidance_speed: str = "fast",
     clip_scale: float = 2500.0,
@@ -254,8 +284,11 @@ def video_sample(
     color_match_scale: float = 0.0,
     cfg_scale: float = 5.0,
     match_hist: bool = False,
+    hist_persist: bool = False,
+    sharpness: float = 0,
     constant_seed: Optional[int] = None,
     device: str = "cuda",
+    preview: bool = False,
 ):
     diffusion = get_diffusion_model(
         diffusion=diffusion,
@@ -268,7 +301,10 @@ def video_sample(
         color_match_scale=color_match_scale,
         cfg_scale=cfg_scale,
     )
+
     pre_hook = partial(match_histogram, source_tensor=StylePrompt(path=style).img) if match_hist else None
+    post_hook = partial(sharpen, strength=sharpness) if sharpness > 0 else None
+
     video = VideoFlowDiffusionProcessor()(
         diffusion=diffusion,
         init=init,
@@ -282,9 +318,13 @@ def video_sample(
         consistency_trust=consistency_trust,
         wrap_around=wrap_around,
         turbo=turbo,
+        flow_exaggeration=flow_exaggeration,
         pre_hook=pre_hook,
+        post_hook=post_hook,
+        hist_persist=hist_persist,
         constant_seed=constant_seed,
         device=device,
+        preview=preview,
     )
     return video
 
@@ -304,6 +344,7 @@ if __name__ == "__main__":
     parser.add_argument("--consistency-trust", type=float, default=0.75, help='How strongly to trust flow consistency mask. Lower values will lead to more consistency over time. Higher values will respect occlusions of the background more.')
     parser.add_argument("--wrap-around", type=int, default=0, help='Number of extra frames to continue for, looping back to start. This allows for seamless transitions back to the start of the video.')
     parser.add_argument("--turbo", type=int, default=1, help='Only apply diffusion every --turbo\'th frame, otherwise just warp the previous frame with optical flow. Can be much faster for high factors at the cost of some visual detail.')
+    parser.add_argument("--flow-exaggeration", type=float, default=1, help='Factor to multiply optical flow with. Higher values lead to more extreme movements in the final video.')
     parser.add_argument("--diffusion", type=str, default="stable", choices=["guided", "latent", "glide", "glid3xl", "stable"], help='Which diffusion model to use.')
     parser.add_argument("--sampler", type=str, default="dpm_2", choices=["p", "ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms"], help='Which sampling method to use. "p", "ddim", and "plms" work for all diffusion models, the rest are currently only supported with "stable" diffusion.')
     parser.add_argument("--guidance-speed", type=str, default="fast", choices=["regular", "fast"], help='How to perform "guided" diffusion. "regular" is slower but can be higher quality, "fast" corresponds to the secondary model method (a.k.a. Disco Diffusion).')
@@ -312,9 +353,12 @@ if __name__ == "__main__":
     parser.add_argument("--style-scale", type=float, default=0.0, help='When using "guided" diffusion and a --style image, a higher --style-scale enforces textural similarity to the style, while a lower value will be conceptually similar to the style.')
     parser.add_argument("--color-match-scale", type=float, default=0.0, help='When using "guided" diffusion, the --color-match-scale guides the output\'s colors to match the --style image.')
     parser.add_argument("--cfg-scale", type=float, default=7.5, help='Classifier-free guidance strength. Higher values will match the text prompt more closely at the cost of output variability.')
-    parser.add_argument("--match-hist", action="store_true", help='Match the histogram of the initialization image to the --style image before starting diffusion.')
+    parser.add_argument("--match-hist", action="store_true", help='Match the color histogram of the initialization image to the --style image before starting diffusion.')
+    parser.add_argument("--hist-persist", action="store_true", help='Match the color histogram of subsequent frames to the first diffused frame (helps alleviate oversaturation).')
+    parser.add_argument("--sharpness", type=float, default=0.0, help='Sharpen the image by this amount after each diffusion scale (a value of 1.0 will leave the image unchanged, higher values will be sharper).')
     parser.add_argument("--constant-seed", type=int, default=None, help='Use a fixed noise seed for all frames (None to disable).')
     parser.add_argument("--device", type=str, default="cuda", help='Which device to use (e.g. "cpu" or "cuda:1")')
+    parser.add_argument("--preview", action="store_true", help='Show frames as they\'re rendered (moderately slower).')
     parser.add_argument("--fps", type=int, default=12, help='Framerate of output video.')
     parser.add_argument("--out-dir", type=str, default="output/", help='Directory to save output images to.')
     args = parser.parse_args()

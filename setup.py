@@ -18,7 +18,11 @@ setup(
             "maua.submodules.pycuda.bpl-subset*",
         ],
     ),
-    package_data={"": ["*.yml", "*.yaml"], "maua.submodules.waifu2x*": ["*.zip", "*.7z"]},
+    package_data={
+        "": ["*.yml", "*.yaml"],
+        "maua.submodules.waifu2x*": ["*.zip", "*.7z"],
+        "maua.submodules.stable_diffusion*": ["configs/*"],
+    },
     include_package_data=True,
     install_requires=[
         "accelerate",
@@ -66,7 +70,6 @@ setup(
         "nvidia-cuda-runtime-cu116",
         "nvidia-cuda-nvcc-cu116",
         "nvidia-cudnn-cu116",
-        # "nvidia-tensorrt",
         "omegaconf",
         "openunmix",
         "pandas",
@@ -75,6 +78,7 @@ setup(
         "pyglet",
         "pyopengl",
         "pyspng",
+        "pytorch-msssim",
         "pytorch_lightning",
         "pytorch_optimizer",
         "PyYaml",

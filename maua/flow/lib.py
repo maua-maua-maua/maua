@@ -11,13 +11,21 @@ from ..ops.video import write_video
 from .consistency import check_consistency, check_consistency_np
 from .utils import flow_to_image
 
+NEUTRAL = None
+
 
 def flow_warp_map(flow: torch.Tensor) -> torch.Tensor:
     b, h, w, two = flow.shape
     flow[..., 0] /= w
     flow[..., 1] /= h
-    neutral = torch.stack(torch.meshgrid(torch.linspace(-1, 1, w), torch.linspace(-1, 1, h), indexing="xy"), axis=2)
-    warp_map = neutral.unsqueeze(0).to(flow) + flow
+    global NEUTRAL
+    if NEUTRAL is None:
+        NEUTRAL = (
+            torch.stack(torch.meshgrid(torch.linspace(-1, 1, w), torch.linspace(-1, 1, h), indexing="xy"), axis=2)
+            .unsqueeze(0)
+            .to(flow)
+        )
+    warp_map = NEUTRAL + flow
     return warp_map
 
 

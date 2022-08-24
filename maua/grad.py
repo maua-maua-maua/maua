@@ -194,3 +194,24 @@ class LPIPSGrads(GradModule):
         else:
             grad = torch.zeros_like(img)
         return grad
+
+
+class LatentSSIMGrads(GradModule):
+    def __init__(self, scale, model) -> None:
+        super().__init__(scale)
+        from pytorch_msssim import SSIM
+
+        self.ssim = SSIM(data_range=10, channel=4)
+        self.model = model
+
+    def set_targets(self, prompts):
+        for prompt in prompts:
+            if isinstance(prompt, ContentPrompt):
+                img, _ = prompt()
+                latent = self.model.get_first_stage_encoding(self.model.encode_first_stage(img))
+                self.register_buffer("target", latent)
+
+    def forward(self, x, t):
+        loss = 1 - self.ssim(x, self.target)
+        grad = torch.autograd.grad(loss, x)[0]
+        return grad

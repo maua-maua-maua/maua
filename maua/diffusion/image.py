@@ -84,7 +84,7 @@ def get_diffusion_model(
 ):
     if diffusion == "guided":
         diffusion = GuidedDiffusion(
-            [
+            grad_modules=[
                 CLIPGrads(scale=clip_scale),
                 LPIPSGrads(scale=lpips_scale),
                 VGGGrads(scale=style_scale),
@@ -112,14 +112,14 @@ class MultiResolutionDiffusionProcessor(torch.nn.Module):
         self,
         diffusion: BaseDiffusionProcessor,
         init: str,
-        text: str = None,
-        content: str = None,
-        style: str = None,
+        text: Optional[str] = None,
+        content: Optional[str] = None,
+        style: Optional[str] = None,
         schedule: Dict[Tuple[int, int], float] = {(512, 512), 0.5},
-        pre_hook: Callable = None,
-        post_hook: Callable = None,
-        super_res_model: str = None,
-        tile_size: int = None,
+        pre_hook: Optional[Callable] = None,
+        post_hook: Optional[Callable] = None,
+        super_res_model: Optional[str] = None,
+        tile_size: Optional[int] = None,
         stitch: bool = True,
         max_batch: int = 4,
         verbose: bool = True,

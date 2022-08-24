@@ -4,11 +4,11 @@ from functools import partial
 
 import numpy as np
 import torch
-import torch.nn as nn
 from huggingface_hub import hf_hub_download
 from omegaconf import OmegaConf
 from torch import autocast
 
+from ...grad import LatentSSIMGrads
 from ...prompt import TextPrompt
 from .base import BaseDiffusionProcessor
 from .latent import LatentDiffusion, load_model_from_config
@@ -59,7 +59,8 @@ class StableConditioning(torch.nn.Module):
 class StableDiffusion(LatentDiffusion):
     def __init__(
         self,
-        cfg_scale=3,
+        grad_modules=[],
+        cfg_scale=7.5,
         sampler="dpm_2",
         timesteps=100,
         model_checkpoint="1.4",
@@ -70,6 +71,7 @@ class StableDiffusion(LatentDiffusion):
 
         self.model = get_model(model_checkpoint)
         self.image_size = self.model.image_size * 8
+        # grad_modules += [LatentSSIMGrads(1000, self.model)]
 
         self.conditioning = StableConditioning(self.model)
         self.cfg_scale = cfg_scale
@@ -89,6 +91,18 @@ class StableDiffusion(LatentDiffusion):
             self.sigmas = self.model_wrap.get_sigmas(timesteps)
             self.sample_fn = getattr(k_diffusion.sampling, f"sample_{sampler}")
             self.original_num_steps = len(self.model.alphas_cumprod)
+            self.model_fn = partial(cfg_forward, model=self.model_wrap)
+
+            self.grad_modules = [gm for gm in grad_modules if gm.scale != 0]
+            if len(self.grad_modules) > 0:
+
+                def cond_fn(x, t, denoised, **kwargs):
+                    grad = torch.zeros_like(x)
+                    for gm in self.grad_modules:
+                        grad -= gm(denoised, t)
+                    return grad
+
+                self.model_fn = make_conditional(self.model_fn, cond_fn)
 
         self.device = device
         self.model = self.model.to(device)
@@ -105,7 +119,9 @@ class StableDiffusion(LatentDiffusion):
             n_steps = start_step + 1
         start_step = len(self.sigmas) - start_step - 2
 
-        cond, uncond = self.conditioning([p.to(img) for p in prompts])
+        prompts = [p.to(img) for p in prompts]
+        [gm.set_targets(prompts) for gm in self.grad_modules]
+        cond, uncond = self.conditioning(prompts)
 
         with autocast("cuda"), self.model.ema_scope():
             if start_step > 0:
@@ -119,7 +135,7 @@ class StableDiffusion(LatentDiffusion):
 
             shape = (x.shape[0], cond.shape[1], cond.shape[2])
             samples = self.sample_fn(
-                partial(cfg_forward, model=self.model_wrap),
+                self.model_fn,
                 x,
                 self.sigmas[start_step : start_step + n_steps + 1],
                 extra_args={"cond": cond.expand(shape), "uncond": uncond.expand(shape), "cond_scale": self.cfg_scale},
@@ -136,3 +152,15 @@ def cfg_forward(x, sigma, uncond, cond, cond_scale, model):
     cond_in = torch.cat([uncond, cond])
     uncond, cond = model(x_in, sigma_in, cond=cond_in).chunk(2)
     return uncond + (cond - uncond) * cond_scale
+
+
+def make_conditional(model, cond_fn):
+    def model_fn(x, sigma, **kwargs):
+        with torch.enable_grad():
+            x = x.detach().requires_grad_()
+            denoised = model(x, sigma, **kwargs)
+            cond_grad = cond_fn(x, sigma, denoised=denoised, **kwargs).detach()
+            cond_denoised = denoised.detach() + cond_grad * k_diffusion.utils.append_dims(sigma**2, x.ndim)
+        return cond_denoised
+
+    return model_fn
