@@ -1,5 +1,3 @@
-from functools import partial
-
 import torch
 
 torch.cuda.is_available()
@@ -12,6 +10,7 @@ decord.bridge.set_bridge("torch")
 
 import os
 import shutil
+from functools import partial
 from typing import Callable, Optional, Tuple, Union
 
 import easydict

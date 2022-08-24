@@ -1,1 +1,1 @@
-from .single import MODEL_NAMES
+from .single import MODEL_NAMES, upscale

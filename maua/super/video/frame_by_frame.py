@@ -1,15 +1,22 @@
-import argparse
+import torch
+
+torch.cuda.is_available()
+
+# torch MUST be imported before decord for reasons?!
+
+import decord
+
+decord.bridge.set_bridge("torch")
+
 import os
 from pathlib import Path
 
-import numpy as np
-import torch
 from decord import VideoReader
 from tqdm import tqdm
 
 from ...ops.video import VideoWriter
 from ...super.image import MODEL_NAMES
-from ...super.image.single import upscale as upscale_images
+from ...super.image import upscale as upscale_images
 
 
 def upscale(video_file, model_name, device, out_dir):
@@ -19,7 +26,7 @@ def upscale(video_file, model_name, device, out_dir):
 
     out_file = f"{out_dir}/{Path(video_file).stem}_{model_name}.mp4"
     with VideoWriter(output_file=out_file, output_size=(4 * w, 4 * h), fps=fps) as video:
-        frames = (torch.from_numpy(vr[i].asnumpy()).permute(2, 0, 1).unsqueeze(0).div(255) for i in range(len(vr)))
+        frames = (vr[i].permute(2, 0, 1).unsqueeze(0).div(255) for i in range(len(vr)))
         for frame in tqdm(upscale_images(frames, model_name, device), total=len(vr)):
             video.write(frame)
 
