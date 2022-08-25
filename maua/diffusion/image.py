@@ -103,6 +103,10 @@ def get_diffusion_model(
     elif diffusion == "glid3xl":
         diffusion = GLID3XL(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
     else:
+        try:
+            diffusion = StableDiffusion(model_checkpoint=diffusion, cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
+        except:
+            pass
         assert isinstance(diffusion, BaseDiffusionProcessor)
     return diffusion
 
