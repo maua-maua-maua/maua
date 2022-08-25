@@ -1,10 +1,17 @@
-import argparse
+import torch
+
+torch.cuda.is_available()
+
+# torch MUST be imported before decord for reasons?!
+
+import decord
+
+decord.bridge.set_bridge("torch")
+
 import os
-import warnings
 from pathlib import Path
 from typing import Generator
 
-import torch
 from decord import VideoReader
 from tqdm import tqdm
 
@@ -47,8 +54,8 @@ def interpolate_video(
     vr = VideoReader(video_file)
     N = len(vr)
     for i in tqdm(range(N)):
-        frame1 = torch.from_numpy(vr[i].asnumpy()).permute(2, 0, 1).unsqueeze(0).div(255).to(model.device)
-        frame2 = torch.from_numpy(vr[(i + 1) % N].asnumpy()).permute(2, 0, 1).unsqueeze(0).div(255).to(model.device)
+        frame1 = vr[i].permute(2, 0, 1).unsqueeze(0).div(255).to(model.device)
+        frame2 = vr[(i + 1) % N].permute(2, 0, 1).unsqueeze(0).div(255).to(model.device)
         for f, frame in enumerate(module.interpolate(frame1, frame2, model, interpolation_factor, fp16)):
             if f % decimate == decimate // 2:
                 yield frame
