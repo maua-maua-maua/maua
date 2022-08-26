@@ -1,3 +1,4 @@
+import traceback
 from functools import partial
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -104,9 +105,11 @@ def get_diffusion_model(
         diffusion = GLID3XL(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
     else:
         try:
-            diffusion = StableDiffusion(model_checkpoint=diffusion, cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
+            diffusion = StableDiffusion(
+                model_checkpoint=diffusion, cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps
+            )
         except:
-            pass
+            traceback.print_exc()
         assert isinstance(diffusion, BaseDiffusionProcessor)
     return diffusion
 

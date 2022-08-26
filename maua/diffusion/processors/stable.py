@@ -21,13 +21,13 @@ from ...submodules.latent_diffusion.ldm.models.diffusion.plms import PLMSSampler
 
 
 def get_model(checkpoint):
+    config = (
+        os.path.abspath(os.path.dirname(__file__))
+        + "/../../submodules/stable_diffusion/configs/stable-diffusion/v1-inference.yaml"
+    )
     if checkpoint in ["1.1", "1.2", "1.3", "1.4"]:
         version = checkpoint.replace(".", "-")
         ckpt = f"modelzoo/stable-diffusion-v{version}.ckpt"
-        config = (
-            os.path.abspath(os.path.dirname(__file__))
-            + "/../../submodules/stable_diffusion/configs/stable-diffusion/v1-inference.yaml"
-        )
         if not os.path.exists(ckpt):
             hf_hub_download(
                 repo_id=f"CompVis/stable-diffusion-v-{version}-original",
@@ -38,7 +38,6 @@ def get_model(checkpoint):
             )
     else:
         ckpt = checkpoint
-        config = checkpoint.replace(".ckpt", ".yaml")
     return load_model_from_config(OmegaConf.load(config), ckpt)
 
 
