@@ -183,8 +183,8 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         initialize_optical_flow(cache, frames)
 
         try:
-            # magical exponential which gives a nice fade out (decays to ~10% after wrap_around steps)
-            fade = 1 - 1.75 * wrap_around ** (1 / (100 * wrap_around)) / wrap_around
+            # magical exponential which gives a nice fade out (decays to ~3% after wrap_around steps)
+            fade = 1 - 3 * wrap_around ** (1 / (100 * wrap_around)) / wrap_around
 
             f_start = len(cache.out)  # TODO resume cancelled stylization?
             with cache.out:
