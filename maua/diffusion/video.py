@@ -10,7 +10,7 @@ decord.bridge.set_bridge("torch")
 
 import os
 import shutil
-from functools import partial
+from functools import partial, reduce
 from typing import Callable, Optional, Tuple, Union
 
 import easydict
@@ -152,7 +152,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         consistency_trust: float = 0.75,
         wrap_around: int = 0,
         turbo: int = 1,
-        flow_exaggeration: float = 1,
+        flow_exaggeration: float = 1.0,
         pre_hook: Optional[Callable] = None,
         post_hook: Optional[Callable] = None,
         hist_persist: bool = False,
@@ -183,8 +183,10 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         initialize_optical_flow(cache, frames)
 
         try:
-            f_start = len(cache.out)
-            fade = torch.linspace(1, 0, wrap_around).reshape(-1, 1, 1, 1)
+            # magical exponential whose final cummulative multiplication is <2% after wrap_around steps in [15, 300]
+            fade = 1 - wrap_around ** (55 / (25 + wrap_around)) / 200
+
+            f_start = len(cache.out)  # TODO resume cancelled stylization?
             with cache.out:
                 for f_n in trange(f_start, N + wrap_around):
 
@@ -195,6 +197,12 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
                         out_img = warp(out_img, flow_warp_map(cache.flow[f_n % N] * flow_exaggeration))
                         cache.out.append(out_img)
                         continue
+
+                    prompts = [ContentPrompt(frames[f_n % N])]
+                    if text is not None:
+                        prompts.append(TextPrompt(text))
+                    if style is not None:
+                        prompts.append(StylePrompt(path=style, size=(height, width)))
 
                     init_img = frames[f_n % N]
 
@@ -216,17 +224,10 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
                         last_round = torch.from_numpy(np.load(cache.out.file, mmap_mode="r")[f_n % N].copy()).to(
                             init_img
                         )
-                        fade_val = fade[f_n % N].to(init_img)
-                        init_img = fade_val * init_img + (1 - fade_val) * last_round
+                        init_img = fade * init_img + (1 - fade) * last_round
 
                     if pre_hook:
                         init_img = pre_hook(init_img)
-
-                    prompts = [ContentPrompt(frames[f_n % N])]
-                    if text is not None:
-                        prompts.append(TextPrompt(text))
-                    if style is not None:
-                        prompts.append(StylePrompt(path=style, size=(height, width)))
 
                     if hist_persist and f_n > 0:
                         init_img = match_histogram(init_img, hist_img)
@@ -245,7 +246,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
                         plt.imshow(to_pil_image(out_img.squeeze().add(1).div(2).clamp(0, 1)))
                         plt.axis("off")
                         plt.show(block=False)
-                        plt.pause(0.1)
+                        plt.pause(0.5)
 
                     cache.out.append(out_img)
 
@@ -277,14 +278,15 @@ def video_sample(
     flow_exaggeration: float = 1,
     sampler: str = "plms",
     guidance_speed: str = "fast",
-    clip_scale: float = 2500.0,
+    clip_scale: float = 0.0,
     lpips_scale: float = 0.0,
     style_scale: float = 0.0,
     color_match_scale: float = 0.0,
     cfg_scale: float = 5.0,
     match_hist: bool = False,
     hist_persist: bool = False,
-    sharpness: float = 0,
+    sharpness: float = 1.0,
+    inter_noise: float = 0.0,
     constant_seed: Optional[int] = None,
     device: str = "cuda",
     preview: bool = False,
@@ -302,7 +304,13 @@ def video_sample(
     )
 
     pre_hook = partial(match_histogram, source_tensor=StylePrompt(path=style).img) if match_hist else None
-    post_hook = partial(sharpen, strength=sharpness) if sharpness > 0 else None
+
+    post_fns = []
+    if sharpness != 1.0:
+        post_fns.append(partial(sharpen, strength=sharpness))
+    if inter_noise > 0.0:
+        post_fns.append(lambda img: img + inter_noise * torch.randn_like(img))
+    post_hook = (lambda img: reduce(lambda i, f: f(i), post_fns, img)) if len(post_fns) > 0 else None
 
     video = VideoFlowDiffusionProcessor()(
         diffusion=diffusion,
@@ -336,7 +344,7 @@ if __name__ == "__main__":
     parser.add_argument("--text", type=str, default=None, help='A text prompt to visualize.')
     parser.add_argument("--style", type=str, default=None, help='An image whose style should be optimized for in the output image (only works with "guided" diffusion at the moment, see --style-scale).')
     parser.add_argument("--size", type=width_height, default=(512, 512), help='Size to synthesize the video at.')
-    parser.add_argument("--skip", type=float, default=0.7, help='Lower fractions will stray further from the original image, while higher fractions will hallucinate less detail.')
+    parser.add_argument("--skip", type=float, default=0.85, help='Lower fractions will stray further from the original image, while higher fractions will hallucinate less detail.')
     parser.add_argument("--first-skip", type=float, default=0.4, help='Separate skip fraction for the first frame.')
     parser.add_argument("--timesteps", type=int, default=50, help='Number of timesteps to sample the diffusion process at. Higher values will take longer but are generally of higher quality.')
     parser.add_argument("--blend", type=float, default=2, help='Factor with which to blend previous frames into the next frame. Higher values will stay more consistent over time (e.g. --blend 20 means 20:1 ratio of warped previous frame to new input frame).')
@@ -344,17 +352,18 @@ if __name__ == "__main__":
     parser.add_argument("--wrap-around", type=int, default=0, help='Number of extra frames to continue for, looping back to start. This allows for seamless transitions back to the start of the video.')
     parser.add_argument("--turbo", type=int, default=1, help='Only apply diffusion every --turbo\'th frame, otherwise just warp the previous frame with optical flow. Can be much faster for high factors at the cost of some visual detail.')
     parser.add_argument("--flow-exaggeration", type=float, default=1, help='Factor to multiply optical flow with. Higher values lead to more extreme movements in the final video.')
-    parser.add_argument("--diffusion", type=str, default="stable", choices=["guided", "latent", "glide", "glid3xl", "stable"], help='Which diffusion model to use.')
+    parser.add_argument("--diffusion", type=str, default="stable", help='Which diffusion model to use. Options: "guided", "latent", "glide", "glid3xl", "stable" or a /path/to/stable-diffusion.ckpt')
     parser.add_argument("--sampler", type=str, default="dpm_2", choices=["p", "ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms"], help='Which sampling method to use. "p", "ddim", and "plms" work for all diffusion models, the rest are currently only supported with "stable" diffusion.')
     parser.add_argument("--guidance-speed", type=str, default="fast", choices=["regular", "fast"], help='How to perform "guided" diffusion. "regular" is slower but can be higher quality, "fast" corresponds to the secondary model method (a.k.a. Disco Diffusion).')
-    parser.add_argument("--clip-scale", type=float, default=2500.0, help='Controls strength of CLIP guidance when using "guided" diffusion.')
+    parser.add_argument("--clip-scale", type=float, default=0.0, help='Controls strength of CLIP guidance when using "guided" diffusion.')
     parser.add_argument("--lpips-scale", type=float, default=0.0, help='Controls the apparent influence of the content image when using "guided" diffusion and a --content image.')
     parser.add_argument("--style-scale", type=float, default=0.0, help='When using "guided" diffusion and a --style image, a higher --style-scale enforces textural similarity to the style, while a lower value will be conceptually similar to the style.')
     parser.add_argument("--color-match-scale", type=float, default=0.0, help='When using "guided" diffusion, the --color-match-scale guides the output\'s colors to match the --style image.')
     parser.add_argument("--cfg-scale", type=float, default=7.5, help='Classifier-free guidance strength. Higher values will match the text prompt more closely at the cost of output variability.')
     parser.add_argument("--match-hist", action="store_true", help='Match the color histogram of the initialization image to the --style image before starting diffusion.')
     parser.add_argument("--hist-persist", action="store_true", help='Match the color histogram of subsequent frames to the first diffused frame (helps alleviate oversaturation).')
-    parser.add_argument("--sharpness", type=float, default=0.0, help='Sharpen the image by this amount after each diffusion scale (a value of 1.0 will leave the image unchanged, higher values will be sharper).')
+    parser.add_argument("--sharpness", type=float, default=1.0, help='Sharpen the image by this amount after each diffusion scale (a value of 1.0 will leave the image unchanged, higher values will be sharper).')
+    parser.add_argument("--inter-noise", type=float, default=0.0, help='Scale of extra noise added between frames (helps reduce empty spaces forming in the video).')
     parser.add_argument("--constant-seed", type=int, default=None, help='Use a fixed noise seed for all frames (None to disable).')
     parser.add_argument("--device", type=str, default="cuda", help='Which device to use (e.g. "cpu" or "cuda:1")')
     parser.add_argument("--preview", action="store_true", help='Show frames as they\'re rendered (moderately slower).')

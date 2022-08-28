@@ -77,28 +77,29 @@ def get_diffusion_model(
     timesteps: int = 50,
     sampler: str = "plms",
     guidance_speed: str = "fast",
-    clip_scale: float = 2500.0,
+    clip_scale: float = 0.0,
     lpips_scale: float = 0.0,
     style_scale: float = 0.0,
     color_match_scale: float = 0.0,
     cfg_scale: float = 5.0,
 ):
+    grad_modules = (
+        ([CLIPGrads(scale=clip_scale)] if clip_scale > 0 else [])
+        + ([LPIPSGrads(scale=lpips_scale)] if lpips_scale > 0 else [])
+        + ([VGGGrads(scale=style_scale)] if style_scale > 0 else [])
+        + ([ColorMatchGrads(scale=color_match_scale)] if color_match_scale > 0 else [])
+    )
+
     if diffusion == "guided":
         diffusion = GuidedDiffusion(
-            grad_modules=[
-                CLIPGrads(scale=clip_scale),
-                LPIPSGrads(scale=lpips_scale),
-                VGGGrads(scale=style_scale),
-                ColorMatchGrads(scale=color_match_scale),
-            ],
-            sampler=sampler,
-            timesteps=timesteps,
-            speed=guidance_speed,
+            grad_modules=grad_modules, sampler=sampler, timesteps=timesteps, speed=guidance_speed
         )
     elif diffusion == "latent":
         diffusion = LatentDiffusion(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
     elif diffusion == "stable":
-        diffusion = StableDiffusion(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
+        diffusion = StableDiffusion(
+            grad_modules=grad_modules, cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps
+        )
     elif diffusion == "glide":
         diffusion = GLIDE(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
     elif diffusion == "glid3xl":
@@ -106,7 +107,11 @@ def get_diffusion_model(
     else:
         try:
             diffusion = StableDiffusion(
-                model_checkpoint=diffusion, cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps
+                grad_modules=grad_modules,
+                model_checkpoint=diffusion,
+                cfg_scale=cfg_scale,
+                sampler=sampler,
+                timesteps=timesteps,
             )
         except:
             traceback.print_exc()
@@ -205,7 +210,7 @@ def image_sample(
     diffusion: Union[str, BaseDiffusionProcessor] = "guided",
     sampler: str = "plms",
     guidance_speed: str = "fast",
-    clip_scale: float = 2500.0,
+    clip_scale: float = 0.0,
     lpips_scale: float = 0.0,
     style_scale: float = 0.0,
     color_match_scale: float = 0.0,
@@ -213,6 +218,7 @@ def image_sample(
     match_hist: bool = False,
     sharpness: float = 0.0,
     device: str = "cuda",
+    number: int = 1,
 ):
     diffusion = get_diffusion_model(
         diffusion=diffusion,
@@ -232,22 +238,37 @@ def image_sample(
     assert len(sizes) == len(skips), "`sizes` and `skips` must have equal length!"
     schedule = {shape: skip for shape, skip in zip(sizes, skips)}
 
-    img = MultiResolutionDiffusionProcessor()(
-        diffusion=diffusion.to(device),
-        init=init,
-        text=text,
-        content=content,
-        style=style,
-        schedule=schedule,
-        pre_hook=pre_hook,
-        post_hook=post_hook,
-        super_res_model=super_res,
-        tile_size=tile_size,
-        stitch=stitch,
-        max_batch=max_batch,
-    )
-
-    return img
+    if number > 1:
+        for _ in range(number):
+            yield MultiResolutionDiffusionProcessor()(
+                diffusion=diffusion.to(device),
+                init=init,
+                text=text,
+                content=content,
+                style=style,
+                schedule=schedule,
+                pre_hook=pre_hook,
+                post_hook=post_hook,
+                super_res_model=super_res,
+                tile_size=tile_size,
+                stitch=stitch,
+                max_batch=max_batch,
+            )
+    else:
+        return MultiResolutionDiffusionProcessor()(
+            diffusion=diffusion.to(device),
+            init=init,
+            text=text,
+            content=content,
+            style=style,
+            schedule=schedule,
+            pre_hook=pre_hook,
+            post_hook=post_hook,
+            super_res_model=super_res,
+            tile_size=tile_size,
+            stitch=stitch,
+            max_batch=max_batch,
+        )
 
 
 if __name__ == "__main__":
@@ -258,17 +279,17 @@ if __name__ == "__main__":
     parser.add_argument("--text", type=str, default=None, help='A text prompt to visualize.')
     parser.add_argument("--content", type=str, default=None, help='A content image whose structure to adapt in the output image (only works with "guided" diffusion at the moment, see --lpips-scale).')
     parser.add_argument("--style", type=str, default=None, help='An image whose style should be optimized for in the output image (only works with "guided" diffusion at the moment, see --style-scale).')
-    parser.add_argument("--sizes", type=width_height, nargs="+", default=(512, 512), help='Sequence of sizes to synthesize the image at.')
-    parser.add_argument("--skips", type=float, nargs="+", default=0, help='Sequence of skip fractions for each size. Lower fractions will stray further from the original image, while higher fractions will hallucinate less detail.')
+    parser.add_argument("--sizes", type=width_height, nargs="+", default=[(512, 512)], help='Sequence of sizes to synthesize the image at.')
+    parser.add_argument("--skips", type=float, nargs="+", default=[0], help='Sequence of skip fractions for each size. Lower fractions will stray further from the original image, while higher fractions will hallucinate less detail.')
     parser.add_argument("--timesteps", type=int, default=50, help='Number of timesteps to sample the diffusion process at. Higher values will take longer but are generally of higher quality.')
     parser.add_argument("--super-res", type=str, default="SwinIR-M-DFO-GAN", help='Super resolution model to upscale intermediate results with before applying next diffusion resolution (see maua.super.image --model-help for full list of possibilities, None to perform simple resizing).')
     parser.add_argument("--stitch", action="store_true", help='Enable tiled synthesis of images which are larger than the specified --tile-size.')
     parser.add_argument("--tile-size", type=int, default=None, help='The maximum size of tiles the image is cut into.')
     parser.add_argument("--max-batch", type=int, default=4, help='Maximum batch of tiles to synthesize at one time (lower values use less memory, but will be slower).')
-    parser.add_argument("--diffusion", type=str, default="stable", choices=["guided", "latent", "glide", "glid3xl", "stable"], help='Which diffusion model to use.')
+    parser.add_argument("--diffusion", type=str, default="stable", help='Which diffusion model to use. Options: "guided", "latent", "glide", "glid3xl", "stable" or a /path/to/stable-diffusion.ckpt')
     parser.add_argument("--sampler", type=str, default="dpm_2", choices=["p", "ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms"], help='Which sampling method to use. "p", "ddim", and "plms" work for all diffusion models, the rest are currently only supported with "stable" diffusion.')
     parser.add_argument("--guidance-speed", type=str, default="fast", choices=["regular", "fast"], help='How to perform "guided" diffusion. "regular" is slower but can be higher quality, "fast" corresponds to the secondary model method (a.k.a. Disco Diffusion).')
-    parser.add_argument("--clip-scale", type=float, default=2500.0, help='Controls strength of CLIP guidance when using "guided" diffusion.')
+    parser.add_argument("--clip-scale", type=float, default=0.0, help='Controls strength of CLIP guidance when using "guided" diffusion.')
     parser.add_argument("--lpips-scale", type=float, default=0.0, help='Controls the apparent influence of the content image when using "guided" diffusion and a --content image.')
     parser.add_argument("--style-scale", type=float, default=0.0, help='When using "guided" diffusion and a --style image, a higher --style-scale enforces textural similarity to the style, while a lower value will be conceptually similar to the style.')
     parser.add_argument("--color-match-scale", type=float, default=0.0, help='When using "guided" diffusion, the --color-match-scale guides the output\'s colors to match the --style image.')
@@ -276,6 +297,7 @@ if __name__ == "__main__":
     parser.add_argument("--match-hist", action="store_true", help='Match the histogram of the initialization image to the --style image before starting diffusion.')
     parser.add_argument("--sharpness", type=float, default=0.0, help='Sharpen the image by this amount after each diffusion scale (a value of 1.0 will leave the image unchanged, higher values will be sharper).')
     parser.add_argument("--device", type=str, default="cuda", help='Which device to use (e.g. "cpu" or "cuda:1")')
+    parser.add_argument("--number", type=int, default=1, help='How many images to render.')
     parser.add_argument("--out-dir", type=str, default="output/", help='Directory to save output images to.')
     args = parser.parse_args()
     # fmt:on
@@ -284,6 +306,5 @@ if __name__ == "__main__":
     out_dir = args.out_dir
     del args.out_dir
 
-    img = image_sample(**vars(args))
-
-    save_image(img, f"{out_dir}/{out_name}.png")
+    for i, img in enumerate(image_sample(**vars(args))):
+        save_image(img, f"{out_dir}/{out_name}{i}.png")

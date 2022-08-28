@@ -8,7 +8,6 @@ from huggingface_hub import hf_hub_download
 from omegaconf import OmegaConf
 from torch import autocast
 
-from ...grad import LatentSSIMGrads
 from ...prompt import TextPrompt
 from .base import BaseDiffusionProcessor
 from .latent import LatentDiffusion, load_model_from_config
@@ -16,8 +15,8 @@ from .latent import LatentDiffusion, load_model_from_config
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/k_diffusion")
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/stable_diffusion")
 from ...submodules.k_diffusion import k_diffusion
-from ...submodules.latent_diffusion.ldm.models.diffusion.ddim import DDIMSampler
-from ...submodules.latent_diffusion.ldm.models.diffusion.plms import PLMSSampler
+from ...submodules.stable_diffusion.ldm.models.diffusion.ddim import DDIMSampler
+from ...submodules.stable_diffusion.ldm.models.diffusion.plms import PLMSSampler
 
 
 def get_model(checkpoint):
@@ -68,9 +67,8 @@ class StableDiffusion(LatentDiffusion):
     ):
         super(BaseDiffusionProcessor, self).__init__()
 
-        self.model = get_model(model_checkpoint)
+        self.model = get_model(model_checkpoint).half()
         self.image_size = self.model.image_size * 8
-        # grad_modules += [LatentSSIMGrads(1000, self.model)]
 
         self.conditioning = StableConditioning(self.model)
         self.cfg_scale = cfg_scale
@@ -92,16 +90,18 @@ class StableDiffusion(LatentDiffusion):
             self.original_num_steps = len(self.model.alphas_cumprod)
             self.model_fn = partial(cfg_forward, model=self.model_wrap)
 
-            self.grad_modules = [gm for gm in grad_modules if gm.scale != 0]
+            self.grad_modules = [gm.to(device) for gm in grad_modules if gm.scale != 0]
             if len(self.grad_modules) > 0:
 
                 def cond_fn(x, t, denoised, **kwargs):
-                    grad = torch.zeros_like(x)
-                    for gm in self.grad_modules:
-                        grad -= gm(denoised, t)
+                    img = self.model.differentiable_decode_first_stage(denoised)
+                    img_grad = torch.zeros_like(img)
+                    for grad_mod in self.grad_modules:
+                        img_grad += grad_mod(img, t)
+                    grad = -torch.autograd.grad(img, x, img_grad)[0]
                     return grad
 
-                self.model_fn = make_conditional(self.model_fn, cond_fn)
+                self.model_fn = conditioning_wrapper(self.model_fn, cond_fn)
 
         self.device = device
         self.model = self.model.to(device)
@@ -153,7 +153,7 @@ def cfg_forward(x, sigma, uncond, cond, cond_scale, model):
     return uncond + (cond - uncond) * cond_scale
 
 
-def make_conditional(model, cond_fn):
+def conditioning_wrapper(model, cond_fn):
     def model_fn(x, sigma, **kwargs):
         with torch.enable_grad():
             x = x.detach().requires_grad_()

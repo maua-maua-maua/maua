@@ -116,8 +116,6 @@ setup(
         "flow": ["mmflow", "mmcv-full"],
         "diffusion": [
             "basicsr",
-            "clip",
-            "cv2",
             "decord",
             "easydict",
             "einops",
@@ -132,6 +130,7 @@ setup(
             "npy_append_array",
             "numpy",
             "omegaconf",
+            "opencv-python",
             "PIL",
             "pytorch_msssim",
             "py7zr",

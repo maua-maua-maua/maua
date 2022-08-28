@@ -97,10 +97,10 @@ class CLIPGrads(GradModule):
     def __init__(
         self,
         scale=1,
-        perceptors=["ViT-B/32", "ViT-B/16", "RN50"],
+        perceptors=["ViT-B/16"],
         cutouts="maua",
-        cutout_kwargs=dict(cutn=16),
-        cutout_batches=4,
+        cutout_kwargs=dict(cutn=32),
+        cutout_batches=8,
         clamp_gradient=None,
     ):
         super().__init__(scale)
