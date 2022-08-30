@@ -118,7 +118,7 @@ def get_diffusion_model(
             )
         except:
             traceback.print_exc()
-        raise Exception("Diffusion model not recognized!")
+            raise Exception("Diffusion model not recognized!")
     return diffusion
 
 
