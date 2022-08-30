@@ -298,4 +298,4 @@ if __name__ == "__main__":
     del args.out_dir
 
     for i, img in enumerate(image_sample(**vars(args))):
-        save_image(img, f"{out_dir}/{out_name}{i}.png")
+        save_image(img, f"{out_dir}/{Path(args.diffusion).stem}_{out_name}{i}.png")

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import torch
 
 torch.cuda.is_available()
@@ -375,4 +377,4 @@ if __name__ == "__main__":
 
     video = video_sample(**vars(args))
 
-    write_video(video, f"output/{out_name}.mp4", fps=fps)
+    write_video(video, f"output/{Path(args.diffusion).stem}_{out_name}.mp4", fps=fps)
