@@ -9,6 +9,7 @@ from omegaconf import OmegaConf
 from torch import autocast
 
 from ...prompt import TextPrompt
+from ...utility import download
 from .base import BaseDiffusionProcessor
 from .latent import LatentDiffusion, load_model_from_config
 
@@ -24,9 +25,9 @@ def get_model(checkpoint):
         os.path.abspath(os.path.dirname(__file__))
         + "/../../submodules/stable_diffusion/configs/stable-diffusion/v1-inference.yaml"
     )
-    if checkpoint in ["1.1", "1.2", "1.3", "1.4"]:
-        version = checkpoint.replace(".", "-")
-        ckpt = f"modelzoo/stable-diffusion-v{version}.ckpt"
+    version = checkpoint.replace(".", "-")
+    ckpt = f"modelzoo/stable-diffusion-v{version}.ckpt"
+    if checkpoint in ["1.1", "1.2", "1.3"]:
         if not os.path.exists(ckpt):
             hf_hub_download(
                 repo_id=f"CompVis/stable-diffusion-v-{version}-original",
@@ -35,6 +36,9 @@ def get_model(checkpoint):
                 force_filename=f"stable-diffusion-v{version}.ckpt",
                 use_auth_token=True,
             )
+    elif checkpoint == "1.4":
+        if not os.path.exists(ckpt):
+            download("https://bearsharktopus.b-cdn.net/drilbot_pics/sd-v1-4.ckpt", ckpt)
     else:
         ckpt = checkpoint
     return load_model_from_config(OmegaConf.load(config), ckpt)
