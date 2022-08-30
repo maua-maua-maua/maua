@@ -19,7 +19,7 @@ def flow_warp_map(flow: torch.Tensor) -> torch.Tensor:
     flow[..., 0] /= w
     flow[..., 1] /= h
     global NEUTRAL
-    if NEUTRAL is None:
+    if NEUTRAL is None or (NEUTRAL.shape[1], NEUTRAL.shape[2]) != (h, w):
         NEUTRAL = (
             torch.stack(torch.meshgrid(torch.linspace(-1, 1, w), torch.linspace(-1, 1, h), indexing="xy"), axis=2)
             .unsqueeze(0)

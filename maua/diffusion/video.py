@@ -95,23 +95,23 @@ class MemoryMappedFrames(Dataset):
 
 def initialize_cache_files(names, out_name, length, height, width, device):
     caches = {}
-    for cache_file in names:
-        filename = f"workspace/{out_name}_{cache_file}.npy"
+    for name in names:
+        filename = f"workspace/{out_name}_{name}.npy"
         reuse = False
 
         if os.path.exists(filename):
             arr = np.load(filename, mmap_mode="r")
             reuse = (
                 arr.shape[0] == length
-                and arr.shape[2 if cache_file == "consistency" else 1] == height
-                and arr.shape[3 if cache_file == "consistency" else 2] == width
+                and arr.shape[2 if name == "consistency" else 1] == height
+                and arr.shape[3 if name == "consistency" else 2] == width
             )
             if reuse:
-                print(f"{cache_file} cache seems valid, reusing...")
+                print(f"{name} cache seems valid, reusing...")
             else:
                 os.remove(filename)
 
-        caches[cache_file] = MemoryMappedFrames(filename, height, width, device, load=reuse)
+        caches[name] = MemoryMappedFrames(filename, height, width, device, load=reuse)
 
     return easydict.EasyDict(caches)
 
@@ -183,8 +183,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         initialize_optical_flow(cache, frames)
 
         try:
-            # magical exponential which gives a nice fade out (decays to ~3% after wrap_around steps)
-            fade = 1 - 3 * wrap_around ** (1 / (100 * wrap_around)) / wrap_around
+            fade = torch.sqrt(torch.linspace(1, 0, wrap_around)).reshape(-1, 1, 1, 1).to(device)
 
             f_start = len(cache.out)  # TODO resume cancelled stylization?
             with cache.out:
@@ -221,10 +220,8 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
                         init_img /= 1 + flow_mask
 
                     if f_n / N >= 1:
-                        last_round = torch.from_numpy(np.load(cache.out.file, mmap_mode="r")[f_n % N].copy()).to(
-                            init_img
-                        )
-                        init_img = fade * init_img + (1 - fade) * last_round
+                        last_round = torch.from_numpy(np.load(cache.out.file, mmap_mode="r")[f_n % N].copy()).to(device)
+                        init_img = fade[[f_n % N]] * init_img + (1 - fade[[f_n % N]]) * last_round
 
                     if pre_hook:
                         init_img = pre_hook(init_img)

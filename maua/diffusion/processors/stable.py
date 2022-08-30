@@ -63,11 +63,11 @@ class StableDiffusion(LatentDiffusion):
         timesteps=100,
         model_checkpoint="1.4",
         ddim_eta=0,
-        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+        device="cuda" if torch.cuda.is_available() else "cpu",
     ):
         super(BaseDiffusionProcessor, self).__init__()
 
-        self.model = get_model(model_checkpoint).half()
+        self.model = get_model(model_checkpoint)
         self.image_size = self.model.image_size * 8
 
         self.conditioning = StableConditioning(self.model)
@@ -122,7 +122,7 @@ class StableDiffusion(LatentDiffusion):
         [gm.set_targets(prompts) for gm in self.grad_modules]
         cond, uncond = self.conditioning(prompts)
 
-        with autocast("cuda"), self.model.ema_scope():
+        with autocast(self.device), self.model.ema_scope():
             if start_step > 0:
                 x = self.model.get_first_stage_encoding(self.model.encode_first_stage(img))
                 x += torch.randn_like(x) * self.sigmas[start_step]

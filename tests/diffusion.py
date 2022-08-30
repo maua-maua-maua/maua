@@ -43,6 +43,17 @@ def diffusion_model(request):
 # =====================================================================================================================
 
 
+@pytest.mark.parametrize("size", [(256, 256), (384, 128), (256, 432)], ids=lambda x: "x".join([str(sz) for sz in x]))
+def test_video_sizes(diffusion_model, size):
+    video_sample(
+        diffusion=diffusion_model,
+        init="/home/hans/datasets/video/dreams24.mp4",
+        text="beautiful rainforest leaves with silver veins, digital art",
+        size=size,
+        timesteps=5,
+    )
+
+
 def test_video_init(diffusion_model):
     video_sample(
         diffusion=diffusion_model,
@@ -94,10 +105,8 @@ def test_samplers(diffusion_model, sampler):
     )
 
 
-@pytest.mark.parametrize(
-    "sampler", ["ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms"]
-)
-def test_stable_samplers(sampler):
+@pytest.mark.parametrize("sampler", ["euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms"])
+def test_k_diffusion_samplers(sampler):
     image_sample(
         text="beautiful rainforest leaves with silver veins, digital art",
         diffusion="stable",

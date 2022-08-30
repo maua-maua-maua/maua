@@ -40,7 +40,6 @@ def get_prediction_fn(which, use_training_size=False):
         del sys.argv[1:]
         from ..submodules.unflow.run import estimate as unflow
 
-        del sys.path[-1]
         torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away
 
         if use_training_size:
@@ -54,7 +53,6 @@ def get_prediction_fn(which, use_training_size=False):
         del sys.argv[1:]
         from ..submodules.pwc.run import estimate as pwc
 
-        del sys.path[-1]
         torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away
 
         if use_training_size:
@@ -81,7 +79,6 @@ def get_prediction_fn(which, use_training_size=False):
         del sys.argv[1:]
         from ..submodules.liteflownet.run import estimate as liteflownet
 
-        del sys.path[-1]
         torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away
 
         if use_training_size:

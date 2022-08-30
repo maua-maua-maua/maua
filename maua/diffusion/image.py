@@ -83,6 +83,9 @@ def get_diffusion_model(
     color_match_scale: float = 0.0,
     cfg_scale: float = 5.0,
 ):
+    if isinstance(diffusion, BaseDiffusionProcessor):
+        return diffusion
+
     grad_modules = (
         ([CLIPGrads(scale=clip_scale)] if clip_scale > 0 else [])
         + ([LPIPSGrads(scale=lpips_scale)] if lpips_scale > 0 else [])
@@ -106,7 +109,7 @@ def get_diffusion_model(
         diffusion = GLID3XL(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
     else:
         try:
-            diffusion = StableDiffusion(
+            diffusion = StableDiffusion(  # TODO try to init all diffusion types
                 grad_modules=grad_modules,
                 model_checkpoint=diffusion,
                 cfg_scale=cfg_scale,
@@ -115,7 +118,7 @@ def get_diffusion_model(
             )
         except:
             traceback.print_exc()
-        assert isinstance(diffusion, BaseDiffusionProcessor)
+        raise Exception("Diffusion model not recognized!")
     return diffusion
 
 
@@ -238,24 +241,9 @@ def image_sample(
     assert len(sizes) == len(skips), "`sizes` and `skips` must have equal length!"
     schedule = {shape: skip for shape, skip in zip(sizes, skips)}
 
-    if number > 1:
-        for _ in range(number):
-            yield MultiResolutionDiffusionProcessor()(
-                diffusion=diffusion.to(device),
-                init=init,
-                text=text,
-                content=content,
-                style=style,
-                schedule=schedule,
-                pre_hook=pre_hook,
-                post_hook=post_hook,
-                super_res_model=super_res,
-                tile_size=tile_size,
-                stitch=stitch,
-                max_batch=max_batch,
-            )
-    else:
-        return MultiResolutionDiffusionProcessor()(
+    processor = MultiResolutionDiffusionProcessor()
+    imgs = [
+        processor(
             diffusion=diffusion.to(device),
             init=init,
             text=text,
@@ -269,6 +257,9 @@ def image_sample(
             stitch=stitch,
             max_batch=max_batch,
         )
+        for _ in range(number)
+    ]
+    return imgs[0] if len(imgs) == 1 else imgs
 
 
 if __name__ == "__main__":
