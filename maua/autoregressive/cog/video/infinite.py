@@ -162,26 +162,6 @@ def sample_token_sequence(
     limited_spatial_channel_mem=False,  # 空间通道的存储限制在本帧内
     **kw_args,
 ):
-    batch_size = 1
-    print(
-        f"{seq=}",
-        f"{get_masks_and_position_ids=}",
-        f"{text_len=}",
-        f"{num_layers=}",
-        f"{hidden_size=}",
-        f"{keep_mem_buffers=}",
-        f"{strategy=}",
-        f"{strategy2=}",
-        f"{mems=}",
-        f"{log_text_attention_weights=}",
-        f"{mode_stage1=}",
-        f"{enforce_no_swin=}",
-        f"{guide_seq=}",
-        f"{guide_text_len=}",
-        f"{guidance_alpha=}",
-        f"{limited_spatial_channel_mem=}",
-        f"{kw_args=}",
-    )
     """
     seq: [2, 3, 5, ..., -1(to be generated), -1, ...]
     mems: [num_layers, batch_size, len_mems(index), mem_hidden_size]
@@ -189,6 +169,7 @@ def sample_token_sequence(
         mems are the first-level citizens here, but we don't assume what is memorized.
         input mems are used when multi-phase generation.
     """
+    batch_size = 1
     # building the initial tokens, attention_mask, and position_ids
     actual_context_length = 0
 
@@ -561,7 +542,7 @@ def process_stage1(
             num_layers=num_layers,
             hidden_size=hidden_size,
             keep_mem_buffers=keep_mem_buffers,
-        )[None, None, text_len_1st + 1 : text_len_1st + 401]
+        )[:, None, text_len_1st + 1 : text_len_1st + 401]
     else:
         given_tokens = tokenizer.encode(image_pil=image_prompt, image_size=160).unsqueeze(1)
     # given_tokens.shape: [bs, frame_num, 400]
@@ -649,66 +630,85 @@ def process_stage2(
     model = model.cuda()
 
     # CogVideo Stage2 Generation
-    while duration >= 0.5:  # TODO: You can change the boundary to change the frame rate
-        enc_text = tokenizer.encode(seq_text)
-        enc_duration = tokenizer.encode(str(float(duration)) + "秒")
-        seq = enc_duration + [tokenizer["<n>"]] + enc_text + [tokenizer["<start_of_image>"]] + [-1] * 400 * FN
-        text_len = len(seq) - FL * FN - 1
-        seq[text_len + 1 : text_len + 1 + 400] = parent_tokens[0][0]
-        seq[text_len + 1 + 400 : text_len + 1 + 800] = parent_tokens[0][1]
-        seq[text_len + 1 + 800 : text_len + 1 + 1200] = parent_tokens[0][2]
-        seq = torch.cuda.LongTensor(seq, device=device).unsqueeze(0)
+    with tqdm(total=14, desc="Interpolating frames...") as progress:
+        while duration >= 0.5:  # TODO: You can change the boundary to change the frame rate
+            num_samples, num_frames, _ = parent_tokens.shape
+            num_new_frames = (num_frames - 1) // 2
+            total_frames = num_new_frames * num_samples
 
-        if use_guidance_stage2:
-            guide_seq = (
-                enc_duration
-                + [tokenizer["<n>"]]
-                + tokenizer.encode(video_guidance_text)
-                + [tokenizer["<start_of_image>"]]
-                + [-1] * 400 * FN
-            )
-            guide_text_len = len(guide_seq) - FL * FN - 1
-            guide_seq[guide_text_len + 1 : guide_text_len + 1 + 400] = parent_tokens[0][0]
-            guide_seq[guide_text_len + 1 + 400 : guide_text_len + 1 + 800] = parent_tokens[0][1]
-            guide_seq[guide_text_len + 1 + 800 : guide_text_len + 1 + 1200] = parent_tokens[0][2]
-            guide_seq = torch.cuda.LongTensor(guide_seq, device=device).unsqueeze(0)
-            video_log_text_attention_weights = 0
-        else:
-            guide_seq = None
-            guide_text_len = 0
-            video_log_text_attention_weights = 1.4
+            enc_text = tokenizer.encode(seq_text)
+            enc_duration = tokenizer.encode(str(float(duration)) + "秒")
+            seq = enc_duration + [tokenizer["<n>"]] + enc_text + [tokenizer["<start_of_image>"]] + [-1] * 400 * FN
+            tl = text_len = len(seq) - FL * FN - 1
 
-        print("myfillseq", duration)
-        output_tokens = sample_token_sequence(
-            model,
-            seq.clone(),
-            get_masks_and_position_ids=get_masks_and_position_ids_stage2,
-            text_len=text_len,
-            strategy=strategy_cogview2,
-            strategy2=strategy_cogvideo,
-            log_text_attention_weights=video_log_text_attention_weights,
-            mode_stage1=False,
-            guide_seq=guide_seq.clone() if guide_seq is not None else None,
-            guide_text_len=guide_text_len,
-            guidance_alpha=guidance_alpha,
-            limited_spatial_channel_mem=True,
-            num_layers=num_layers,
-            hidden_size=hidden_size,
-            keep_mem_buffers=keep_mem_buffers,
-        )
-        output_tokens = output_tokens[:, text_len + 1 : text_len + 1 + FN * 400].reshape(1, -1, 400 * FN)
-        output_tokens_merge = torch.cat(
-            (
-                output_tokens[:, :, : 1 * 400],
-                output_tokens[:, :, 400 * 3 : 4 * 400],
-                output_tokens[:, :, 400 * 1 : 2 * 400],
-                output_tokens[:, :, 400 * 4 : FN * 400],
-            ),
-            dim=2,
-        ).reshape(1, -1, 400)
-        output_tokens_merge = torch.cat((output_tokens_merge, output_tokens[:, -1:, 400 * 2 : 3 * 400]), dim=1)
-        duration /= 2
-        parent_tokens = output_tokens_merge
+            # generation
+            seq = torch.cuda.LongTensor(seq, device=device).unsqueeze(0).repeat(total_frames, 1)
+            for sample_i in range(num_samples):
+                for i in range(num_new_frames):
+                    seq[sample_i * num_new_frames + i, tl + 1 : tl + 1 + 400] = parent_tokens[sample_i, 2 * i]
+                    seq[sample_i * num_new_frames + i, tl + 1 + 400 : tl + 1 + 800] = parent_tokens[sample_i, 2 * i + 1]
+                    seq[sample_i * num_new_frames + i, tl + 1 + 800 : tl + 1 + 1200] = parent_tokens[
+                        sample_i, 2 * i + 2
+                    ]
+
+            if use_guidance_stage2:
+                guide_seq = (
+                    enc_duration
+                    + [tokenizer["<n>"]]
+                    + tokenizer.encode(video_guidance_text)
+                    + [tokenizer["<start_of_image>"]]
+                    + [-1] * 400 * FN
+                )
+                gtl = guide_text_len = len(guide_seq) - FL * FN - 1
+                guide_seq = torch.cuda.LongTensor(guide_seq, device=device).unsqueeze(0).repeat(total_frames, 1)
+                for f in range(num_frames):
+                    for i in range(num_new_frames):
+                        guide_seq[f * num_new_frames + i][gtl + 1 : gtl + 1 + 400] = parent_tokens[f][2 * i]
+                        guide_seq[f * num_new_frames + i][gtl + 1 + 400 : gtl + 1 + 800] = parent_tokens[f][2 * i + 1]
+                        guide_seq[f * num_new_frames + i][gtl + 1 + 800 : gtl + 1 + 1200] = parent_tokens[f][2 * i + 2]
+                video_log_text_attention_weights = 0
+            else:
+                guide_seq = None
+                gtl = guide_text_len = 0
+                video_log_text_attention_weights = 1.4
+
+            output_list = []
+
+            for f in range(total_frames):
+                output_list.append(
+                    sample_token_sequence(
+                        model,
+                        seq[[f]].clone(),
+                        get_masks_and_position_ids=get_masks_and_position_ids_stage2,
+                        text_len=tl,
+                        strategy=strategy_cogview2,
+                        strategy2=strategy_cogvideo,
+                        log_text_attention_weights=video_log_text_attention_weights,
+                        mode_stage1=False,
+                        guide_seq=guide_seq[[f]].clone() if guide_seq is not None else None,
+                        guide_text_len=guide_text_len,
+                        guidance_alpha=guidance_alpha,
+                        limited_spatial_channel_mem=True,
+                        num_layers=num_layers,
+                        hidden_size=hidden_size,
+                        keep_mem_buffers=keep_mem_buffers,
+                    )
+                )
+                progress.update()
+            output_tokens = torch.cat(output_list, dim=0)
+            output_tokens = output_tokens[:, tl + 1 : tl + 1 + FN * 400].reshape(1, -1, 400 * FN)
+            output_tokens_merge = torch.cat(
+                (
+                    output_tokens[:, :, :400],
+                    output_tokens[:, :, 400 * 3 : 4 * 400],
+                    output_tokens[:, :, 400 : 2 * 400],
+                    output_tokens[:, :, 400 * 4 : FN * 400],
+                ),
+                dim=2,
+            ).reshape(1, -1, 400)
+            output_tokens_merge = torch.cat((output_tokens_merge, output_tokens[:, -1:, 400 * 2 : 3 * 400]), dim=1)
+            duration /= 2
+            parent_tokens = output_tokens_merge
 
     model = model.cpu()
     torch.cuda.empty_cache()
@@ -722,20 +722,21 @@ def process_stage2(
 
     # direct super-resolution by CogView2
     enc_text = tokenizer.encode(seq_text)
-    frame_num_per_sample = parent_tokens.shape[1]
     parent_tokens_2d = parent_tokens.reshape(-1, 400)
     text_seq = torch.cuda.LongTensor(enc_text, device=device).unsqueeze(0).repeat(parent_tokens_2d.shape[0], 1)
     sred_tokens = dsr(text_seq, parent_tokens_2d)
-    print(len(sred_tokens), len(sred_tokens[0]))
 
-    decoded_sr_imgs = []
-    for frame_i in range(frame_num_per_sample):
-        decoded_sr_img = tokenizer.decode(image_ids=sred_tokens[frame_i + frame_num_per_sample][-3600:])
-        decoded_sr_imgs.append(torch.nn.functional.interpolate(decoded_sr_img, size=(480, 480)))
-    return decoded_sr_imgs
+    decoded_sr_videos = []
+    for sample_i in range(parent_tokens.shape[0]):
+        decoded_sr_imgs = []
+        for f in range(num_frames):
+            decoded_sr_img = tokenizer.decode(image_ids=sred_tokens[f + sample_i * num_frames][-3600:])
+            decoded_sr_imgs.append(torch.nn.functional.interpolate(decoded_sr_img, size=(480, 480)))
+        decoded_sr_videos.append(decoded_sr_imgs)
+    return decoded_sr_videos
 
 
-class InferenceModel_Sequential(CogVideoCacheModel):
+class CogVideoStage1(CogVideoCacheModel):
     def __init__(self, args, transformer=None, parallel_output=True):
         super().__init__(
             args, transformer=transformer, parallel_output=parallel_output, window_size=-1, cogvideo_stage=1
@@ -749,7 +750,7 @@ class InferenceModel_Sequential(CogVideoCacheModel):
         return logits_parallel
 
 
-class InferenceModel_Interpolate(CogVideoCacheModel):
+class CogVideoStage2(CogVideoCacheModel):
     def __init__(self, args, transformer=None, parallel_output=True):
         super().__init__(
             args, transformer=transformer, parallel_output=parallel_output, window_size=10, cogvideo_stage=2
@@ -795,6 +796,38 @@ BIG_CONF = dict(
     **SHARED_CONF,
 )
 
+# text_len=15
+# num_layers=24
+# hidden_size=1024
+# keep_mem_buffers=True
+# strategy=<coglm_strategy.CoglmStrategy object at 0x7fb7f8bd0370>
+# strategy2=<coglm_strategy.CoglmStrategy object at 0x7fb7ba8b7b80>
+# mems=None
+# log_text_attention_weights=1.4
+# mode_stage1=True
+# enforce_no_swin=False
+# guide_seq=None
+# guide_text_len=8
+# guidance_alpha=3.0
+# limited_spatial_channel_mem=True
+# kw_args={}
+
+# text_len=15
+# num_layers=48
+# hidden_size=3072
+# keep_mem_buffers=True
+# strategy=<coglm_strategy.CoglmStrategy object at 0x7fb7f8bd0370>
+# strategy2=<coglm_strategy.CoglmStrategy object at 0x7fb7ba8b7b80>
+# mems=None
+# log_text_attention_weights=1.4
+# mode_stage1=False
+# enforce_no_swin=False
+# guide_seq=None
+# guide_text_len=0
+# guidance_alpha=3.0
+# limited_spatial_channel_mem=True
+# kw_args={}
+
 
 def main(
     output_path,
@@ -823,13 +856,13 @@ def main(
         text = translator.translate(text)
 
     if stage_1 or both_stages:
-        model_stage1, _ = InferenceModel_Sequential.from_pretrained(args=SEQ_CONF, name="cogvideo-stage1")
+        model_stage1, _ = CogVideoStage1.from_pretrained(args=SEQ_CONF, name="cogvideo-stage1")
         model_stage1.eval()
         if both_stages:
             model_stage1 = model_stage1.cpu()
 
     if stage_2 or both_stages:
-        model_stage2, _ = InferenceModel_Interpolate.from_pretrained(
+        model_stage2, _ = CogVideoStage2.from_pretrained(
             args=argparse.Namespace(model_class="CogVideoModel", **BIG_CONF),
             name="cogvideo-stage2",
         )
@@ -851,14 +884,12 @@ def main(
     for n in range(number):
         if keep_mem_buffers:
             torch.cuda.empty_cache()
-            tweak_mems_buffers = [
+            mem_dict["buffer"] = [
                 torch.zeros(48, 1, mem_len, 3072 * 2, dtype=next(model_stage2.parameters()).dtype, device=device)
                 for mem_len in [400 + 74, 5 * 400 + 74]
             ]
-            mem_dict["buffer"] = tweak_mems_buffers
             if use_guidance_stage1:
-                tweak_guide_mems_buffers = deepcopy(tweak_mems_buffers)
-                mem_dict["guide_buffer"] = tweak_guide_mems_buffers
+                mem_dict["guide_buffer"] = deepcopy(mem_dict["buffer"])
 
         if stage_1 or both_stages:
 
@@ -909,7 +940,7 @@ def main(
                 )
 
                 out_dir = path + "_stage2"
-                my_save_multiple_images(imgs, out_dir, subdir=f"frames/0", debug=False)
+                my_save_multiple_images(imgs[0], out_dir, subdir=f"frames/0", debug=False)
                 os.system(f"gifmaker -i '{out_dir}'/frames/0/0*.jpg -o '{out_dir}/0.gif' -d 0.125")
 
         elif stage_2:
@@ -935,7 +966,7 @@ def main(
                     video_guidance_text="视频",
                 )
                 out_dir = path + "_stage2"
-                my_save_multiple_images(imgs, out_dir, subdir=f"frames/0", debug=False)
+                my_save_multiple_images(imgs[0], out_dir, subdir=f"frames/0", debug=False)
                 os.system(f"gifmaker -i '{out_dir}'/frames/0/0*.jpg -o '{out_dir}/0.gif' -d 0.125")
 
 
