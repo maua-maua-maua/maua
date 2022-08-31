@@ -67,3 +67,20 @@ python -m maua.diffusion.video \
 ```
 
 More advanced tutorials will be added soon.
+
+## Fine-tuning Stable Diffusion
+
+Requires 24 GB of VRAM at the moment :/
+
+Currently only supports fine-tuning on a directory of images.
+This has the effect of making all generated images tend towards the style of the supplied images.
+
+The checkpoints that are saved by this script are compatible with the above scripts.
+
+```bash
+python -m maua.diffusion.finetune_stable \
+    --datadir /path/to/images/folder/ \
+    --resume modelzoo/stable-diffusion-v1-4.ckpt \
+    --logdir modelzoo/ \
+    --gpus 0,
+```
