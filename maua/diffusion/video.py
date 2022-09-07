@@ -28,7 +28,7 @@ from ..flow import get_flow_model
 from ..flow.lib import flow_warp_map, get_consistency_map
 from ..ops.image import match_histogram, sharpen
 from ..ops.video import write_video
-from ..prompt import ContentPrompt, StylePrompt, TextPrompt
+from ..prompt import ContentPrompt, ImagePrompt, StylePrompt, TextPrompt
 from ..utility import seed_everything
 from .image import build_output_name, get_diffusion_model, round64, width_height
 from .processors.base import BaseDiffusionProcessor
@@ -149,6 +149,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         size: Tuple[int] = (256, 256),
         timesteps: int = 100,
         first_skip: float = 0.4,
+        first_frame_init: str = None,
         skip: float = 0.7,
         blend: float = 2,
         consistency_trust: float = 0.75,
@@ -171,6 +172,12 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         frames = VideoFrames(init, height, width, device)
         N = len(frames)
 
+        if first_frame_init is not None:
+            out_img = ImagePrompt(path=first_frame_init).img.to(device)
+            hist_img = out_img.clone()
+        else:
+            out_img = None
+
         # initialize cache files
         cache = initialize_cache_files(
             names=["out", "flow", "reverse", "consistency"],
@@ -189,7 +196,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
 
             f_start = len(cache.out)  # TODO resume cancelled stylization?
             with cache.out:
-                for f_n in trange(f_start, N + wrap_around):
+                for f_n in trange(f_start + (1 if out_img is not None else 0), N + wrap_around):
 
                     if constant_seed:
                         seed_everything(constant_seed)
@@ -269,6 +276,7 @@ def video_sample(
     size: Tuple[int] = (256, 256),
     timesteps: int = 50,
     first_skip: float = 0.4,
+    first_frame_init: str = None,
     skip: float = 0.7,
     blend: float = 2,
     consistency_trust: float = 0.75,
@@ -319,6 +327,7 @@ def video_sample(
         size=size,
         timesteps=timesteps,
         first_skip=first_skip,
+        first_frame_init=first_frame_init,
         skip=skip,
         blend=blend,
         consistency_trust=consistency_trust,
@@ -345,6 +354,7 @@ if __name__ == "__main__":
     parser.add_argument("--size", type=width_height, default=(512, 512), help='Size to synthesize the video at.')
     parser.add_argument("--skip", type=float, default=0.85, help='Lower fractions will stray further from the original image, while higher fractions will hallucinate less detail.')
     parser.add_argument("--first-skip", type=float, default=0.4, help='Separate skip fraction for the first frame.')
+    parser.add_argument("--first-frame-init", type=str, default=None, help='Image file to initialize the first frame with (will over-rule --first-skip).')
     parser.add_argument("--timesteps", type=int, default=50, help='Number of timesteps to sample the diffusion process at. Higher values will take longer but are generally of higher quality.')
     parser.add_argument("--blend", type=float, default=2, help='Factor with which to blend previous frames into the next frame. Higher values will stay more consistent over time (e.g. --blend 20 means 20:1 ratio of warped previous frame to new input frame).')
     parser.add_argument("--consistency-trust", type=float, default=0.75, help='How strongly to trust flow consistency mask. Lower values will lead to more consistency over time. Higher values will respect occlusions of the background more.')
