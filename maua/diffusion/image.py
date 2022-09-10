@@ -1,3 +1,4 @@
+import gc
 import traceback
 from functools import partial
 from pathlib import Path
@@ -6,7 +7,6 @@ from uuid import uuid4
 
 import numpy as np
 import torch
-from maua.diffusion.processors.base import BaseDiffusionProcessor
 from PIL import Image
 from resize_right import resize
 from resize_right.interp_methods import lanczos3
@@ -17,7 +17,7 @@ from ..grad import CLIPGrads, ColorMatchGrads, LPIPSGrads, VGGGrads
 from ..ops.image import destitch, match_histogram, restitch, sharpen
 from ..ops.io import save_image
 from ..ops.noise import create_perlin_noise
-from ..prompt import ContentPrompt, StylePrompt, TextPrompt
+from ..prompt import ContentPrompt, ImagePrompt, StylePrompt, TextPrompt
 from ..super.image.single import upscale_image
 from .processors.base import BaseDiffusionProcessor
 from .processors.glid3xl import GLID3XL
@@ -33,13 +33,15 @@ def round64(x):
 
 def width_height(arg: str):
     w, h = arg.split(",")
-    return int(w), int(h)
+    return int(h), int(w)
 
 
-def build_output_name(init=None, style=None, text=None, unique=True):
+def build_output_name(init=None, style=None, text=None, image=None, unique=True):
     out_name = str(uuid4())[:6] if unique else "video"
     if text is not None:
         out_name = f"{text.replace(' ','_')}_{out_name}"
+    if image is not None:
+        out_name = f"{Path(image).stem}_{out_name}"
     if style is not None:
         out_name = f"{Path(style).stem}_{out_name}"
     if init is not None:
@@ -82,6 +84,7 @@ def get_diffusion_model(
     style_scale: float = 0.0,
     color_match_scale: float = 0.0,
     cfg_scale: float = 5.0,
+    image: Optional[str] = None,
 ):
     if isinstance(diffusion, BaseDiffusionProcessor):
         return diffusion
@@ -101,7 +104,11 @@ def get_diffusion_model(
         diffusion = LatentDiffusion(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
     elif diffusion == "stable":
         diffusion = StableDiffusion(
-            grad_modules=grad_modules, cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps
+            grad_modules=grad_modules,
+            cfg_scale=cfg_scale,
+            sampler=sampler,
+            timesteps=timesteps,
+            model_checkpoint="1.4" if image is None else "pinkney",
         )
     elif diffusion == "glide":
         diffusion = GLIDE(cfg_scale=cfg_scale, sampler=sampler, timesteps=timesteps)
@@ -128,6 +135,7 @@ class MultiResolutionDiffusionProcessor(torch.nn.Module):
         diffusion: BaseDiffusionProcessor,
         init: str,
         text: Optional[str] = None,
+        image: Optional[str] = None,
         content: Optional[str] = None,
         style: Optional[str] = None,
         schedule: Dict[Tuple[int, int], float] = {(512, 512), 0.5},
@@ -159,7 +167,14 @@ class MultiResolutionDiffusionProcessor(torch.nn.Module):
             if scale != 0:
                 # maybe upsample image with super-resolution model
                 if super_res_model:
-                    img = upscale_image(img.add(1).div(2), model_name=super_res_model).mul(2).sub(1)
+                    try:
+                        img = upscale_image(img.add(1).div(2), model_name=super_res_model).mul(2).sub(1)
+                    except RuntimeError as e:
+                        if "out of memory" in str(e):
+                            gc.collect()
+                            torch.cuda.empty_cache()
+                        else:
+                            raise
 
                 # resize image for next scale
                 img = resize(img, out_shape=shapes[scale], interp_method=lanczos3).cpu()
@@ -173,11 +188,13 @@ class MultiResolutionDiffusionProcessor(torch.nn.Module):
                 img = destitch(img, tile_size=tile_size)
 
             # initialize prompts for diffusion (we don't support stitched content yet)
-            prompts = [ContentPrompt(**content).to(img)] if not needs_stitching else []
-            if text is not None:
-                prompts.append(TextPrompt(text))
+            prompts = [ContentPrompt(**content)] if not needs_stitching else []
             if style is not None:
                 prompts.append(StylePrompt(path=style, size=shapes[scale]))
+            if text is not None:
+                prompts.append(TextPrompt(text))
+            if image is not None:
+                prompts.append(ImagePrompt(path=image))
 
             # run diffusion sampling (in multiple batches if necessary)
             dev = diffusion.device
@@ -200,7 +217,8 @@ class MultiResolutionDiffusionProcessor(torch.nn.Module):
 @torch.no_grad()
 def image_sample(
     init: str = "random",
-    text: str = None,
+    text: Optional[str] = None,
+    image: Optional[str] = None,
     content: Optional[str] = None,
     style: Optional[str] = None,
     sizes: List[Tuple[int, int]] = [(512, 512)],
@@ -233,6 +251,7 @@ def image_sample(
         style_scale=style_scale,
         color_match_scale=color_match_scale,
         cfg_scale=cfg_scale,
+        image=image,
     )
 
     pre_hook = partial(match_histogram, source_tensor=StylePrompt(path=style).img) if match_hist else None
@@ -247,6 +266,7 @@ def image_sample(
             diffusion=diffusion.to(device),
             init=init,
             text=text,
+            image=image,
             content=content,
             style=style,
             schedule=schedule,
@@ -268,6 +288,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter, allow_abbrev=True)
     parser.add_argument("--init", type=str, default="random", help='How to initialize the image "random", "perlin", or a path to an image file.')
     parser.add_argument("--text", type=str, default=None, help='A text prompt to visualize.')
+    parser.add_argument("--image", type=str, default=None, help='An image prompt to use (overrides --text and uses Justin Pinkney\'s image conditioned Stable Diffusion model).')
     parser.add_argument("--content", type=str, default=None, help='A content image whose structure to adapt in the output image (only works with "guided" diffusion at the moment, see --lpips-scale).')
     parser.add_argument("--style", type=str, default=None, help='An image whose style should be optimized for in the output image (only works with "guided" diffusion at the moment, see --style-scale).')
     parser.add_argument("--sizes", type=width_height, nargs="+", default=[(512, 512)], help='Sequence of sizes to synthesize the image at.')
@@ -278,7 +299,7 @@ if __name__ == "__main__":
     parser.add_argument("--tile-size", type=int, default=None, help='The maximum size of tiles the image is cut into.')
     parser.add_argument("--max-batch", type=int, default=4, help='Maximum batch of tiles to synthesize at one time (lower values use less memory, but will be slower).')
     parser.add_argument("--diffusion", type=str, default="stable", help='Which diffusion model to use. Options: "guided", "latent", "glide", "glid3xl", "stable" or a /path/to/stable-diffusion.ckpt')
-    parser.add_argument("--sampler", type=str, default="dpm_2", choices=["p", "ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms"], help='Which sampling method to use. "p", "ddim", and "plms" work for all diffusion models, the rest are currently only supported with "stable" diffusion.')
+    parser.add_argument("--sampler", type=str, default="lms", choices=["p", "ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms"], help='Which sampling method to use. "p", "ddim", and "plms" work for all diffusion models, the rest are currently only supported with "stable" diffusion.')
     parser.add_argument("--guidance-speed", type=str, default="fast", choices=["regular", "fast"], help='How to perform "guided" diffusion. "regular" is slower but can be higher quality, "fast" corresponds to the secondary model method (a.k.a. Disco Diffusion).')
     parser.add_argument("--clip-scale", type=float, default=0.0, help='Controls strength of CLIP guidance when using "guided" diffusion.')
     parser.add_argument("--lpips-scale", type=float, default=0.0, help='Controls the apparent influence of the content image when using "guided" diffusion and a --content image.')
@@ -293,7 +314,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     # fmt:on
 
-    out_name = build_output_name(args.init, args.style, args.text)[:222]
+    out_name = build_output_name(args.init, args.style, args.text, args.image)[:222]
     out_dir = args.out_dir
     del args.out_dir
 

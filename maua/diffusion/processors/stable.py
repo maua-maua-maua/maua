@@ -1,14 +1,17 @@
+import math
 import os
 import sys
 from functools import partial
+from inspect import isfunction
 
 import numpy as np
 import torch
+from einops import rearrange
 from huggingface_hub import hf_hub_download
 from omegaconf import OmegaConf
-from torch import autocast
+from torch import autocast, einsum
 
-from ...prompt import TextPrompt
+from ...prompt import ImagePrompt, TextPrompt
 from ...utility import download
 from .base import BaseDiffusionProcessor
 from .latent import LatentDiffusion, load_model_from_config
@@ -18,6 +21,74 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodul
 from ...submodules.k_diffusion import k_diffusion
 from ...submodules.stable_diffusion.ldm.models.diffusion.ddim import DDIMSampler
 from ...submodules.stable_diffusion.ldm.models.diffusion.plms import PLMSSampler
+
+
+def default(val, d):
+    if val is not None:
+        return val
+    return d() if isfunction(d) else d
+
+
+def sliced_cross_attention(x, context=None, mask=None, self=None):
+    h = self.heads
+
+    q_in = self.to_q(x)
+    context = default(context, x)
+    k_in = self.to_k(context)
+    v_in = self.to_v(context)
+    del context, x
+
+    q, k, v = map(lambda t: rearrange(t, "b n (h d) -> (b h) n d", h=h), (q_in, k_in, v_in))
+    del q_in, k_in, v_in
+
+    r1 = torch.zeros(q.shape[0], q.shape[1], v.shape[2], device=q.device)
+
+    stats = torch.cuda.memory_stats(q.device)
+    mem_active = stats["active_bytes.all.current"]
+    mem_reserved = stats["reserved_bytes.all.current"]
+    mem_free_cuda, _ = torch.cuda.mem_get_info(torch.cuda.current_device())
+    mem_free_torch = mem_reserved - mem_active
+    mem_free_total = mem_free_cuda + mem_free_torch
+
+    gb = 1024**3
+    tensor_size = q.shape[0] * q.shape[1] * k.shape[1] * q.element_size()
+    modifier = 3 if q.element_size() == 2 else 2.5
+    mem_required = tensor_size * modifier
+    steps = 1
+
+    if mem_required > mem_free_total:
+        steps = 2 ** (math.ceil(math.log(mem_required / mem_free_total, 2)))
+
+    if steps > 64:
+        max_res = math.floor(math.sqrt(math.sqrt(mem_free_total / 2.5)) / 8) * 64
+        raise RuntimeError(
+            f"Not enough memory, use lower resolution (max approx. {max_res}x{max_res}). "
+            f"Need: {mem_required/64/gb:0.1f}GB free, Have:{mem_free_total/gb:0.1f}GB free"
+        )
+
+    slice_size = q.shape[1] // steps if (q.shape[1] % steps) == 0 else q.shape[1]
+    for i in range(0, q.shape[1], slice_size):
+        end = i + slice_size
+        s1 = einsum("b i d, b j d -> b i j", q[:, i:end], k) * self.scale
+
+        s2 = s1.softmax(dim=-1, dtype=q.dtype)
+        del s1
+
+        r1[:, i:end] = einsum("b i j, b j d -> b i d", s2, v)
+        del s2
+
+    del q, k, v
+
+    r2 = rearrange(r1, "(b h) n d -> b n (h d)", h=h)
+    del r1
+
+    return self.to_out(r2)
+
+
+def use_sliced_attention(module):
+    # don't use isinstance because CrossAttention could be from different implementations
+    if module.__class__.__name__ == "CrossAttention":
+        module.forward = partial(sliced_cross_attention, self=module)
 
 
 def get_model(checkpoint):
@@ -39,6 +110,20 @@ def get_model(checkpoint):
     elif checkpoint == "1.4":
         if not os.path.exists(ckpt):
             download("https://bearsharktopus.b-cdn.net/drilbot_pics/sd-v1-4.ckpt", ckpt)
+    elif checkpoint == "pinkney":
+        sys.path.insert(
+            0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/stable_diffusion_image_conditioned"
+        )
+        config = (
+            os.path.abspath(os.path.dirname(__file__))
+            + "/../../submodules/stable_diffusion_image_conditioned/configs/stable-diffusion/sd-image-condition-finetune.yaml"
+        )
+        ckpt = f"modelzoo/stable-diffusion-image-conditioned.ckpt"
+        if not os.path.exists(ckpt):
+            download(
+                "https://huggingface.co/lambdalabs/stable-diffusion-image-conditioned/resolve/main/sd-clip-vit-l14-img-embed_ema_only.ckpt",
+                ckpt,
+            )
     else:
         ckpt = checkpoint
     return load_model_from_config(OmegaConf.load(config), ckpt)
@@ -55,6 +140,10 @@ class StableConditioning(torch.nn.Module):
                 txt, _ = prompt()
                 conditioning = self.model.get_learned_conditioning([txt])
                 unconditional = self.model.get_learned_conditioning([""])
+            elif type(prompt) == ImagePrompt:
+                img, _ = prompt()
+                conditioning = self.model.get_learned_conditioning(img)
+                unconditional = torch.zeros_like(conditioning)
         return conditioning, unconditional
 
 
@@ -63,16 +152,20 @@ class StableDiffusion(LatentDiffusion):
         self,
         grad_modules=[],
         cfg_scale=7.5,
-        sampler="dpm_2",
+        sampler="euler_ancestral",
         timesteps=100,
         model_checkpoint="1.4",
         ddim_eta=0,
         device="cuda" if torch.cuda.is_available() else "cpu",
+        sliced_attention=True,
     ):
         super(BaseDiffusionProcessor, self).__init__()
 
         self.model = get_model(model_checkpoint)
         self.image_size = self.model.image_size * 8
+
+        if sliced_attention:
+            self.model.apply(use_sliced_attention)
 
         self.conditioning = StableConditioning(self.model)
         self.cfg_scale = cfg_scale

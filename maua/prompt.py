@@ -28,24 +28,23 @@ class ImagePrompt(torch.nn.Module):
             allowed_types = (str, Path)
             assert isinstance(path, allowed_types), f"path must be one of {allowed_types}"
             img = Image.open(fetch(path)).convert("RGB")
-            self.img = to_tensor(img).unsqueeze(0)
+            img = to_tensor(img).unsqueeze(0)
 
         elif img is not None:
             allowed_types = (Image.Image, torch.Tensor, np.ndarray)
             assert isinstance(img, allowed_types), f"img must be one of {allowed_types}"
             if isinstance(img, (Image.Image, np.ndarray)):
-                self.img = to_tensor(img).unsqueeze(0)
+                img = to_tensor(img).unsqueeze(0)
             else:
-                self.img = img
-                assert self.img.dim() == 4, "img must be of shape (B, C, H, W)"
+                assert img.dim() == 4, "img must be of shape (B, C, H, W)"
 
         else:
             raise Exception("path or img must be specified")
 
         if size is not None:
-            self.img = resample(self.img, min(size))
+            img = resample(img, min(size))
 
-        self.img = self.img.mul(2).sub(1)
+        self.register_buffer("img", img.mul(2).sub(1))
 
     def forward(self):
         return self.img, self.weight

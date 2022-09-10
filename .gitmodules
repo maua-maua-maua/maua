@@ -91,3 +91,6 @@
 [submodule "maua/submodules/k_diffusion"]
 	path = maua/submodules/k_diffusion
 	url = https://github.com/crowsonkb/k-diffusion
+[submodule "maua/submodules/stable_diffusion_image_conditioned"]
+	path = maua/submodules/stable_diffusion_image_conditioned
+	url = https://github.com/justinpinkney/stable-diffusion.git

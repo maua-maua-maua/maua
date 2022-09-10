@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import torch
 
 torch.cuda.is_available()
@@ -13,6 +11,8 @@ decord.bridge.set_bridge("torch")
 import os
 import shutil
 from functools import partial, reduce
+from glob import glob
+from pathlib import Path
 from typing import Callable, Optional, Tuple, Union
 
 import easydict
@@ -144,12 +144,13 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         self,
         diffusion: BaseDiffusionProcessor,
         init: str,
-        text: str = None,
-        style: str = None,
+        text: Optional[str] = None,
+        image: Optional[str] = None,
+        style: Optional[str] = None,
         size: Tuple[int] = (256, 256),
         timesteps: int = 100,
         first_skip: float = 0.4,
-        first_frame_init: str = None,
+        first_frame_init: Optional[str] = None,
         skip: float = 0.7,
         blend: float = 2,
         consistency_trust: float = 0.75,
@@ -164,7 +165,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         preview: bool = False,
     ):
         # process user inputs
-        width, height = [round64(s) for s in size]
+        height, width = [round64(s) for s in size]
         n_steps = round((1 - skip) * timesteps)
         first_steps = round((1 - first_skip) * timesteps)
 
@@ -207,10 +208,12 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
                         continue
 
                     prompts = [ContentPrompt(frames[f_n % N])]
-                    if text is not None:
-                        prompts.append(TextPrompt(text))
                     if style is not None:
                         prompts.append(StylePrompt(path=style, size=(height, width)))
+                    if text is not None:
+                        prompts.append(TextPrompt(text))
+                    if image is not None:
+                        prompts.append(ImagePrompt(path=image))
 
                     init_img = frames[f_n % N]
 
@@ -272,6 +275,7 @@ def video_sample(
     diffusion: Union[str, BaseDiffusionProcessor],
     init: str,
     text: Optional[str] = None,
+    image: Optional[str] = None,
     style: Optional[str] = None,
     size: Tuple[int] = (256, 256),
     timesteps: int = 50,
@@ -308,6 +312,7 @@ def video_sample(
         style_scale=style_scale,
         color_match_scale=color_match_scale,
         cfg_scale=cfg_scale,
+        image=image,
     )
 
     pre_hook = partial(match_histogram, source_tensor=StylePrompt(path=style).img) if match_hist else None
@@ -323,6 +328,7 @@ def video_sample(
         diffusion=diffusion,
         init=init,
         text=text,
+        image=image,
         style=style,
         size=size,
         timesteps=timesteps,
@@ -350,6 +356,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter, allow_abbrev=True)
     parser.add_argument("--init", type=str, default="random", help='How to initialize the image "random", "perlin", or a path to an image file.')
     parser.add_argument("--text", type=str, default=None, help='A text prompt to visualize.')
+    parser.add_argument("--image", type=str, default=None, help='An image prompt to use (overrides --text and uses Justin Pinkney\'s image conditioned Stable Diffusion model).')
     parser.add_argument("--style", type=str, default=None, help='An image whose style should be optimized for in the output image (only works with "guided" diffusion at the moment, see --style-scale).')
     parser.add_argument("--size", type=width_height, default=(512, 512), help='Size to synthesize the video at.')
     parser.add_argument("--skip", type=float, default=0.85, help='Lower fractions will stray further from the original image, while higher fractions will hallucinate less detail.')
@@ -381,7 +388,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     # fmt:on
 
-    out_name = build_output_name(args.init, args.style, args.text)[:222]
+    out_name = build_output_name(args.init, args.style, args.text, args.image)[:222]
     out_dir, fps = args.out_dir, args.fps
     del args.out_dir, args.fps
 
