@@ -24,6 +24,7 @@ class WriteWorker(Thread):
         audio_duration=None,
         ffmpeg_preset="slow",
         debug=False,
+        value_range=(0, 1),
     ):
         super().__init__()
         self.Q = input_queue
@@ -36,6 +37,7 @@ class WriteWorker(Thread):
         self.ffmpeg_preset = ffmpeg_preset
         self.debug = debug
         self.stopping = False
+        self.value_range = value_range
 
     def run(self):
         if self.audio_file is not None:
@@ -85,7 +87,7 @@ class WriteWorker(Thread):
                     tensor = resample(tensor, (2 * ceil(h / 2), 2 * ceil(w / 2)))
 
                 # pass bytes to the FFMPEG processes
-                self.ffmpeg_proc.stdin.write(tensor2bytes(tensor))
+                self.ffmpeg_proc.stdin.write(tensor2bytes(tensor, value_range=self.value_range))
 
                 # reset poll counter
                 poll_count = 0
@@ -135,6 +137,7 @@ def write_video(
     audio_duration=None,
     ffmpeg_preset="slow",
     debug=False,
+    value_range=(0, 1),
 ) -> None:
     """Write a tensor [T,C,H,W] to an mp4 file with FFMPEG.
 
@@ -143,8 +146,10 @@ def write_video(
         output_file (str): File to write output mp4 to
         fps (float): Frames per second of output video
     """
-    _, _, h, w = tensor.shape
-    with VideoWriter(output_file, (w, h), fps, audio_file, audio_offset, audio_duration, ffmpeg_preset, debug) as video:
+    _, _, h, w = tensor[[0]].shape
+    with VideoWriter(
+        output_file, (w, h), fps, audio_file, audio_offset, audio_duration, ffmpeg_preset, debug, value_range
+    ) as video:
         for frame in tensor:
             frame = frame if isinstance(frame, torch.Tensor) else torch.from_numpy(frame.copy())
-            video.write(frame[None])
+            video.write(frame.squeeze().unsqueeze(0))

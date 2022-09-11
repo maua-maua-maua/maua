@@ -1,6 +1,6 @@
 from copy import deepcopy
 from pathlib import Path
-from typing import List, Union
+from typing import List, Tuple, Union
 
 import numpy as np
 import torch
@@ -44,7 +44,7 @@ def tensor2img(tensor, format: str = "RGB"):
     )
 
 
-def tensor2bytes(tensor: torch.Tensor) -> np.ndarray:
+def tensor2bytes(tensor: torch.Tensor, value_range: Tuple[int, int] = (0, 1)) -> np.ndarray:
     """Converts a PyTorch [1,C,H,W] tensor to bytes (e.g. for passing to FFMPEG)
 
     Args:
@@ -53,7 +53,21 @@ def tensor2bytes(tensor: torch.Tensor) -> np.ndarray:
     Returns:
         np.ndarray
     """
-    return tensor.squeeze(0).permute(1, 2, 0).clamp(0, 1).mul(255).round().byte().detach().cpu().numpy().tobytes()
+    mn, mx = value_range
+    return (
+        tensor.squeeze(0)
+        .permute(1, 2, 0)
+        .clamp(mn, mx)
+        .sub(mn)
+        .div(mx - mn)
+        .mul(255)
+        .round()
+        .byte()
+        .detach()
+        .cpu()
+        .numpy()
+        .tobytes()
+    )
 
 
 def tensor2imgs(tensor: torch.Tensor, format: str = "RGB") -> List[Image]:

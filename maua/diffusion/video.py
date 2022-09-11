@@ -9,23 +9,23 @@ import decord
 decord.bridge.set_bridge("torch")
 
 import os
-import shutil
 from functools import partial, reduce
-from glob import glob
 from pathlib import Path
+from queue import Empty, Queue
+from threading import Thread
 from typing import Callable, Optional, Tuple, Union
 
 import easydict
 import matplotlib.pyplot as plt
 import numpy as np
-from npy_append_array import NpyAppendArray
-from torch.nn.functional import grid_sample
+from PIL import Image
+from torch.nn.functional import grid_sample, interpolate
 from torch.utils.data import Dataset
-from torchvision.transforms.functional import to_pil_image
+from torchvision.transforms.functional import to_pil_image, to_tensor
 from tqdm import trange
 
 from ..flow import get_flow_model
-from ..flow.lib import flow_warp_map, get_consistency_map
+from ..flow.lib import decode_mflo, encode_mflo, flow_warp_map, get_consistency_map
 from ..ops.image import match_histogram, sharpen
 from ..ops.video import write_video
 from ..prompt import ContentPrompt, ImagePrompt, StylePrompt, TextPrompt
@@ -49,90 +49,104 @@ class VideoFrames(Dataset):
         return self.prepare(self.reader[idx])
 
 
-class MemoryMappedFrames(Dataset):
-    def __init__(self, file, height, width, device, load=False):
+class WriteThread(Thread):
+    def __init__(self, queue: Queue, basename: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.queue = queue
+        self.basename = basename
+
+    def run(self):
+        while True:
+            try:
+                item, idx = self.queue.get(timeout=1)
+                if isinstance(item, torch.Tensor):
+                    item = item.detach().cpu().numpy()
+                if len(item.shape) < 4:
+                    item = item[None]
+                shape = item.shape
+
+                if tuple(shape[:2]) == (1, 1):
+                    consistency = np.round(item.squeeze() * 255).astype(np.uint8)
+                    Image.fromarray(consistency).save(f"{self.basename}{idx}.jpg", quality=95)
+                elif shape[-1] == 2:
+                    mflo = encode_mflo(item.squeeze())
+                    Image.fromarray(mflo).save(f"{self.basename}{idx}.mflo", format="JPEG", quality=95)
+                else:
+                    img = np.round((item.squeeze().transpose(1, 2, 0) + 1) * 127.5).astype(np.uint8)
+                    Image.fromarray(img).save(f"{self.basename}{idx}.jpg", quality=95)
+
+            except Empty:
+                pass
+
+
+class FramesOnDisk(Dataset):
+    def __init__(self, basename, device):
         super().__init__()
-        self.file, self.height, self.width = file, height, width
+        self.basename = basename
         self.device = device
-        self.array = np.load(self.file, mmap_mode="r") if load else None
-
-    def clear(self):
-        os.remove(self.file)
-        self.array = None
-
-    def update(self, other):
-        shutil.move(other.file, self.file)
-        self.array = np.load(self.file, mmap_mode="r")
-        other.array = None
+        self.write_queue = Queue()
+        self.length = 0
+        WriteThread(self.write_queue, self.basename, daemon=True).start()
 
     def __len__(self):
-        return len(self.array) if self.array is not None else 0
+        return self.length
 
     def __getitem__(self, idx):
-        if self.array is None:
-            raise Exception("Cache is empty!")
         if not isinstance(idx, (list, np.ndarray)):
             idx = [idx]
-        tensor = torch.from_numpy(self.array[idx].copy()).float().to(self.device)
-        if tensor.dim() < 4:
-            tensor = tensor.unsqueeze(1)
-        return tensor
 
-    def __enter__(self):
-        self.array = NpyAppendArray(self.file)
-
-    def append(self, item):
-        if isinstance(item, torch.Tensor):
-            item = item.detach().cpu().numpy()
-        if len(item.shape) < 4:
-            item = item[None]
-        self.array.append(np.ascontiguousarray(item))
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.array.close()
-        if exc_type:
-            return
-        self.array = np.load(self.file, mmap_mode="r")
-
-
-def initialize_cache_files(names, out_name, length, height, width, device):
-    caches = {}
-    for name in names:
-        filename = f"workspace/{out_name}_{name}.npy"
-        reuse = False
-
-        if os.path.exists(filename):
-            arr = np.load(filename, mmap_mode="r")
-            reuse = (
-                arr.shape[0] == length
-                and arr.shape[2 if name == "consistency" else 1] == height
-                and arr.shape[3 if name == "consistency" else 2] == width
-            )
-            if reuse:
-                print(f"{name} cache seems valid, reusing...")
+        tensors = []
+        for i in idx:
+            file = f"{self.basename}{i}.jpg"
+            if os.path.exists(file.replace(".jpg", ".mflo")):
+                mflo = np.asarray(Image.open(file.replace(".jpg", ".mflo")))
+                tensor = torch.tensor(decode_mflo(mflo))
             else:
-                os.remove(filename)
+                image = Image.open(file)
+                tensor = to_tensor(image)
+                if image.mode == "RGB":  # mode "L" should be left with value range (0, 1)
+                    tensor = tensor.mul(2).sub(1)
+            tensors.append(tensor)
 
-        caches[name] = MemoryMappedFrames(filename, height, width, device, load=reuse)
+        return torch.stack(tensors).to(self.device)
 
-    return easydict.EasyDict(caches)
+    def insert(self, item, idx=None):
+        self.write_queue.put((item, idx if idx is not None else len(self)))
+        self.length += 1
 
 
-def initialize_optical_flow(cache, frames):
-    if len(cache.flow) > 0 and len(cache.consistency) > 0:
+def initialize_cache_files(names, out_name, device):
+    os.makedirs(f"workspace/{out_name}", exist_ok=True)
+    return easydict.EasyDict({name: FramesOnDisk(f"workspace/{out_name}/{name}", device) for name in names})
+
+
+@torch.inference_mode()
+def initialize_optical_flow(cache, init, consistency_trust, width, height, device):
+    flow_model = get_flow_model()
+    frames = VideoFrames(init, height=min(height, 240), width=min(width, 240), device=device)
+    N = len(frames)
+
+    if len(cache.flow) == N and tuple(cache.flow[0].shape[1:3]) == (height, width):
+        print("Optical flow cache seems valid, re-using...")
         return
 
-    flow_model = get_flow_model()
-    N = len(frames)
-    with cache.flow, cache.reverse, cache.consistency:
-        for f_n in trange(N, desc="Calculating optical flow..."):
-            prev = frames[(f_n - 1) % N].add(1).div(2)
-            curr = frames[f_n].add(1).div(2)
-            ff = flow_model(curr, prev)
-            bf = flow_model(prev, curr)
-            cache.flow.append(ff)
-            cache.reverse.append(bf)
-            cache.consistency.append(get_consistency_map(ff, bf))
+    for f_n in trange(N, desc="Calculating optical flow..."):
+        prev = frames[(f_n - 1) % N].add(1).div(2)
+        curr = frames[f_n].add(1).div(2)
+
+        forward = flow_model(curr, prev)
+        backward = flow_model(prev, curr)
+        maxflow = max(forward.shape[0], forward.shape[1])
+        forward, backward = forward.clamp(-maxflow, maxflow), backward.clamp(-maxflow, maxflow)
+
+        if consistency_trust > 0:
+            consistency = get_consistency_map(forward, backward)
+            consistency = interpolate(consistency.unsqueeze(1), (height, width), mode="bilinear")
+            cache.consistency.insert(consistency)
+
+        forward *= np.mean((width / forward.shape[1], height / forward.shape[2]))
+        forward = interpolate(forward.permute(0, 3, 1, 2), (height, width), mode="bilinear").permute(0, 2, 3, 1)
+        cache.flow.insert(forward)
 
 
 def warp(x, f):
@@ -173,101 +187,93 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         frames = VideoFrames(init, height, width, device)
         N = len(frames)
 
+        # initialize cache files
+        cache = initialize_cache_files(
+            names=["frame", "flow", "consistency"], out_name=build_output_name(init, unique=False), device=device
+        )
+        initialize_optical_flow(cache, init, consistency_trust, width, height, device)  # calculate optical flow
+
         if first_frame_init is not None:
-            out_img = ImagePrompt(path=first_frame_init).img.to(device)
+            out_img = ImagePrompt(path=first_frame_init, size=(height, width)).img.to(device)
+            cache.frame.insert(out_img)
             hist_img = out_img.clone()
         else:
             out_img = None
 
-        # initialize cache files
-        cache = initialize_cache_files(
-            names=["out", "flow", "reverse", "consistency"],
-            out_name=build_output_name(init, style=None, text=None, unique=False),
-            length=N,
-            height=height,
-            width=width,
-            device=device,
-        )
-
-        # calculate optical flow
-        initialize_optical_flow(cache, frames)
-
         try:
             fade = torch.sqrt(torch.linspace(1, 0, wrap_around)).reshape(-1, 1, 1, 1).to(device)
 
-            f_start = len(cache.out)  # TODO resume cancelled stylization?
-            with cache.out:
-                for f_n in trange(f_start + (1 if out_img is not None else 0), N + wrap_around):
+            f_start = len(cache.frame)  # TODO resume cancelled stylization?
+            for f_n in trange(f_start, N + wrap_around):
 
-                    if constant_seed:
-                        seed_everything(constant_seed)
+                if constant_seed:
+                    seed_everything(constant_seed)
 
-                    if f_n % turbo != 0:
-                        out_img = warp(out_img, flow_warp_map(cache.flow[f_n % N] * flow_exaggeration))
-                        cache.out.append(out_img)
-                        continue
+                if f_n % turbo != 0:
+                    out_img = warp(out_img, flow_warp_map(cache.flow[f_n % N] * flow_exaggeration))
+                    cache.frame.insert(out_img, f_n % N)
+                    continue
 
-                    prompts = [ContentPrompt(frames[f_n % N])]
-                    if style is not None:
-                        prompts.append(StylePrompt(path=style, size=(height, width)))
-                    if text is not None:
-                        prompts.append(TextPrompt(text))
-                    if image is not None:
-                        prompts.append(ImagePrompt(path=image))
+                prompts = [ContentPrompt(frames[f_n % N])]
+                if style is not None:
+                    prompts.append(StylePrompt(path=style, size=(height, width)))
+                if text is not None:
+                    prompts.append(TextPrompt(text))
+                if image is not None:
+                    prompts.append(ImagePrompt(path=image))
 
-                    init_img = frames[f_n % N]
+                init_img = frames[f_n % N]
 
-                    if blend > 0:
+                if blend > 0:
+                    if consistency_trust > 0:
                         flow_mask = cache.consistency[f_n % N]
                         flow_mask *= consistency_trust
                         flow_mask += 1 - consistency_trust
-                        flow_mask *= blend
+                    else:
+                        flow_mask = torch.ones_like(init_img)
 
-                        flow = flow_warp_map(cache.flow[f_n % N] * flow_exaggeration)
+                    flow_mask *= blend
 
-                        prev_img = frames[(f_n - 1) % N] if f_n == 0 else out_img
-                        prev_warp = warp(prev_img, flow)
+                    flow = flow_warp_map(cache.flow[f_n % N] * flow_exaggeration)
 
-                        init_img += flow_mask * prev_warp
-                        init_img /= 1 + flow_mask
+                    prev_img = frames[(f_n - 1) % N] if f_n == 0 else out_img
+                    prev_warp = warp(prev_img, flow)
 
-                    if f_n / N >= 1:
-                        last_round = torch.from_numpy(np.load(cache.out.file, mmap_mode="r")[f_n % N].copy()).to(device)
-                        init_img = fade[[f_n % N]] * init_img + (1 - fade[[f_n % N]]) * last_round
+                    init_img += flow_mask * prev_warp
+                    init_img /= 1 + flow_mask
 
-                    if pre_hook:
-                        init_img = pre_hook(init_img)
+                if f_n / N >= 1:
+                    init_img = fade[[f_n % N]] * init_img + (1 - fade[[f_n % N]]) * cache.frame[f_n % N]
 
-                    if hist_persist and f_n > 0:
-                        init_img = match_histogram(init_img, hist_img)
+                if pre_hook:
+                    init_img = pre_hook(init_img)
 
-                    out_img = diffusion(
-                        init_img, prompts=prompts, start_step=first_steps if f_n == 0 else n_steps, verbose=False
-                    )
+                if hist_persist and f_n > 0:
+                    init_img = match_histogram(init_img, hist_img)
 
-                    if hist_persist and f_n == 0:
-                        hist_img = out_img.clone()
+                out_img = diffusion(
+                    init_img, prompts=prompts, start_step=first_steps if f_n == 0 else n_steps, verbose=False
+                )
 
-                    if post_hook:
-                        out_img = post_hook(out_img)
+                if hist_persist and f_n == 0:
+                    hist_img = out_img.clone()
 
-                    if preview:
-                        plt.imshow(to_pil_image(out_img.squeeze().add(1).div(2).clamp(0, 1)))
-                        plt.axis("off")
-                        plt.show(block=False)
-                        plt.pause(0.5)
+                if post_hook:
+                    out_img = post_hook(out_img)
 
-                    cache.out.append(out_img)
+                if preview:
+                    plt.imshow(to_pil_image(out_img.squeeze().add(1).div(2).clamp(0, 1)))
+                    plt.axis("off")
+                    plt.show(block=False)
+                    plt.pause(0.5)
+
+                cache.frame.insert(out_img, f_n % N)
 
         except KeyboardInterrupt:
-            return np.load(cache.out.file, mmap_mode="r") * 0.5 + 0.5
+            print("KeyboardInterrupt: saving and quiting...")
 
-        output = np.load(cache.out.file, mmap_mode="r+")
-        output *= 0.5
-        output += 0.5
-        if wrap_around > 0:
-            output[:wrap_around] = output[-wrap_around:]
-        return output[:N]
+        cache.frame.length = N  # TODO is there a better way of handling this?
+        return cache.frame
 
 
 @torch.no_grad()
@@ -394,4 +400,4 @@ if __name__ == "__main__":
 
     video = video_sample(**vars(args))
 
-    write_video(video, f"output/{Path(args.diffusion).stem}_{out_name}.mp4", fps=fps)
+    write_video(video, f"output/{Path(args.diffusion).stem}_{out_name}.mp4", fps=fps, value_range=(-1, 1))

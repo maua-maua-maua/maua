@@ -1,4 +1,5 @@
 import os
+import struct
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,39 @@ from .consistency import check_consistency, check_consistency_np
 from .utils import flow_to_image
 
 NEUTRAL = None
+
+
+def encode_mflo(flow):
+    """Optical flow encoding which can be saved as JPEG"""
+    absmax = np.max(np.abs(flow))  # find maximal flow magnitude
+    one, two, three, four = struct.pack("!f", absmax)  # encode float32 value as 4 bytes
+
+    # encode each byte into a quadrant of the image
+    h, w, _ = flow.shape
+    absmax_channel = np.zeros((h, w, 1), dtype=np.uint8)
+    absmax_channel[: h // 2, : w // 2] = one
+    absmax_channel[: h // 2, w // 2 :] = two
+    absmax_channel[h // 2 :, : w // 2] = three
+    absmax_channel[h // 2 :, w // 2 :] = four
+
+    # normalize flow u,v components to range [0, 255]
+    mflo = np.round((flow / absmax + 1) * 127.5).astype(np.uint8)
+    mflo = np.concatenate((mflo, absmax_channel), axis=2)  # insert encoded magnitude to last channel
+    return mflo
+
+
+def decode_mflo(mflo):
+    h, w, _ = mflo.shape
+    absmax_channel = mflo[..., 2]
+    one = np.mean(absmax_channel[: h // 2, : w // 2].astype(np.float32)).round().astype(np.uint8)
+    two = np.mean(absmax_channel[: h // 2, w // 2 :].astype(np.float32)).round().astype(np.uint8)
+    three = np.mean(absmax_channel[h // 2 :, : w // 2].astype(np.float32)).round().astype(np.uint8)
+    four = np.mean(absmax_channel[h // 2 :, w // 2 :].astype(np.float32)).round().astype(np.uint8)
+    (absmax,) = struct.unpack("!f", bytearray([one, two, three, four]))
+
+    flow = mflo[..., :2]
+    flow = (flow.astype(np.float32) / 127.5 - 1) * absmax
+    return flow
 
 
 def flow_warp_map(flow: torch.Tensor) -> torch.Tensor:

@@ -3,9 +3,9 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image
+from resize_right import resize
 from torchvision.transforms.functional import to_tensor
 
-from .ops.image import resample
 from .utility import fetch
 
 
@@ -42,9 +42,9 @@ class ImagePrompt(torch.nn.Module):
             raise Exception("path or img must be specified")
 
         if size is not None:
-            img = resample(img, min(size))
+            img = resize(img, out_shape=size)
 
-        self.register_buffer("img", img.mul(2).sub(1))
+        self.register_buffer("img", img.mul(2).sub(1).clamp(-1, 1))
 
     def forward(self):
         return self.img, self.weight
