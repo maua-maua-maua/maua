@@ -72,7 +72,7 @@ class WriteThread(Thread):
                     mflo = encode_mflo(item.squeeze())
                     Image.fromarray(mflo).save(f"{self.basename}{idx}.mflo", format="JPEG", quality=95)
                 else:
-                    img = np.round((item.squeeze().transpose(1, 2, 0) + 1) * 127.5).astype(np.uint8)
+                    img = np.clip(np.round((item.squeeze().transpose(1, 2, 0) + 1) * 127.5), 0, 255).astype(np.uint8)
                     Image.fromarray(img).save(f"{self.basename}{idx}.jpg", quality=95)
 
             except Empty:
