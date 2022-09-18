@@ -31,6 +31,5 @@ def cache_to_workspace(name):
 from .audio import *
 from .latent import *
 from .mir import *
-from .noise import *
 from .signal import *
 from .util import *
