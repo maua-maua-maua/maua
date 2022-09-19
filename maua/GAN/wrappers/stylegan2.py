@@ -213,7 +213,7 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
         return noises
 
 
-def get_hook(layer_size, target_size, strategy, add_noise=False, pre=False):
+def get_hook(layer_size, target_size, strategy, add_noise=True, pre=False):
     target_size = np.flip(target_size)  # W,H --> H,W
 
     if strategy == "stretch":
@@ -302,7 +302,7 @@ def get_hook(layer_size, target_size, strategy, add_noise=False, pre=False):
                         for c in range(x.size(1))
                     ]
                     noise.set_(torch.cat(channel_noises, dim=1))
-                x += noise
+                x += noise.to(x)
 
             return x
 

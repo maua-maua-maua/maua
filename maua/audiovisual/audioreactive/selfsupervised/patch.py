@@ -14,7 +14,7 @@ def random_choice(rng, options, weights=None, n=1, replacement=False):
     else:
         probabilities = torch.tensor(weights, device=rng.device) / np.sum(weights)
 
-    idx = probabilities.multinomial(n_samples=n, replacement=replacement, generator=rng)
+    idx = probabilities.multinomial(num_samples=n, replacement=replacement, generator=rng)
 
     return options[idx]
 
