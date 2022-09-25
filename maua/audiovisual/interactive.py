@@ -14,12 +14,12 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from ....GAN.wrappers.stylegan2 import StyleGAN2
-from ....ops.video import VideoWriter
-from .features.rosa.segment import BINS_PER_OCTAVE, N_OCTAVES, laplacian_segmentation_rosa
-from .mir import retrieve_music_information
-from .patch import Patch
-from .sample import load_audio
+from ..GAN.wrappers.stylegan2 import StyleGAN2
+from ..ops.video import VideoWriter
+from .audioreactive.selfsupervised.features.rosa.segment import BINS_PER_OCTAVE, N_OCTAVES, laplacian_segmentation_rosa
+from .audioreactive.selfsupervised.mir import retrieve_music_information
+from .audioreactive.selfsupervised.patch import Patch
+from .audioreactive.selfsupervised.sample import load_audio
 
 WELCOME = """
 Welcome to Hans' audio-reactive video synthesizer!
@@ -59,17 +59,19 @@ Now we will generate audio-reactive interpolations for each section. The initial
     (9) revert
 """
 
-NOT_UNDERSTOOD2 = """
-Response not understood, make sure that you type one of the strings 'next' or 'quit' or one of the following commands:
-    (1) more_intense
-    (2) less_intense
-    (3) different_style
-    (4) similar_style
-    (5) different_style_motion
-    (6) similar_style_motion
-    (7) different_structure_motion
-    (8) similar_structure_motion
-    (9) revert
+HELP = """
+'help' to show this message
+'next' to continue to the next section (or final render)
+'quit' to exit
+(1) more_intense
+(2) less_intense
+(3) different_style
+(4) similar_style
+(5) different_style_motion
+(6) similar_style_motion
+(7) different_structure_motion
+(8) similar_structure_motion
+(9) revert
 """
 
 
@@ -91,22 +93,52 @@ def show_segmentation(audio, sr, segmentation):
     bounds = rosa.util.fix_frames(bounds, x_min=0)
     bound_segs = list(segmentation[bounds])
     bound_times = bounds / (sr / 1024)
-    # freqs = rosa.cqt_frequencies(n_bins=C.shape[0], fmin=rosa.note_to_hz("C1"), bins_per_octave=BINS_PER_OCTAVE)
-    # matplotlib.use("TkAgg")
-    # _, ax = plt.subplots(figsize=(8, 6))
-    # colors = plt.get_cmap("Paired", len(np.unique(bound_segs)))
-    # rosa.display.specshow(
-    #     C, y_axis="cqt_hz", sr=sr, bins_per_octave=BINS_PER_OCTAVE, x_axis="time", ax=ax, hop_length=1024
-    # )
-    # for interval, label in zip(zip(bound_times, bound_times[1:]), bound_segs):
-    #     ax.add_patch(
-    #         patches.Rectangle(
-    #             (interval[0], freqs[0]), interval[1] - interval[0], freqs[-1], facecolor=colors(label), alpha=0.50
-    #         )
-    #     )
-    # plt.show(block=False)
-    # plt.pause(0.1)
+    freqs = rosa.cqt_frequencies(n_bins=C.shape[0], fmin=rosa.note_to_hz("C1"), bins_per_octave=BINS_PER_OCTAVE)
+    matplotlib.use("TkAgg")
+    _, ax = plt.subplots(figsize=(8, 6))
+    colors = plt.get_cmap("Paired", len(np.unique(bound_segs)))
+    rosa.display.specshow(
+        C, y_axis="cqt_hz", sr=sr, bins_per_octave=BINS_PER_OCTAVE, x_axis="time", ax=ax, hop_length=1024
+    )
+    for interval, label in zip(zip(bound_times, bound_times[1:]), bound_segs):
+        ax.add_patch(
+            patches.Rectangle(
+                (interval[0], freqs[0]), interval[1] - interval[0], freqs[-1], facecolor=colors(label), alpha=0.50
+            )
+        )
+    plt.show(block=False)
+    plt.pause(0.1)
     return list(bound_segs), list(bound_times)
+
+
+class EMAFade(torch.nn.Module):
+    # TODO this fading strategy is very brittle, especially for short sections
+
+    def __init__(self, fade_frames) -> None:
+        super().__init__()
+        self.fade_frames = fade_frames
+        self.smooth_schedule = torch.cat((torch.linspace(1, 0, fade_frames), torch.linspace(0, 1, fade_frames)))
+        self.avg = None
+
+    def forward(self, x, i, total_length):
+        batch_size = x.shape[0]
+        fade_start = total_length - self.fade_frames
+        if i < self.fade_frames or i + batch_size >= fade_start:
+            for batch_idx, frame_idx in enumerate(range(i, i + batch_size)):
+                if frame_idx == fade_start:
+                    self.avg = x[batch_idx]
+                if self.fade_frames < frame_idx < fade_start or self.avg is None:
+                    continue
+                else:
+                    smooth_idx = frame_idx - fade_start if frame_idx - fade_start >= 0 else self.fade_frames + frame_idx
+                    self.avg *= 1 - self.smooth_schedule[smooth_idx]
+                    self.avg += x[batch_idx] * self.smooth_schedule[smooth_idx]
+                    x[batch_idx] = self.avg.clone()
+        return x
+
+
+class HelpPrinted(Exception):
+    pass
 
 
 @torch.inference_mode()
@@ -123,7 +155,7 @@ def generate_interactive(
 
     print(WELCOME)
 
-    lo_res = (1024, 1024)
+    lo_res = (512, 512)
     preview_time = 10
     hi_res = (2048, 1024)
     fade_time = 2
@@ -168,6 +200,7 @@ def generate_interactive(
         labels, times = show_segmentation(audio.numpy(), sr, segmentation.numpy())
         response = input("> ")
         plt.close()
+
     label_vals = np.unique(labels)
     first_times = [labels.index(s) for s in label_vals]
     times.append(audio_duration)
@@ -197,22 +230,17 @@ def generate_interactive(
 
             try:
                 # parse response
-                try:
-                    if response == "next" or response == "n":
-                        break
-                    elif response == "quit" or response == "q":
-                        exit(0)
-                except AssertionError:
-                    print(NOT_UNDERSTOOD2)
-                    response = input("> ")
-                    continue
+                if response == "next" or response == "n":
+                    break
+                elif response == "quit" or response == "q":
+                    exit(0)
 
                 # update patch
                 if patch is None:
                     patch = Patch(features=feats, segmentations=segs, tempo=tempo, seed=seed, fps=fps, device=device)
 
                     if latent_seeds is None:
-                        z = torch.randn((180, 512), device=device, generator=torch.Generator(device).manual_seed(seed))
+                        z = torch.randn((20, 512), device=device, generator=torch.Generator(device).manual_seed(seed))
                         latent_palette = G.mapper(z)
                     else:
                         latent_palette = G.get_w_latents(latent_seeds)
@@ -220,36 +248,40 @@ def generate_interactive(
                     print("Initial random patch:")
                 else:
                     for command in response.split(","):
-                        if command == "more_intense":
+                        if command in ["1", "more_intense"]:
                             intensity += 0.111
                             patch.update_intensity(intensity)
-                        if command == "less_intense":
+                        if command in ["2", "less_intense"]:
                             intensity -= 0.111
                             patch.update_intensity(intensity)
 
-                        if command == "different_style":
-                            latent_palette = G.mapper(torch.randn((180, 512), device=device))
-                        if command == "similar_style":
+                        if command in ["3", "different_style"]:
+                            latent_palette = G.mapper(torch.randn((20, 512), device=device))
+                        if command in ["4", "similar_style"]:
                             latent_palette = latent_palette[np.random.permutation(latent_palette.shape[0])]
-                        if command == "different_style_motion":
+                        if command in ["5", "different_style_motion"]:
                             patch.randomize_latent_patches()
-                        if command == "similar_style_motion":
+                        if command in ["6", "similar_style_motion"]:
                             patch.latent_patches = list(np.random.permutation(patch.latent_patches))
-                        if command == "different_structure_motion":
+                        if command in ["7", "different_structure_motion"]:
                             patch.randomize_noise_patches()
-                        if command == "similar_structure_motion":
+                        if command in ["8", "similar_structure_motion"]:
                             patch.noise_patches = list(np.random.permutation(patch.noise_patches))
 
-                        if command == "revert":
+                        if command in ["9", "revert"]:
                             patch = prev_patches.pop()
                             latent_palette = prev_palettes.pop()
 
+                        if command == "help":
+                            print(HELP)
+                            raise HelpPrinted()
+
                     print("Updated patch:")
-                prev_patches.append(patch)
-                prev_palettes.append(latent_palette)
+                prev_patches.append(deepcopy(patch))
+                prev_palettes.append(latent_palette.clone())
                 print(patch)
 
-                latents, noise = patch.forward(latent_palette, downscale_factor=1)
+                latents, noise = patch.forward(latent_palette, downscale_factor=2)
 
                 # render video
                 out_file = f"output/{Path(audio_file).stem}_RandomPatches++_seed{seed}_{r}.mp4"
@@ -279,7 +311,9 @@ def generate_interactive(
                             patch_file = out_file.replace(".mp4", ".json")
                             patch.save(patch_file)
 
-                # play_video(out_file, title=f"Segment {s+1}: {start} - {end}, version {r}")
+                play_video(out_file, title=f"Segment {s+1}: {start} - {end}, version {r}")
+            except HelpPrinted:
+                continue
             except:
                 print("\n\nERROR!")
                 traceback.print_exc()
@@ -291,37 +325,20 @@ def generate_interactive(
     print("Rendering final video...")
     del G
     G = StyleGAN2(model_file=stylegan2_checkpoint, output_size=hi_res, strategy="pad-reflect-out").to(device)
-    out_file = f"output/{Path(audio_file).stem}_final.mp4"
+    out_file = f"output/{Path(stylegan2_checkpoint).stem}_{Path(audio_file).stem}_final.mp4"
     batch_size = round(batch_size / 4)
     fade_frames = fade_time * fps
-    smooth_schedule = torch.cat((torch.linspace(1, 0, fade_frames), torch.linspace(0, 1, fade_frames) ** 2))
-    L_EMA = None
+    latent_fade, noise_fades = EMAFade(fade_frames), [EMAFade(fade_frames) for _ in noise]
     with VideoWriter(output_file=out_file, output_size=hi_res, fps=fps, audio_file=audio_file) as video:
         for label, start, end in zip(tqdm(labels, desc="Sections"), times[:-1], times[1:]):
             patch, palette = final[label]
             latents, noise = patch.forward(palette)
             for i in tqdm(range(0, len(latents) - batch_size, batch_size), unit_scale=batch_size, desc="Frames"):
-                L = latents[i : i + batch_size]
-
-                # TODO this fading strategy is very brittle, especially for short sections
-                fade_start = len(latents) - fade_frames
-                if i < fade_frames or i + batch_size >= fade_start:
-                    for batch_idx, frame_idx in enumerate(range(i, i + batch_size)):
-                        if frame_idx == fade_start:
-                            L_EMA = L[batch_idx]
-                        if fade_frames < frame_idx < fade_start or L_EMA is None:
-                            continue
-                        else:
-                            smooth_idx = (
-                                frame_idx - fade_start if frame_idx - fade_start >= 0 else fade_frames + frame_idx
-                            )
-                            L_EMA *= 1 - smooth_schedule[smooth_idx]
-                            L_EMA += L[batch_idx] * smooth_schedule[smooth_idx]
-                            L[batch_idx] = L_EMA.clone()
+                L = latent_fade(latents[i : i + batch_size], i, len(latents))
 
                 N = {}
-                for j, noise_module in enumerate(noise):
-                    N[f"noise{j}"] = noise_module.forward(i, batch_size)[:, None]
+                for j, (noise_fade, noise_module) in enumerate(zip(noise_fades, noise)):
+                    N[f"noise{j}"] = noise_fade(noise_module.forward(i, batch_size)[:, None], i, len(latents))
 
                 for frame in G.synthesizer(latents=L, **N).add(1).div(2):
                     video.write(frame.unsqueeze(0))

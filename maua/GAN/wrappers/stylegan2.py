@@ -243,7 +243,7 @@ def get_hook(layer_size, target_size, strategy, add_noise=True, pre=False):
                         for c in range(x.size(1))
                     ]
                     noise.set_(torch.cat(channel_noises, dim=1))
-                x += noise
+                x += noise.to(x)
 
             return x
 

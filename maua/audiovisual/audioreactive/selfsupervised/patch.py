@@ -94,7 +94,7 @@ class Patch(torch.nn.Module):
         for p in range(len(self.noise_patches)):
             self.noise_patches[p]["seq_feat_weight"] = skewnorm(self.rng, a=5, loc=val, scale=0.5).item()
             self.noise_patches[p]["mod_feat_weight"] = skewnorm(self.rng, a=5, loc=val, scale=0.5).item()
-            self.latent_patches[p]["noise_std"] = skewnorm(self.rng, a=5, loc=val, scale=0.5).item()
+            self.noise_patches[p]["noise_std"] = skewnorm(self.rng, a=5, loc=val, scale=0.5).item()
 
     def random_latent_patch(self):
         return dict(
@@ -102,9 +102,9 @@ class Patch(torch.nn.Module):
             segments=random_choice(self.rng, self.ks),
             loop_bars=random_choice(self.rng, [4, 8, 16, 32], weights=[2, 2, 2, 1]),
             seq_feat=random_choice(self.rng, ALLFEATS),
-            seq_feat_weight=skewnorm(self.rng, a=5, loc=0.666, scale=0.5).item(),
+            seq_feat_weight=1,  # skewnorm(self.rng, a=5, loc=0.666, scale=0.5).item(),
             mod_feat=random_choice(self.rng, UNITFEATS),
-            mod_feat_weight=skewnorm(self.rng, a=5, loc=0.666, scale=0.5).item(),
+            mod_feat_weight=1,  # skewnorm(self.rng, a=5, loc=0.666, scale=0.5).item(),
             merge_type=random_choice(self.rng, ["average", "modulate"], weights=[1, 3]),
             merge_depth=random_choice(
                 self.rng, ["low", "mid", "high", "lowmid", "midhigh", "all"], weights=[3, 3, 3, 2, 2, 1]
@@ -116,15 +116,15 @@ class Patch(torch.nn.Module):
             patch_type=random_choice(self.rng, ["blend", "multiply", "loop"]),
             loop_bars=random_choice(self.rng, [4, 8, 16, 32], weights=[2, 2, 2, 1]),
             seq_feat=random_choice(self.rng, ALLFEATS),
-            seq_feat_weight=skewnorm(self.rng, a=5, loc=0.666, scale=0.5).item(),
+            seq_feat_weight=1,  # skewnorm(self.rng, a=5, loc=0.666, scale=0.5).item(),
             mod_feat=random_choice(self.rng, UNITFEATS),
-            mod_feat_weight=skewnorm(self.rng, a=5, loc=0.666, scale=0.5).item(),
+            mod_feat_weight=1,  # skewnorm(self.rng, a=5, loc=0.666, scale=0.5).item(),
             merge_type=random_choice(self.rng, ["average", "modulate"], weights=[1, 3]),
             merge_depth=random_choice(
                 self.rng, ["low", "mid", "high", "lowmid", "midhigh", "all"], weights=[3, 3, 3, 2, 2, 1]
             ),
-            noise_mean=torch.randn((), generator=self.rng, device=self.rng.device).item() * 0.5,
-            noise_std=skewnorm(self.rng, a=5, loc=0.666, scale=0.5).item(),
+            noise_mean=0,  # torch.randn((), generator=self.rng, device=self.rng.device).item() * 0.25,
+            noise_std=1,  # skewnorm(self.rng, a=5, loc=0.666, scale=0.5).item(),
         )
 
     def forward(self, latent_palette, downscale_factor=1, aspect_ratio=1):
