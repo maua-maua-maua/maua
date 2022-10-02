@@ -1,3 +1,4 @@
+import inspect
 import math
 import os
 import sys
@@ -143,7 +144,7 @@ class StableConditioning(torch.nn.Module):
             elif type(prompt) == ImagePrompt:
                 img, _ = prompt()
                 conditioning = self.model.get_learned_conditioning(img)
-                unconditional = torch.zeros_like(conditioning)
+                unconditional = self.model.get_learned_conditioning(torch.rand_like(img).mul(2).sub(1))
         return conditioning, unconditional
 
 
@@ -183,7 +184,25 @@ class StableDiffusion(LatentDiffusion):
         else:
             self.model_wrap = k_diffusion.external.CompVisDenoiser(self.model)
             self.sigmas = self.model_wrap.get_sigmas(timesteps)
-            self.sample_fn = getattr(k_diffusion.sampling, f"sample_{sampler}")
+            sample_fn = getattr(k_diffusion.sampling, f"sample_{sampler}")
+
+            if "sigma_min" in inspect.signature(sample_fn).parameters:
+
+                def dpm_wrap(model_fn, x, sigmas, extra_args, disable):
+                    sigma_min, sigma_max = sigmas[-1].item(), sigmas[0].item()
+                    if sigma_min == 0:
+                        sigma_min = sigmas[-2].item()
+                    if sigma_max == 0:
+                        sigma_max = sigmas[1].item()
+                    dpm_kwargs = dict(sigma_min=sigma_min, sigma_max=sigma_max)
+                    if "n" in inspect.signature(sample_fn).parameters:
+                        dpm_kwargs["n"] = len(sigmas)
+                    return sample_fn(model_fn, x, **dpm_kwargs, extra_args=extra_args, disable=disable)
+
+                self.sample_fn = dpm_wrap
+            else:
+                self.sample_fn = sample_fn
+
             self.original_num_steps = len(self.model.alphas_cumprod)
             self.model_fn = partial(cfg_forward, model=self.model_wrap)
 
@@ -204,42 +223,52 @@ class StableDiffusion(LatentDiffusion):
         self.model = self.model.to(device)
         self.timestep_map = np.linspace(0, self.original_num_steps, timesteps + 1).round().astype(int)
 
+    def get_sigmas(self, t_s, t_e=None):
+        step_start = round(t_s * (len(self.sigmas) - 1))
+        if t_e is None:
+            return self.sigmas[step_start]
+        else:
+            step_end = round(t_e * (len(self.sigmas) - 1)) + 1
+            return self.sigmas[step_start:step_end]
+
     @torch.no_grad()
-    def forward(self, img, prompts, start_step, n_steps=None, verbose=True):
+    def forward(self, img, prompts, t_start, t_end=1, verbose=True, reverse=False, latent=False):
         if not hasattr(self, "sigmas"):
-            return super().forward(img, prompts, start_step, n_steps, verbose)
             # LatentDiffusion class supports plms and ddim, below does not
             # TODO make all classes support k_diffusion samplers!
+            return super().forward(img, prompts, t_start, t_end, verbose)
 
-        if n_steps is None:
-            n_steps = start_step + 1
-        start_step = len(self.sigmas) - start_step - 2
+        sigmas = self.get_sigmas(t_start, t_end)
+        if reverse:
+            sigmas = sigmas.flip(0)
 
         prompts = [p.to(img) for p in prompts]
         [gm.set_targets(prompts) for gm in self.grad_modules]
         cond, uncond = self.conditioning(prompts)
+        cond_shape = (img.shape[0], cond.shape[1], cond.shape[2])
+        cond_info = {"cond": cond.expand(cond_shape), "uncond": uncond.expand(cond_shape), "cond_scale": self.cfg_scale}
 
         with autocast(self.device), self.model.ema_scope():
-            if start_step > 0:
-                x = self.model.get_first_stage_encoding(self.model.encode_first_stage(img))
-                x += torch.randn_like(x) * self.sigmas[start_step]
+            if t_start > 0 or reverse:
+                x = img if latent else self.encode(img)
+                x += torch.randn_like(x) * sigmas[0]
             else:
-                x = torch.randn(
-                    [img.shape[0], 4, img.shape[-2] // 8, img.shape[-1] // 8], device=img.device, dtype=img.dtype
-                )
-                x *= self.sigmas[0]
+                b, _, h, w = img.shape
+                if not latent:
+                    h, w = h // 8, w // 8
+                x = torch.randn([b, 4, h, w], device=img.device, dtype=img.dtype) * sigmas[0]
 
-            shape = (x.shape[0], cond.shape[1], cond.shape[2])
-            samples = self.sample_fn(
-                self.model_fn,
-                x,
-                self.sigmas[start_step : start_step + n_steps + 1],
-                extra_args={"cond": cond.expand(shape), "uncond": uncond.expand(shape), "cond_scale": self.cfg_scale},
-                disable=not verbose,
-            )
-            samples_out = self.model.decode_first_stage(samples)
+            out = self.sample_fn(self.model_fn, x, sigmas, extra_args=cond_info, disable=not verbose)
 
-        return samples_out.float()
+            out = out if latent else self.decode(out)
+
+        return out.float()
+
+    def encode(self, img):
+        return self.model.get_first_stage_encoding(self.model.encode_first_stage(img))
+
+    def decode(self, x):
+        return self.model.decode_first_stage(x)
 
 
 def cfg_forward(x, sigma, uncond, cond, cond_scale, model):

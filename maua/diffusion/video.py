@@ -170,6 +170,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         consistency_trust: float = 0.75,
         wrap_around: int = 0,
         turbo: int = 1,
+        noise_injection: float = 0.02,
         flow_exaggeration: float = 1.0,
         pre_hook: Optional[Callable] = None,
         post_hook: Optional[Callable] = None,
@@ -180,8 +181,6 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
     ):
         # process user inputs
         height, width = [round64(s) for s in size]
-        n_steps = round((1 - skip) * timesteps)
-        first_steps = round((1 - first_skip) * timesteps)
 
         # load init video
         frames = VideoFrames(init, height, width, device)
@@ -251,9 +250,9 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
                 if hist_persist and f_n > 0:
                     init_img = match_histogram(init_img, hist_img)
 
-                out_img = diffusion(
-                    init_img, prompts=prompts, start_step=first_steps if f_n == 0 else n_steps, verbose=False
-                )
+                init_img += noise_injection * torch.randn_like(init_img)
+
+                out_img = diffusion.forward(init_img, prompts, first_skip if f_n == 0 else skip, verbose=False)
 
                 if hist_persist and f_n == 0:
                     hist_img = out_img.clone()
@@ -292,6 +291,7 @@ def video_sample(
     consistency_trust: float = 0.75,
     wrap_around: int = 0,
     turbo: int = 1,
+    noise_injection: float = 0.02,
     flow_exaggeration: float = 1,
     sampler: str = "plms",
     guidance_speed: str = "fast",
@@ -345,6 +345,7 @@ def video_sample(
         consistency_trust=consistency_trust,
         wrap_around=wrap_around,
         turbo=turbo,
+        noise_injection=noise_injection,
         flow_exaggeration=flow_exaggeration,
         pre_hook=pre_hook,
         post_hook=post_hook,
@@ -373,9 +374,10 @@ if __name__ == "__main__":
     parser.add_argument("--consistency-trust", type=float, default=0.75, help='How strongly to trust flow consistency mask. Lower values will lead to more consistency over time. Higher values will respect occlusions of the background more.')
     parser.add_argument("--wrap-around", type=int, default=0, help='Number of extra frames to continue for, looping back to start. This allows for seamless transitions back to the start of the video.')
     parser.add_argument("--turbo", type=int, default=1, help='Only apply diffusion every --turbo\'th frame, otherwise just warp the previous frame with optical flow. Can be much faster for high factors at the cost of some visual detail.')
+    parser.add_argument("--noise-injection", type=int, default=0.02, help='Inject a little bit of extra noise between each frame. Helps fight loss in detail and the formation of large empty regions.')
     parser.add_argument("--flow-exaggeration", type=float, default=1, help='Factor to multiply optical flow with. Higher values lead to more extreme movements in the final video.')
     parser.add_argument("--diffusion", type=str, default="stable", help='Which diffusion model to use. Options: "guided", "latent", "glide", "glid3xl", "stable" or a /path/to/stable-diffusion.ckpt')
-    parser.add_argument("--sampler", type=str, default="dpm_2", choices=["p", "ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms"], help='Which sampling method to use. "p", "ddim", and "plms" work for all diffusion models, the rest are currently only supported with "stable" diffusion.')
+    parser.add_argument("--sampler", type=str, default="lms", choices=["p", "ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_fast", "dpm_adaptive", "dpm_2", "dpm_2_ancestral", "lms"], help='Which sampling method to use. "p", "ddim", and "plms" work for all diffusion models, the rest are currently only supported with "stable" diffusion.')
     parser.add_argument("--guidance-speed", type=str, default="fast", choices=["regular", "fast"], help='How to perform "guided" diffusion. "regular" is slower but can be higher quality, "fast" corresponds to the secondary model method (a.k.a. Disco Diffusion).')
     parser.add_argument("--clip-scale", type=float, default=0.0, help='Controls strength of CLIP guidance when using "guided" diffusion.')
     parser.add_argument("--lpips-scale", type=float, default=0.0, help='Controls the apparent influence of the content image when using "guided" diffusion and a --content image.')

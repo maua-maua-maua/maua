@@ -218,11 +218,13 @@ class GLID3XL(BaseDiffusionProcessor):
         self.image_size = self.model.image_size * 8
 
     @torch.no_grad()
-    def forward(self, img, prompts, start_step, n_steps=None, verbose=True):
-        if n_steps is None:
-            n_steps = start_step
-        B = img.shape[0]
+    def forward(self, img, prompts, t_start, t_end=1, verbose=True):
+        start_step = round(t_start * (len(self.timestep_map) - 1))
+        n_steps = round((t_end - t_start) * (len(self.timestep_map) - 1))
+
         t = torch.tensor([start_step] * B, device=self.device, dtype=torch.long)
+
+        B = img.shape[0]
 
         img = self.ldm.encode(img).sample() * 0.18215
 

@@ -148,7 +148,7 @@ class MultiResolutionDiffusionProcessor(torch.nn.Module):
         verbose: bool = True,
     ):
         shapes = [(round64(h), round64(w)) for h, w in list(schedule.keys())]
-        start_steps = get_start_steps(list(schedule.values()), diffusion)
+        t_starts = list(schedule.values())
 
         if tile_size is None:
             tile_size = diffusion.image_size
@@ -160,7 +160,7 @@ class MultiResolutionDiffusionProcessor(torch.nn.Module):
         else:
             content = dict(path=content)
 
-        for scale, start_step in enumerate(start_steps):
+        for scale, t_start in enumerate(t_starts):
             if verbose:
                 print(f"Current size: {shapes[scale][1]}x{shapes[scale][0]}")
 
@@ -200,9 +200,9 @@ class MultiResolutionDiffusionProcessor(torch.nn.Module):
             dev = diffusion.device
             if img.shape[0] > max_batch:
                 tiles = tqdm(img.split(max_batch)) if verbose else img.split(max_batch)
-                img = torch.cat([diffusion(ims.to(dev), prompts, start_step, verbose=False) for ims in tiles])
+                img = torch.cat([diffusion(ims.to(dev), prompts, t_start, verbose=False) for ims in tiles])
             else:
-                img = diffusion(img.to(dev), prompts, start_step, verbose=verbose)
+                img = diffusion(img.to(dev), prompts, t_start, verbose=verbose)
 
             # reassemble image tiles to final image
             if needs_stitching:
@@ -299,7 +299,7 @@ if __name__ == "__main__":
     parser.add_argument("--tile-size", type=int, default=None, help='The maximum size of tiles the image is cut into.')
     parser.add_argument("--max-batch", type=int, default=4, help='Maximum batch of tiles to synthesize at one time (lower values use less memory, but will be slower).')
     parser.add_argument("--diffusion", type=str, default="stable", help='Which diffusion model to use. Options: "guided", "latent", "glide", "glid3xl", "stable" or a /path/to/stable-diffusion.ckpt')
-    parser.add_argument("--sampler", type=str, default="lms", choices=["p", "ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms"], help='Which sampling method to use. "p", "ddim", and "plms" work for all diffusion models, the rest are currently only supported with "stable" diffusion.')
+    parser.add_argument("--sampler", type=str, default="lms", choices=["p", "ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_fast", "dpm_adaptive", "dpm_2", "dpm_2_ancestral", "lms"], help='Which sampling method to use. "p", "ddim", and "plms" work for all diffusion models, the rest are currently only supported with "stable" diffusion.')
     parser.add_argument("--guidance-speed", type=str, default="fast", choices=["regular", "fast"], help='How to perform "guided" diffusion. "regular" is slower but can be higher quality, "fast" corresponds to the secondary model method (a.k.a. Disco Diffusion).')
     parser.add_argument("--clip-scale", type=float, default=0.0, help='Controls strength of CLIP guidance when using "guided" diffusion.')
     parser.add_argument("--lpips-scale", type=float, default=0.0, help='Controls the apparent influence of the content image when using "guided" diffusion and a --content image.')

@@ -97,7 +97,10 @@ class GLIDE(BaseDiffusionProcessor):
             raise NotImplementedError()
 
     @torch.no_grad()
-    def forward(self, img, prompts, start_step, n_steps=None, verbose=True):
+    def forward(self, img, prompts, t_start, t_end=1, verbose=True):
+        start_step = round(t_start * (len(self.timestep_map) - 1))
+        n_steps = round((t_end - t_start) * (len(self.timestep_map) - 1))
+
         B, C, H, W = img.shape
 
         for prompt in prompts:

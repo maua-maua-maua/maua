@@ -102,11 +102,11 @@ class LatentDiffusion(BaseDiffusionProcessor):
         self.image_size = self.model.image_size * 8
 
     @torch.no_grad()
-    def forward(self, img, prompts, start_step, n_steps=None, verbose=True):
-        if n_steps is None:
-            n_steps = start_step
-
+    def forward(self, img, prompts, t_start, t_end=1, verbose=True):
         conditioning, unconditional = self.conditioning([p.to(img) for p in prompts])
+
+        start_step = round(t_start * (len(self.timestep_map) - 1))
+        n_steps = round((t_end - t_start) * (len(self.timestep_map) - 1))
 
         with self.model.ema_scope():
             x_T = self.model.get_first_stage_encoding(self.model.encode_first_stage(img))

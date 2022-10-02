@@ -320,9 +320,10 @@ class GuidedDiffusion(BaseDiffusionProcessor):
         self.image_size = self.model.image_size
 
     @torch.no_grad()
-    def forward(self, img, prompts, start_step, n_steps=None, verbose=True):
-        if n_steps is None:
-            n_steps = start_step
+    def forward(self, img, prompts, t_start, t_end=1, verbose=True):
+        start_step = round(t_start * (len(self.timestep_map) - 1))
+        n_steps = round((t_end - t_start) * (len(self.timestep_map) - 1))
+
         t = torch.tensor([start_step] * img.shape[0], device=self.device, dtype=torch.long)
 
         noise = torch.randn_like(img)
