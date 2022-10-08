@@ -1,10 +1,10 @@
-import argparse
 import gc
+import os
+import shutil
 from pathlib import Path
 from typing import Generator
 
 import torch
-from PIL import Image
 from tqdm import tqdm
 
 from ...ops.io import tensor2img
@@ -71,8 +71,20 @@ def main(args):
         args.model_name.replace("RealESRGAN-", "").replace("SwinIR-", "").replace("waifu2x", "upconv"),
         torch.device(args.device),
     )
-    for img, path in tqdm(zip(module.upscale(args.images, model), args.images), total=len(args.images)):
-        im = tensor2img(img.cpu().float())
-        if args.postdownsample > 1:
-            im = im.resize((im.size[0] // args.postdownsample, im.size[1] // args.postdownsample))
-        im.save(f"{args.out_dir}/{Path(path).stem}_{args.model_name}.png")
+    imgiter = iter(module.upscale(args.images, model))
+    for p, path in enumerate(tqdm(args.images)):
+        out_path = f"{args.out_dir}/{Path(path).stem}_{args.model_name}.png"
+        if os.path.exists(out_path):
+            continue
+        try:
+            img = next(imgiter)
+            im = tensor2img(img.cpu().float())
+            if args.postdownsample > 1:
+                im = im.resize((im.size[0] // args.postdownsample, im.size[1] // args.postdownsample))
+            im.save(out_path)
+        except RuntimeError as e:
+            if "CUDA out of memory" in str(e):
+                shutil.copy(path, out_path)
+                imgiter = iter(module.upscale(args.images[p + 1 :], model))
+            else:
+                raise
