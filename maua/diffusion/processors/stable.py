@@ -154,7 +154,7 @@ class StableDiffusion(LatentDiffusion):
         grad_modules=[],
         cfg_scale=7.5,
         sampler="euler_ancestral",
-        timesteps=100,
+        timesteps=50,
         model_checkpoint="1.4",
         ddim_eta=0,
         device="cuda" if torch.cuda.is_available() else "cpu",
@@ -188,7 +188,7 @@ class StableDiffusion(LatentDiffusion):
 
             if "sigma_min" in inspect.signature(sample_fn).parameters:
 
-                def dpm_wrap(model_fn, x, sigmas, extra_args, disable):
+                def dpm_wrap(model_fn, x, sigmas, extra_args, disable, **kwargs):
                     sigma_min, sigma_max = sigmas[-1].item(), sigmas[0].item()
                     if sigma_min == 0:
                         sigma_min = sigmas[-2].item()
@@ -197,7 +197,7 @@ class StableDiffusion(LatentDiffusion):
                     dpm_kwargs = dict(sigma_min=sigma_min, sigma_max=sigma_max)
                     if "n" in inspect.signature(sample_fn).parameters:
                         dpm_kwargs["n"] = len(sigmas)
-                    return sample_fn(model_fn, x, **dpm_kwargs, extra_args=extra_args, disable=disable)
+                    return sample_fn(model_fn, x, **dpm_kwargs, extra_args=extra_args, disable=disable, **kwargs)
 
                 self.sample_fn = dpm_wrap
             else:
@@ -223,6 +223,12 @@ class StableDiffusion(LatentDiffusion):
         self.model = self.model.to(device)
         self.timestep_map = np.linspace(0, self.original_num_steps, timesteps + 1).round().astype(int)
 
+    def encode(self, img):
+        return self.model.get_first_stage_encoding(self.model.encode_first_stage(img))
+
+    def decode(self, x):
+        return self.model.decode_first_stage(x)
+
     def get_sigmas(self, t_s, t_e=None):
         step_start = round(t_s * (len(self.sigmas) - 1))
         if t_e is None:
@@ -231,7 +237,7 @@ class StableDiffusion(LatentDiffusion):
             step_end = round(t_e * (len(self.sigmas) - 1)) + 1
             return self.sigmas[step_start:step_end]
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def forward(self, img, prompts, t_start, t_end=1, verbose=True, reverse=False, latent=False):
         if not hasattr(self, "sigmas"):
             # LatentDiffusion class supports plms and ddim, below does not
@@ -263,12 +269,6 @@ class StableDiffusion(LatentDiffusion):
             out = out if latent else self.decode(out)
 
         return out.float()
-
-    def encode(self, img):
-        return self.model.get_first_stage_encoding(self.model.encode_first_stage(img))
-
-    def decode(self, x):
-        return self.model.decode_first_stage(x)
 
 
 def cfg_forward(x, sigma, uncond, cond, cond_scale, model):

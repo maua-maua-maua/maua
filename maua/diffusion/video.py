@@ -10,6 +10,7 @@ decord.bridge.set_bridge("torch")
 
 import os
 from functools import partial, reduce
+from glob import glob
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Thread
@@ -85,7 +86,7 @@ class FramesOnDisk(Dataset):
         self.basename = basename
         self.device = device
         self.write_queue = Queue()
-        self.length = 0
+        self.length = len(glob(f"{basename}*"))
         WriteThread(self.write_queue, self.basename, daemon=True).start()
 
     def __len__(self):
@@ -104,7 +105,7 @@ class FramesOnDisk(Dataset):
             else:
                 image = Image.open(file)
                 tensor = to_tensor(image)
-                if image.mode == "RGB":  # mode "L" should be left with value range (0, 1)
+                if image.mode == "RGB":  # mode "L" (consistency map) is left with value range (0, 1)
                     tensor = tensor.mul(2).sub(1)
             tensors.append(tensor)
 
@@ -123,12 +124,14 @@ def initialize_cache_files(names, out_name, device):
 @torch.inference_mode()
 def initialize_optical_flow(cache, init, consistency_trust, width, height, device):
     flow_model = get_flow_model()
-    frames = VideoFrames(init, height=min(height, 240), width=min(width, 240), device=device)
+    frames = VideoFrames(init, height=min(height, 512), width=min(width, 512), device=device)
     N = len(frames)
 
     if len(cache.flow) == N and tuple(cache.flow[0].shape[1:3]) == (height, width):
         print("Optical flow cache seems valid, re-using...")
         return
+    else:
+        cache.flow.length = cache.consistency.length = 0
 
     for f_n in trange(N, desc="Calculating optical flow..."):
         prev = frames[(f_n - 1) % N].add(1).div(2)
@@ -162,7 +165,6 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         image: Optional[str] = None,
         style: Optional[str] = None,
         size: Tuple[int] = (256, 256),
-        timesteps: int = 100,
         first_skip: float = 0.4,
         first_frame_init: Optional[str] = None,
         skip: float = 0.7,
@@ -190,6 +192,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         cache = initialize_cache_files(
             names=["frame", "flow", "consistency"], out_name=build_output_name(init, unique=False), device=device
         )
+        cache.frame.length = 0  # TODO resume cancelled run?
         initialize_optical_flow(cache, init, consistency_trust, width, height, device)  # calculate optical flow
 
         if first_frame_init is not None:
@@ -199,19 +202,34 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         else:
             out_img = None
 
-        try:
-            fade = torch.sqrt(torch.linspace(1, 0, wrap_around)).reshape(-1, 1, 1, 1).to(device)
+        loop_fade = torch.sqrt(torch.linspace(1, 0, wrap_around, device=device)).reshape(-1, 1, 1, 1)
+        turbo_blend = torch.linspace(0, 1, turbo + 1, device=device)[1:]
+        turbo_prev_img = turbo_next_img = None
 
-            f_start = len(cache.frame)  # TODO resume cancelled stylization?
-            for f_n in trange(f_start, N + wrap_around):
+        try:
+            for f_n in trange(0, N + wrap_around + turbo, turbo, unit_scale=turbo):
 
                 if constant_seed:
                     seed_everything(constant_seed)
 
-                if f_n % turbo != 0:
-                    out_img = warp(out_img, flow_warp_map(cache.flow[f_n % N] * flow_exaggeration))
-                    cache.frame.insert(out_img, f_n % N)
-                    continue
+                if f_n >= N + wrap_around:
+                    turbo_next_img = cache.frame[f_n % N]
+                if f_n > 0:  # apply turbo blending
+                    for t, f_t in enumerate(range(f_n - turbo, f_n)):
+                        flow_map = flow_warp_map(cache.flow[f_t % N] * flow_exaggeration)
+
+                        if turbo_prev_img is not None:
+                            turbo_prev_img = warp(turbo_prev_img, flow_map)
+                        if t != 0:
+                            turbo_next_img = warp(turbo_next_img, flow_map)
+
+                        if turbo_prev_img is not None:
+                            img = turbo_prev_img * (1.0 - turbo_blend[t]) + turbo_next_img * turbo_blend[t]
+                        else:
+                            img = turbo_next_img
+
+                        cache.frame.insert(img, f_t % N)
+                    out_img = turbo_next_img
 
                 prompts = [ContentPrompt(frames[f_n % N])]
                 if style is not None:
@@ -242,7 +260,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
                     init_img /= 1 + flow_mask
 
                 if f_n / N >= 1:
-                    init_img = fade[[f_n % N]] * init_img + (1 - fade[[f_n % N]]) * cache.frame[f_n % N]
+                    init_img = loop_fade[[f_n % N]] * init_img + (1 - loop_fade[[f_n % N]]) * cache.frame[f_n % N]
 
                 if pre_hook:
                     init_img = pre_hook(init_img)
@@ -268,10 +286,13 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
 
                 cache.frame.insert(out_img, f_n % N)
 
+                turbo_prev_img = turbo_next_img
+                turbo_next_img = out_img
+
         except KeyboardInterrupt:
             print("KeyboardInterrupt: saving and quiting...")
 
-        cache.frame.length = N  # TODO is there a better way of handling this?
+        cache.frame.length = N
         return cache.frame
 
 
@@ -303,7 +324,6 @@ def video_sample(
     match_hist: bool = False,
     hist_persist: bool = False,
     sharpness: float = 1.0,
-    inter_noise: float = 0.0,
     constant_seed: Optional[int] = None,
     device: str = "cuda",
     preview: bool = False,
@@ -326,8 +346,6 @@ def video_sample(
     post_fns = []
     if sharpness != 1.0:
         post_fns.append(partial(sharpen, strength=sharpness))
-    if inter_noise > 0.0:
-        post_fns.append(lambda img: img + inter_noise * torch.randn_like(img))
     post_hook = (lambda img: reduce(lambda i, f: f(i), post_fns, img)) if len(post_fns) > 0 else None
 
     video = VideoFlowDiffusionProcessor()(
@@ -337,7 +355,6 @@ def video_sample(
         image=image,
         style=style,
         size=size,
-        timesteps=timesteps,
         first_skip=first_skip,
         first_frame_init=first_frame_init,
         skip=skip,
@@ -374,7 +391,7 @@ if __name__ == "__main__":
     parser.add_argument("--consistency-trust", type=float, default=0.75, help='How strongly to trust flow consistency mask. Lower values will lead to more consistency over time. Higher values will respect occlusions of the background more.')
     parser.add_argument("--wrap-around", type=int, default=0, help='Number of extra frames to continue for, looping back to start. This allows for seamless transitions back to the start of the video.')
     parser.add_argument("--turbo", type=int, default=1, help='Only apply diffusion every --turbo\'th frame, otherwise just warp the previous frame with optical flow. Can be much faster for high factors at the cost of some visual detail.')
-    parser.add_argument("--noise-injection", type=int, default=0.02, help='Inject a little bit of extra noise between each frame. Helps fight loss in detail and the formation of large empty regions.')
+    parser.add_argument("--noise-injection", type=float, default=0.02, help='Inject a little bit of extra noise between each frame. Helps counteract loss of detail and formation of large empty regions.')
     parser.add_argument("--flow-exaggeration", type=float, default=1, help='Factor to multiply optical flow with. Higher values lead to more extreme movements in the final video.')
     parser.add_argument("--diffusion", type=str, default="stable", help='Which diffusion model to use. Options: "guided", "latent", "glide", "glid3xl", "stable" or a /path/to/stable-diffusion.ckpt')
     parser.add_argument("--sampler", type=str, default="lms", choices=["p", "ddim", "plms", "euler", "euler_ancestral", "heun", "dpm_fast", "dpm_adaptive", "dpm_2", "dpm_2_ancestral", "lms"], help='Which sampling method to use. "p", "ddim", and "plms" work for all diffusion models, the rest are currently only supported with "stable" diffusion.')
@@ -387,7 +404,6 @@ if __name__ == "__main__":
     parser.add_argument("--match-hist", action="store_true", help='Match the color histogram of the initialization image to the --style image before starting diffusion.')
     parser.add_argument("--hist-persist", action="store_true", help='Match the color histogram of subsequent frames to the first diffused frame (helps alleviate oversaturation).')
     parser.add_argument("--sharpness", type=float, default=1.0, help='Sharpen the image by this amount after each diffusion scale (a value of 1.0 will leave the image unchanged, higher values will be sharper).')
-    parser.add_argument("--inter-noise", type=float, default=0.0, help='Scale of extra noise added between frames (helps reduce empty spaces forming in the video).')
     parser.add_argument("--constant-seed", type=int, default=None, help='Use a fixed noise seed for all frames (None to disable).')
     parser.add_argument("--device", type=str, default="cuda", help='Which device to use (e.g. "cpu" or "cuda:1")')
     parser.add_argument("--preview", action="store_true", help='Show frames as they\'re rendered (moderately slower).')
