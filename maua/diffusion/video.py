@@ -87,7 +87,8 @@ class FramesOnDisk(Dataset):
         self.device = device
         self.write_queue = Queue()
         self.length = len(glob(f"{basename}*"))
-        WriteThread(self.write_queue, self.basename, daemon=True).start()
+        self.write_thread = WriteThread(self.write_queue, self.basename, daemon=True)
+        self.write_thread.start()
 
     def __len__(self):
         return self.length
@@ -114,6 +115,11 @@ class FramesOnDisk(Dataset):
     def insert(self, item, idx=None):
         self.write_queue.put((item, idx if idx is not None else len(self)))
         self.length += 1
+
+    def finalize(self):
+        self.length -= 1
+        self.write_thread.join()
+        return self
 
 
 def initialize_cache_files(names, out_name, device):
@@ -220,7 +226,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
 
                         if turbo_prev_img is not None:
                             turbo_prev_img = warp(turbo_prev_img, flow_map)
-                        if t != 0:
+                        if t != 0 and f_n < N + wrap_around:
                             turbo_next_img = warp(turbo_next_img, flow_map)
 
                         if turbo_prev_img is not None:
@@ -292,8 +298,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         except KeyboardInterrupt:
             print("KeyboardInterrupt: saving and quiting...")
 
-        cache.frame.length = N
-        return cache.frame
+        return cache.frame.finalize()
 
 
 @torch.no_grad()
