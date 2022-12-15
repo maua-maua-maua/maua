@@ -94,3 +94,6 @@
 [submodule "maua/submodules/stable_diffusion_image_conditioned"]
 	path = maua/submodules/stable_diffusion_image_conditioned
 	url = https://github.com/justinpinkney/stable-diffusion.git
+[submodule "maua/submodules/stablediffusion"]
+	path = maua/submodules/stablediffusion
+	url = https://github.com/Stability-AI/stablediffusion

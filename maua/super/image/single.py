@@ -10,6 +10,11 @@ from tqdm import tqdm
 from ...ops.io import tensor2img
 from .models import bsrgan, latent_diffusion, realesrgan, swinir, waifu
 
+
+torch.backends.cudnn.benchmark = True
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+
 MODEL_MODULES = {
     "latent-diffusion": latent_diffusion,
     "RealESRGAN-x4plus": realesrgan,
@@ -45,6 +50,7 @@ def upscale(
     model = module.load_model(
         model_name.replace("RealESRGAN-", "").replace("SwinIR-", "").replace("waifu2x", "upconv"), torch.device(device)
     )
+    model = torch.compile(model)
     for img in module.upscale(images, model):
         yield img
 
