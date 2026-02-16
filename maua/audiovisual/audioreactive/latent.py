@@ -5,7 +5,7 @@ from torchcubicspline import NaturalCubicSpline, natural_cubic_spline_coeffs
 from torchtyping import TensorType
 
 # from . import cache_to_workspace
-from .signal import gaussian_filter, normalize, resample
+from .signal import gaussian_filter, normalize
 
 
 # @cache_to_workspace("single_weighted")

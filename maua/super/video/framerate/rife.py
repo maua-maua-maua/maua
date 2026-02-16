@@ -2,14 +2,11 @@ import os
 import sys
 from glob import glob
 from importlib.util import module_from_spec, spec_from_file_location
-from typing import Generator
 from zipfile import ZipFile
 
 import gdown
 import torch
-from decord import VideoReader
 from torch.nn import functional as F
-from tqdm import tqdm
 
 from ....utility import download
 

@@ -2,10 +2,11 @@ import sys
 
 import numpy as np
 import torch
-from maua.diffusion.processors.stable import StableDiffusion
-from maua.prompt import ImagePrompt
 from PIL import Image
 from tqdm import tqdm
+
+from maua.diffusion.processors.stable import StableDiffusion
+from maua.prompt import ImagePrompt
 
 from ..ops.video import VideoWriter
 from .image import get_diffusion_model
@@ -43,7 +44,6 @@ with torch.autocast("cuda"), torch.inference_mode():
     start_img = start_prompt.img.float().cuda()
 
     for t_start in np.linspace(0, 0.9, 10):
-
         img_lat = diffusion.encode(start_img)
         print(img_lat.norm().item())
         img_lat_forward = diffusion.forward(img_lat, [start_prompt], t_start=t_start, latent=True)
@@ -84,18 +84,16 @@ with torch.autocast("cuda"), torch.inference_mode():
 
     # latent input should be reverse sampled interpolation b/w start & end latents rather than fixed noise
     print("diffusing interpolation...")
-    latents = torch.cat(
-        [
-            diffusion.sample_fn(
-                diffusion.model_fn,
-                init,
-                diffusion.get_sigmas(t_start, 1),
-                extra_args={"cond": cond, "uncond": uncond, "cond_scale": cfg_scale},
-                disable=True,
-            )
-            for init, cond in zip(tqdm(inits), conds)
-        ]
-    )
+    latents = torch.cat([
+        diffusion.sample_fn(
+            diffusion.model_fn,
+            init,
+            diffusion.get_sigmas(t_start, 1),
+            extra_args={"cond": cond, "uncond": uncond, "cond_scale": cfg_scale},
+            disable=True,
+        )
+        for init, cond in zip(tqdm(inits), conds)
+    ])
 
     print("decoding latents...")
     with VideoWriter(output_file="output/interpolated.mp4", output_size=size, fps=fps) as video:

@@ -42,9 +42,9 @@ class FolderImages(Dataset):
             files = list(set(ZipFile(input_dir).namelist()))
             files = [x for x in files if os.path.splitext(x)[1].lower()[1:] in EXTENSIONS]
         else:
-            files = sorted(
-                [file for ext in EXTENSIONS for file in glob(os.path.join(input_dir, f"**/*.{ext}"), recursive=True)]
-            )
+            files = sorted([
+                file for ext in EXTENSIONS for file in glob(os.path.join(input_dir, f"**/*.{ext}"), recursive=True)
+            ])
 
         files = np.array(files)
         if n_images < len(files):
@@ -206,7 +206,9 @@ if __name__ == "__main__":
     from ..load import load_network
 
     G = load_network(args.checkpoint).eval().to(args.device)
-    fake_samples = lambda *a, **kw: G(z=torch.randn((args.batch_size, 512), device=args.device), c=None).squeeze()
+
+    def fake_samples(*a, **kw):
+        return G(z=torch.randn((args.batch_size, 512), device=args.device), c=None).squeeze()
 
     metrics_dict = compute(
         real_samples=args.data_dir,

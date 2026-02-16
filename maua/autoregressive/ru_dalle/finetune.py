@@ -327,9 +327,9 @@ def finetune(
         Tuple[Union[FP16Module, DalleModel], Optional[Tuple[int, int]]]: The finetuned model and the size that sampled images should be stretched to if `stretch` is enabled.
     """
     assert len(images) > 0 or input_dir is not None, "Must specify either images or input_dir"
-    assert len(captions) == 0 or len(captions) == len(
-        images
-    ), "When specifying captions, the number of images must match exactly."
+    assert len(captions) == 0 or len(captions) == len(images), (
+        "When specifying captions, the number of images must match exactly."
+    )
 
     if len(images) == 0:
         images = glob(input_dir + "/*", recursive=True)

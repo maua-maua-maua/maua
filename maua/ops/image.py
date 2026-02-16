@@ -7,7 +7,6 @@ import torch
 import torch.nn.functional as F
 from medpy.filter.noise import immerkaer as immerkaer_np
 from PIL import Image
-from resize_right import resize
 from scipy.special import comb
 from torchvision.transforms.functional import adjust_sharpness
 
@@ -32,13 +31,11 @@ def smoothstep(x, N=2):
 
 
 def blend_weight1d(total_size, fade_in, fade_out):
-    return torch.cat(
-        (
-            smoothstep(torch.linspace(0, 1, fade_in)),
-            torch.ones(total_size - fade_in - fade_out),
-            smoothstep(torch.linspace(1, 0, fade_out)),
-        )
-    )
+    return torch.cat((
+        smoothstep(torch.linspace(0, 1, fade_in)),
+        torch.ones(total_size - fade_in - fade_out),
+        smoothstep(torch.linspace(1, 0, fade_out)),
+    ))
 
 
 def restitch(tiled, H, W, overtile=1):
@@ -184,9 +181,11 @@ def color_balance(img, percent):
     for channel in cv2.split(img):
         cumhist = np.cumsum(cv2.calcHist([channel], [0], None, [256], (0, 256)))
         low_cut, high_cut = np.searchsorted(cumhist, cumstops)
-        lut = np.concatenate(
-            (np.zeros(low_cut), np.around(np.linspace(0, 255, high_cut - low_cut + 1)), 255 * np.ones(255 - high_cut))
-        )
+        lut = np.concatenate((
+            np.zeros(low_cut),
+            np.around(np.linspace(0, 255, high_cut - low_cut + 1)),
+            255 * np.ones(255 - high_cut),
+        ))
         out_channels.append(cv2.LUT(channel, lut.astype("uint8")))
     return cv2.merge(out_channels)
 
@@ -323,12 +322,12 @@ def blurriness_lbp(im_gray, ks, thresh):
 
 
 def windowed_index(height: int, width: int, seg_size: int):
-    ys = torch.arange(height, dtype=torch.long, device=f"cuda")
-    xs = torch.arange(width, dtype=torch.long, device=f"cuda")
+    ys = torch.arange(height, dtype=torch.long, device="cuda")
+    xs = torch.arange(width, dtype=torch.long, device="cuda")
     ys, xs = torch.meshgrid(ys, xs)
     idxs = torch.stack([ys.flatten(), xs.flatten()])
 
-    winrange = torch.arange(seg_size, dtype=torch.long, device=f"cuda")
+    winrange = torch.arange(seg_size, dtype=torch.long, device="cuda")
     ywin, xwin = torch.meshgrid(winrange, winrange)
     window = torch.stack((ywin, xwin))
 
@@ -364,3 +363,33 @@ def scaled_height_width(h, w, size):
     new_short, new_long = requested_new_short, int(requested_new_short * long / short)
     w, h = (new_short, new_long) if w <= h else (new_long, new_short)
     return math.ceil(h / 2.0) * 2, math.ceil(w / 2.0) * 2
+
+
+if __name__ == "__main__":
+    import argparse
+    from pathlib import Path
+
+    from PIL import Image
+
+    from maua.ops.io import img2tensor, tensor2img
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("image", type=str)
+    parser.add_argument("--histogram-target-image", type=str, default=None)
+    args = parser.parse_args()
+
+    if args.histogram_target_image is not None:
+        img = Image.open(args.image)
+        img = img2tensor(img)
+
+        target_img = Image.open(args.histogram_target_image)
+        target_img = img2tensor(target_img)
+
+        img = match_histogram(img, target_img)
+
+        out_path = (
+            Path(args.image).parent
+            / f"{Path(args.image).stem}_histogram_from_{Path(args.histogram_target_image).stem}.jpg"
+        )
+        tensor2img(img).save(out_path)
+        print(f"Saved to {out_path}")

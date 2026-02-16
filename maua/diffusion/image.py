@@ -39,7 +39,7 @@ def width_height(arg: str):
 def build_output_name(init=None, style=None, text=None, image=None, unique=True):
     out_name = str(uuid4())[:6] if unique else "video"
     if text is not None:
-        out_name = f"{text.replace(' ','_')}_{out_name}"
+        out_name = f"{text.replace(' ', '_')}_{out_name}"
     if image is not None:
         out_name = f"{Path(image).stem}_{out_name}"
     if style is not None:

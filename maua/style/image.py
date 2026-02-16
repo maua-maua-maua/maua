@@ -94,7 +94,6 @@ def transfer(
     torch.cuda.empty_cache()
 
     with torch.enable_grad(), tqdm(total=n_iters, desc=f"Optimizing @ {size}px") as pbar:
-
         opt, niter = load_optimizer(optimizer, lr, optimizer_kwargs, n_iters, pastiche.parameters())
 
         def closure():

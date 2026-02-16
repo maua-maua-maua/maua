@@ -3,6 +3,7 @@ from pathlib import Path
 
 import torch
 from kornia.filters import gaussian_blur2d
+
 from maua.submodules.k_diffusion.k_diffusion.utils import to_pil_image
 
 from ..prompt import ImagePrompt, TextPrompt
@@ -76,7 +77,6 @@ def sliced_optimal_transport(target, source, hist_mode="chol", iterations=8):
     target, source = target.permute(0, 2, 3, 1), source.permute(0, 2, 3, 1)  # -> b, h, w, c
 
     for _ in range(iterations):
-
         rotation = random_rotation(target.shape[-1])
 
         rotated_output = target @ rotation

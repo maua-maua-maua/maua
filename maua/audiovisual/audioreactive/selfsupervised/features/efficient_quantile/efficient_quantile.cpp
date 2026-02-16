@@ -112,12 +112,8 @@ Tensor efficient_quantile(const Tensor *x, const Tensor *q, bool ignore_nan, int
 
     TORCH_CHECK(!(qs[0].lt(0).item<bool>() || qs[-1].lt(0).item<bool>()), "The quantiles must be in the range [0, 1].");
 
-    // Size of the result (bytes)
-    int64_t result_size = q->numel() * q->dtype().itemsize();
-
     int64_t size;
     Tensor partialSortTensor = x->clone();
-    ;
 
     // NaN is only an option for FP.
     if (ignore_nan && (x->is_floating_point()))

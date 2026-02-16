@@ -16,7 +16,7 @@ LICENSE file in the root directory of this source tree.
 
 Official Colab notebook from the paper <b>"Instance-Conditioned GAN"</b> by Arantxa Casanova, Marlene Careil, Jakob Verbeek, Michał Drożdżal, Adriana Romero-Soriano.
 
-This Colab provides the code to generate images with IC-GAN, with the option of further guiding the generation with captions (CLIP). 
+This Colab provides the code to generate images with IC-GAN, with the option of further guiding the generation with captions (CLIP).
 
 Based on the Colab [WanderClip](https://j.mp/wanderclip) by Eyal Gruss [@eyaler](https://twitter.com/eyaler) [eyalgruss.com](https://eyalgruss.com)
 
@@ -43,7 +43,6 @@ from glob import glob
 from pathlib import Path
 
 import cma
-import cv2
 import imageio
 import nltk
 import numpy as np
@@ -157,14 +156,12 @@ def load_feature_extractor(gen_model, last_feature_extractor, feature_extractor)
 
 def preprocess_input_image(input_image_path, size):
     pil_image = Image_PIL.open(input_image_path).convert("RGB")
-    transform_list = transforms.Compose(
-        [
-            data_utils.CenterCropLongEdge(),
-            transforms.Resize((size, size)),
-            transforms.ToTensor(),
-            transforms.Normalize(norm_mean, norm_std),
-        ]
-    )
+    transform_list = transforms.Compose([
+        data_utils.CenterCropLongEdge(),
+        transforms.Resize((size, size)),
+        transforms.ToTensor(),
+        transforms.Normalize(norm_mean, norm_std),
+    ])
     tensor_image = transform_list(pil_image)
     tensor_image = torch.nn.functional.interpolate(tensor_image.unsqueeze(0), 224, mode="bicubic", align_corners=True)
     return tensor_image
@@ -244,7 +241,6 @@ upsampler = realesrgan.RealESRGANer(
     pre_pad=0,
 )
 for input_image_instance in tqdm(glob("/home/hans/datasets/diffuse/sorts/best/*")):
-
     # Prepare other variables
     name_file = "%s_%s_cls%s_inst%s" % (
         Path(input_image_instance).stem,
@@ -278,9 +274,7 @@ for input_image_instance in tqdm(glob("/home/hans/datasets/diffuse/sorts/best/*"
     # Create noise, instance and class vector
     noise_vector = truncnorm.rvs(
         -2 * truncation, 2 * truncation, size=(num_samples_total, noise_size), random_state=state
-    ).astype(
-        np.float32
-    )  # see https://github.com/tensorflow/hub/issues/214
+    ).astype(np.float32)  # see https://github.com/tensorflow/hub/issues/214
     noise_vector = torch.tensor(noise_vector, requires_grad=False, device="cuda")
     if input_features is not None:
         instance_vector = input_features.clone().detach().repeat(num_samples_total, 1)

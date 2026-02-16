@@ -51,14 +51,15 @@ def ImageLoader(
     jpeg_quality=95,
 ) -> Loader:
 
-    construct_loader = lambda: Loader(
-        fname=cache_path,
-        batch_size=batch_size,
-        num_workers=num_workers,
-        os_cache=True,
-        order=OrderOption.QUASI_RANDOM,
-        pipelines={"image": ffcv_pipeline},
-    )
+    def construct_loader():
+        return Loader(
+            fname=cache_path,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            os_cache=True,
+            order=OrderOption.QUASI_RANDOM,
+            pipelines={"image": ffcv_pipeline},
+        )
 
     class FFCVPreprocessorDataset(TorchDataset):
         def __len__(self):

@@ -60,12 +60,10 @@ class ImageLogger(Callback):
             pl_module.eval()
 
         with torch.inference_mode():
-            images = torch.cat(
-                [
-                    pl_module.log_images(batch, split="train", **self.log_images_kwargs)["samples"]
-                    for _ in range(self.num_examples // batch["image"].shape[0])
-                ]
-            )
+            images = torch.cat([
+                pl_module.log_images(batch, split="train", **self.log_images_kwargs)["samples"]
+                for _ in range(self.num_examples // batch["image"].shape[0])
+            ])
             self.log_local(pl_module.logdir, images, pl_module.global_step, pl_module.current_epoch, batch_idx)
 
         if is_train:
@@ -211,9 +209,12 @@ if __name__ == "__main__":
         + "/../submodules/stable_diffusion/configs/stable-diffusion/v1-inference.yaml"
     )
 
-    trainer_config = OmegaConf.create(
-        {"accelerator": "ddp", "benchmark": True, "limit_val_batches": 0, "num_sanity_val_steps": 0}
-    )
+    trainer_config = OmegaConf.create({
+        "accelerator": "ddp",
+        "benchmark": True,
+        "limit_val_batches": 0,
+        "num_sanity_val_steps": 0,
+    })
     for k in nondefault_trainer_args(opt):
         trainer_config[k] = getattr(opt, k)
     trainer_config.accumulate_grad_batches = opt.accumulate_batches

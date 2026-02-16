@@ -52,10 +52,12 @@ class Perceptor(nn.Module):
             content_weights /= content_weights.sum()
 
             for content, content_weight in zip(contents, content_weights):
+                embs = self.forward(content)[: len(self.content_layers)]
+                wembs = torch._foreach_mul(embs, content_weight)
                 if content_embeddings is None:
-                    content_embeddings = content_weight * self.forward(content)[: len(self.content_layers)]
+                    content_embeddings = wembs
                 else:
-                    content_embeddings += content_weight * self.forward(content)[: len(self.content_layers)]
+                    content_embeddings = torch._foreach_add(content_embeddings, wembs)
 
         style_embeddings = None
         if styles is not None:
@@ -64,25 +66,27 @@ class Perceptor(nn.Module):
             style_weights /= style_weights.sum()
 
             for style, style_weight in zip(styles, style_weights):
+                embs = self.forward(style)[len(self.content_layers) :]
+                wembs = torch._foreach_mul(embs, style_weight)
                 if style_embeddings is None:
-                    style_embeddings = style_weight * self.forward(style)[len(self.content_layers) :]
+                    style_embeddings = wembs
                 else:
-                    style_embeddings += style_weight * self.forward(style)[len(self.content_layers) :]
+                    style_embeddings = torch._foreach_add(style_embeddings, wembs)
 
         if content_embeddings is None:
             return style_embeddings
         if style_embeddings is None:
             return content_embeddings
-        return torch.cat((content_embeddings, style_embeddings))
+        return (*content_embeddings, *style_embeddings)
 
-    def forward(self, x):
+    def forward(self, x) -> list[torch.Tensor]:
         self.net(self.preprocess(x))
-        return torch.nested_tensor(self.embeddings, device=x.device)
+        return self.embeddings
 
     def get_loss(self, x, targets):
-        assert len(targets) == len(
-            self.embeddings
-        ), f"The target embeddings don't match this perceptor's embeddings: {len(targets)}. Expected: {len(self.embeddings)}"
+        assert len(targets) == len(self.embeddings), (
+            f"The target embeddings don't match this perceptor's embeddings: {len(targets)}. Expected: {len(self.embeddings)}"
+        )
         self.loss = 0
         self.targets = targets
         self.forward(x)

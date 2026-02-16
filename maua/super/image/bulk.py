@@ -97,7 +97,7 @@ def main(args):
 
     q = mp.Queue(maxsize=8)
 
-    ctx = mp.spawn(
+    mp.spawn(
         worker,
         args=(world_size, q, dataset, args.scale, seg_size, pad_size, args.model_name, args.batch_size),
         nprocs=world_size,
@@ -106,7 +106,7 @@ def main(args):
     )
 
     num_writers = 1
-    ctx2 = mp.spawn(writer, args=(num_writers, q, args.out_dir), nprocs=num_writers, join=True, daemon=True)
+    mp.spawn(writer, args=(num_writers, q, args.out_dir), nprocs=num_writers, join=True, daemon=True)
 
 
 def argument_parser():

@@ -15,7 +15,7 @@ def get_flow_model(
         # "gma/gma_plus-p_8x2_120k_mixed_368x768",
         # "raft/raft_8x2_100k_mixed_368x768",
         "farneback",
-    ]
+    ],
 ):
     pred_fns = []
 

@@ -1,5 +1,4 @@
 import torch
-from decord import VideoReader
 from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data._utils.collate import default_collate
 from tqdm import tqdm
