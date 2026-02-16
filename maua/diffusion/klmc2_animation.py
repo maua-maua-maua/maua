@@ -33,20 +33,20 @@ import huggingface_hub
 import k_diffusion as K
 import numpy as np
 import torch
-from maua.diffusion.load import load_diffusers
 from omegaconf import OmegaConf
 from requests.exceptions import HTTPError
 from torch import nn
 from tqdm.auto import trange
 
-sys.path.extend(
-    [
-        "maua/submodules/stable_diffusion",
-        "maua/submodules/stablediffusion",
-        "maua/submodules/latent_diffusion",
-        "maua/submodules/VQGAN",
-    ]
-)
+from maua.diffusion.load import load_diffusers
+from maua.diffusion.processors.stable import use_sliced_attention
+
+sys.path.extend([
+    "maua/submodules/stable_diffusion",
+    "maua/submodules/stablediffusion",
+    "maua/submodules/latent_diffusion",
+    "maua/submodules/VQGAN",
+])
 from maua.submodules.stable_diffusion.ldm.util import instantiate_from_config
 
 torch.backends.cudnn.benchmark = True
@@ -131,7 +131,7 @@ def load_models(sd_model_path=None):
         if hasattr(module, "use_checkpoint"):
             module.use_checkpoint = False
 
-    return model, vae_model
+    return model.apply(use_sliced_attention), vae_model.apply(use_sliced_attention)
 
 
 class CFGDenoiser(nn.Module):
@@ -145,6 +145,45 @@ class CFGDenoiser(nn.Module):
         cond_in = torch.cat([uncond, cond])
         uncond, cond = self.inner_model(x_in, sigma_in, cond=cond_in).chunk(2)
         return uncond + (cond - uncond) * cond_scale
+
+
+def smooth_trajectory(x0, v0, a0, xf, vf, af, t, K=100):
+    """
+    Minimum jerk trajectory that starts at position `x0` with velocity `v0` and ends at position `xf` with velocity `vf`
+    at timesteps `t` (between 0 and 1). `K` is the "trajectory duration", lower values allow more extreme acceleration.
+
+    "A computationally efficient motion primitive for quadrocopter trajectory generation"
+    M.W. Mueller, M. Hehn, and R. D'Andrea
+    IEEE Transactions on Robotics Volume 31, no.8, pages 1294-1310, 2015
+    """
+    t = K * t.reshape(-1, 1)
+
+    # define starting position:
+    delta_a = af - a0
+    delta_v = vf - v0 - a0 * K
+    delta_p = xf - x0 - v0 * K - 0.5 * a0 * K * K
+
+    # powers of the end time:
+    T2 = K * K
+    T3 = T2 * K
+    T4 = T3 * K
+    T5 = T4 * K
+
+    a = (60 * T2 * delta_a - 360 * K * delta_v + 720 * 1 * delta_p) / T5
+    b = (-24 * T3 * delta_a + 168 * T2 * delta_v - 360 * K * delta_p) / T5
+    g = (3 * T4 * delta_a - 24 * T3 * delta_v + 60 * T2 * delta_p) / T5
+
+    pos = (
+        x0
+        + v0 * t
+        + (1.0 / 2.0) * a0 * t * t
+        + (1.0 / 6.0) * g * t * t * t
+        + (1.0 / 24.0) * b * t * t * t * t
+        + (1.0 / 120.0) * a * t * t * t * t * t
+    )
+    vel = v0 + a0 * t + (1.0 / 2.0) * g * t * t + (1.0 / 6.0) * b * t * t * t + (1.0 / 24.0) * a * t * t * t * t
+    acc = a0 + g * t + (1.0 / 2.0) * b * t * t + (1.0 / 6.0) * a * t * t * t
+    return pos, vel, acc
 
 
 @torch.no_grad()
@@ -164,6 +203,7 @@ def sample_mcmc_klmc2(
     extra_args_non_mcmc=None,
     callback=None,
     disable=None,
+    fade_length=30,
 ):
     extra_args = {} if extra_args is None else extra_args
     extra_args_non_mcmc = {} if extra_args_non_mcmc is None else extra_args_non_mcmc
@@ -176,6 +216,9 @@ def sample_mcmc_klmc2(
     alpha = torch.tensor(alpha, device=x.device)
     tau = torch.tensor(tau, device=x.device)
     v = torch.randn_like(x) * sigma
+    a = torch.zeros_like(x)
+    x_0, v_0, a_0 = x.clone(), v.clone(), a.clone()
+    x_norms, v_norms = [], []
 
     # Model helper functions
     def grad_fn(x, sigma):
@@ -183,7 +226,9 @@ def sample_mcmc_klmc2(
         return (x - denoised) + alpha * x
 
     def hvp_fn_forward_functorch(x, sigma, v):
-        jvp_fn = lambda v: functorch.jvp(grad_fn, (x, sigma), (v, torch.zeros_like(sigma)))
+        def jvp_fn(v):
+            return functorch.jvp(grad_fn, (x, sigma), (v, torch.zeros_like(sigma)))
+
         grad, jvp_out = functorch.vmap(jvp_fn)(v)
         return grad[0], jvp_out
 
@@ -232,29 +277,26 @@ def sample_mcmc_klmc2(
         out = (torch.exp(-gamma * t) * (2 + gamma * t + torch.exp(gamma * t) * (gamma * t - 2))) / gamma**3
         return out.to(t_)
 
-    shape_factor = 4
-    fade_length = 60
-    bias = np.concatenate(
-        (
-            np.linspace(shape_factor, 1 / shape_factor, fade_length // 2),
-            np.linspace(1 / shape_factor, 1, fade_length // 2),
-        )
+    x_trapz = torch.linspace(0, h, 1001, device=x.device)
+    y_trapz = [fun(gamma, x_trapz) for fun in (psi_0, psi_1, phi_2, phi_3)]
+    noise_cov = torch.tensor(
+        [[torch.trapz(y_trapz[i] * y_trapz[j], x=x_trapz) for j in range(4)] for i in range(4)], device=x.device
     )
+    print(noise_cov.cpu().numpy())
 
-    x_norms, v_norms, xs, vs = [], [], [], []
-    for i in trange(n + fade_length, disable=disable):
-        if i <= fade_length:
-            xs.append(x.clone().cpu())
-            vs.append(v.clone().cpu())
-
+    for i in trange(n, disable=disable):
         # Compute model outputs and sample noise
-        x_trapz = torch.linspace(0, h, 1001, device=x.device)
-        y_trapz = [fun(gamma, x_trapz) for fun in (psi_0, psi_1, phi_2, phi_3)]
-        noise_cov = torch.tensor(
-            [[torch.trapz(y_trapz[i] * y_trapz[j], x=x_trapz) for j in range(4)] for i in range(4)], device=x.device
-        )
         noise_v, noise_x, noise_v2, noise_x2 = (
             torch.distributions.MultivariateNormal(x.new_zeros([4]), noise_cov).sample(x.shape).unbind(-1)
+        )
+        print(
+            f"mean: {noise_v.abs().mean().item():.4f} {noise_x.abs().mean().item():.4f} {noise_v2.abs().mean().item():.4f} {noise_x2.abs().mean().item():.4f}"
+        )
+        print(
+            f"norm: {noise_v.norm().item():.4f} {noise_x.norm().item():.4f} {noise_v2.norm().item():.4f} {noise_x2.norm().item():.4f}"
+        )
+        print(
+            f"std : {noise_v.std().item():.4f} {noise_x.std().item():.4f} {noise_v2.std().item():.4f} {noise_x2.std().item():.4f}"
         )
         grad, (h2_v, h2_noise_v2, h2_noise_x2) = hvp_fn(x, sigma, torch.stack([v, noise_v2, noise_x2]))
 
@@ -280,7 +322,7 @@ def sample_mcmc_klmc2(
                 x_refine = x_refine + eps * dt_ode
             old_denoised = denoised
         if callback is not None:
-            callback({"i": i % n, "denoised": x_refine})
+            callback({"i": i, "denoised": x_refine})
 
         # Update the chain
         noise_std = (2 * gamma * tau * sigma**2).sqrt()
@@ -300,17 +342,16 @@ def sample_mcmc_klmc2(
         )
         v, x = v_next, x_next
 
-        if i > n:
-            ii = i - n
-            fade_step_x = (xs[ii].to(x) - x) / (bias[ii] * (fade_length - ii))
-            fade_step_v = (vs[ii].to(v) - v) / (bias[ii] * (fade_length - ii))
-            x += fade_step_x
-            v += fade_step_v
+        if i > n - fade_length:
+            x, v, a = smooth_trajectory(x, v, a, x_0, v_0, a_0, t=torch.tensor(1 / (n - i)).to(x), K=n - i)
             x = x * (np.mean(x_norms) / x.norm())
             v = v * (np.mean(v_norms) / v.norm())
         else:
             x_norms.append(x.norm().item())
             v_norms.append(v.norm().item())
+        print(f"mean: {x.abs().mean().item():.4f} {v.abs().mean().item():.4f} {a.abs().mean().item():.4f}")
+        print(f"norm: {x.norm().item():.4f} {v.norm().item():.4f} {a.norm().item():.4f}")
+        print(f"std : {x.std().item():.4f} {v.std().item():.4f} {a.std().item():.4f}")
 
     x = x - grad
     return x
@@ -324,7 +365,7 @@ def generate_animation(prompt, cond_scale, n, fps, sigma, h, gamma, alpha, tau, 
     model_wrap_cfg = CFGDenoiser(model_wrap)
     sigma_min, sigma_max = model_wrap.sigmas[0].item(), model_wrap.sigmas[-1].item()
 
-    uc = model.get_learned_conditioning(["watermarks, stock images, ugly"])
+    uc = model.get_learned_conditioning(["watermark, stock image"])
     c = model.get_learned_conditioning([prompt])
     extra_args = {"cond": c, "uncond": uc, "cond_scale": torch.tensor(cond_scale, device=device)}
     extra_args_non_mcmc = {"cond": c, "uncond": uc, "cond_scale": torch.tensor(7.5, device=device)}
@@ -332,7 +373,7 @@ def generate_animation(prompt, cond_scale, n, fps, sigma, h, gamma, alpha, tau, 
     def save_image_fn(image, name, i):
         K.utils.to_pil_image(image).save(name)
 
-    out_dir = f'output/klmc2_animation_{prompt.replace(" ", "_")}'
+    out_dir = f"output/klmc2_animation_{prompt.replace(' ', '_')}"
     os.makedirs(out_dir, exist_ok=True)
     torch.cuda.empty_cache()
 

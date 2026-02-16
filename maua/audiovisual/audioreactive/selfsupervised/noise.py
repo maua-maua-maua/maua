@@ -1,140 +1,164 @@
+from typing import Union
+
 import torch
+from torch.nn.functional import pad
+
+from .features.audio import onsets
+from .features.processing import gaussian_filter, normalize
+from .latent import MergeDepth
+from .mir import estimate_tempo
+
+
+def get_sizes(downscale_factor, aspect_ratio):
+    assert downscale_factor <= 4
+    size = 4
+    sizes = [(round(size / downscale_factor), round(aspect_ratio * size / downscale_factor))]
+    for _ in range(8):
+        size *= 2
+        sizes.append((round(size / downscale_factor), round(aspect_ratio * size / downscale_factor)))
+        sizes.append((round(size / downscale_factor), round(aspect_ratio * size / downscale_factor)))
+    return sizes
 
 
 class Noise(torch.nn.Module):
-    def __init__(self, length, size):
+    def __init__(self, seed):
         super().__init__()
-        self.length = length
-        self.size = size
+        self.seed = seed if seed is not None else torch.randint(2**32 - 1, size=()).item()
 
 
-class Blend(Noise):
-    def __init__(self, rng, length, size, modulator):
-        super().__init__(length, size)
-        self.register_buffer(
-            "noise", torch.randn((2, modulator.shape[1], size[0], size[1]), generator=rng, device=rng.device)
-        )
-        self.register_buffer("modulator", modulator)
+class MultiplyNoise(Noise):
+    def __init__(self, feature, seed=None):
+        super().__init__(seed)
+        self.feature = feature
 
-    def forward(self, i, b):
-        mod = self.modulator[i : i + b]
-        mod = mod.reshape(len(mod), -1)
-        left = torch.einsum("MHW,BM->BHW", self.noise[0], mod)
-        right = torch.einsum("MHW,BM->BHW", self.noise[1], 1 - mod)
-        return left + right
+    def prepare(self, audio, sr, auxiliary=None):
+        self.register_buffer("modulation", normalize(gaussian_filter(self.feature(audio, sr), 2)))
+
+    def forward(self, i, b, downscale_factor=1, aspect_ratio=1):
+        modulation = self.modulation[i : i + b]
+        modulation = modulation.reshape(len(modulation), -1)
+        noise = []
+        for s, (h, w) in enumerate(get_sizes(downscale_factor, aspect_ratio)):
+            base_noise = torch.randn(
+                (modulation.shape[1], h, w),
+                device=modulation.device,
+                generator=torch.Generator(modulation.device).manual_seed(self.seed + s),
+            )
+            noise.append(torch.einsum("MHW,BM->BHW", base_noise, modulation / modulation.sum(1, keepdim=True)))
+        return noise
 
 
-class Multiply(Noise):
-    def __init__(self, rng, length, size, modulator):
-        super().__init__(length, size)
-        self.register_buffer(
-            "noise", torch.randn((modulator.shape[1], size[0], size[1]), generator=rng, device=rng.device)
-        )
-        self.register_buffer("modulator", modulator)
+class LoopNoise(Noise):
+    def __init__(self, sigma, n_loops=None, loop_bars=None, tempo=None, seed=None):
+        super().__init__(seed)
+        self.sigma = sigma
 
-    def forward(self, i, b):
-        mod = self.modulator[i : i + b]
-        mod = mod.reshape(len(mod), -1)
-        left = torch.einsum("MHW,BM->BHW", self.noise, mod)
+        assert n_loops is not None or loop_bars is not None
+        self.n_loops = n_loops
+        self.loop_bars = loop_bars
+
+        self.tempo = tempo
+
+    def prepare(self, audio, sr, auxiliary=None):
+        if self.tempo is None:
+            self.tempo = estimate_tempo(audio, sr)
+        self.n_loops = self.n_loops or len(audio) / sr / 60 * self.tempo / 4 / self.loop_bars
+        self.register_buffer("idx", torch.linspace(0, self.n_loops * 2 * torch.pi, len(onsets(audio, sr))))
+
+    def forward(self, i, b, downscale_factor=1, aspect_ratio=1):
+        noise = []
+        for s, (h, w) in enumerate(get_sizes(downscale_factor, aspect_ratio)):
+            base_noise = torch.randn(
+                (3, h, w), device=self.idx.device, generator=torch.Generator(self.idx.device).manual_seed(self.seed + s)
+            )
+
+            freqs = torch.cos(self.idx[i : i + b, None, None] + base_noise[[0]]).div(self.sigma / 50)
+            out = torch.sin(freqs + base_noise[[1]]) * base_noise[[2]]
+            out = out / (out.square().mean(dim=(1, 2), keepdim=True).sqrt() + torch.finfo(out.dtype).eps)
+
+            noise.append(out)
+        return noise
+
+
+class ConstantNoise(Noise):
+    def __init__(self, noise_file) -> None:
+        super().__init__(None)
+        self.noise_file = noise_file
+
+    def prepare(self, audio, sr, auxiliary=None):
+        if self.noise_file is not None:
+            self.noise_idxs = []
+            for i, noise in enumerate(torch.load(self.noise_file)["noise"]):
+                self.noise_idxs.append(i)
+                self.register_buffer(f"noises{i}", noise)
+
+    def forward(self, i, b, downscale_factor=1, aspect_ratio=1):
+        noises = [self.get_buffer(f"noises{i}").squeeze(0) for i in self.noise_idxs]
+        _, h, w = noises[0].shape
+        if w / h != aspect_ratio:
+            for n, noise in enumerate(noises):
+                _, h, w = noise.shape
+                aspect_shortage = aspect_ratio - w / h
+                padding = round(aspect_shortage * h / 2)
+                noises[n] = pad(noise, (padding, padding), mode="reflect")
+        return noises
+
+
+class MergeNoise(torch.nn.Module):
+    def __init__(self, left, right, depth: Union[MergeDepth, slice] = MergeDepth.ALL):
+        super().__init__()
+        self.left = left
+        self.right = right
+        self.slice = depth.value
+
+    def prepare(self, audio, sr, auxiliary=None):
+        pass
+
+
+class OverwriteNoise(MergeNoise):
+    def forward(self, i, b, downscale_factor=1, aspect_ratio=1):
+        left, right = self.left(i, b, downscale_factor, aspect_ratio), self.right(i, b, downscale_factor, aspect_ratio)
+        for l, r in zip(left[self.slice], right[self.slice]):
+            l.set_(r)
         return left
 
 
-class Loop(Noise):
-    def __init__(self, rng, length, size, n_loops=1, sigma=5):
-        super().__init__(length, size)
-        self.sigma = sigma
-        self.register_buffer("noise", torch.randn((3, size[0], size[1]), generator=rng, device=rng.device))
-        self.register_buffer("idx", torch.linspace(0, n_loops * 2 * torch.pi, length))
+class AverageNoise(MergeNoise):
+    def __init__(self, left, right, depth: Union[MergeDepth, slice] = MergeDepth.ALL, left_weight: float = 0.5):
+        super().__init__(left, right, depth)
+        self.left_weight = left_weight
 
-    def forward(self, i, b):
-        freqs = torch.cos(self.idx[i : i + b, None, None] + self.noise[[0]]).div(self.sigma / 50)
-        out = torch.sin(freqs + self.noise[[1]]) * self.noise[[2]]
-        out = out / (out.square().mean(dim=(1, 2), keepdim=True).sqrt() + torch.finfo(out.dtype).eps)
-        return out
+    def forward(self, i, b, downscale_factor=1, aspect_ratio=1):
+        left, right = self.left(i, b, downscale_factor, aspect_ratio), self.right(i, b, downscale_factor, aspect_ratio)
+        for l, r in zip(left[self.slice], right[self.slice]):
+            l.set_(l * self.left_weight + r * (1 - self.left_weight))
+        return left
 
 
-class Average(Noise):
-    def __init__(self, left, right):
-        super().__init__(left.length, left.size)
-        self.left = left
-        self.right = right
+class ModulateNoise(MergeNoise):
+    def __init__(
+        self,
+        left,
+        right,
+        feature,
+        depth: Union[MergeDepth, slice] = MergeDepth.ALL,
+        focus: str = None,
+        smooth: float = 2,
+    ):
+        super().__init__(left, right, depth)
+        self.feature = feature
+        self.focus = focus
+        self.smooth = smooth
 
-    def forward(self, i, b):
-        return (self.left(i, b) + self.right(i, b)) / 2
+    def prepare(self, audio, sr, auxiliary=None):
+        if self.focus is not None:
+            audio = auxiliary[self.focus]
+        modulation = normalize(gaussian_filter(self.feature(audio, sr), self.smooth))
+        self.register_buffer("modulation", normalize(modulation.reshape(len(modulation), -1).mean(1)))
 
-
-class Modulate(Noise):
-    def __init__(self, left, right, modulator):
-        super().__init__(left.length, left.size)
-        self.left = left
-        self.right = right
-        self.register_buffer("modulator", modulator.mean(1))
-
-    def forward(self, i, b):
-        mod = self.modulator[i : i + b, None, None]
-        return self.left(i, b) * mod + self.right(i, b) * (1 - mod)
-
-
-class ScaleBias(Noise):
-    def __init__(self, base, scale, bias):
-        super().__init__(base.length, base.size)
-        self.base = base
-        self.scale = scale
-        self.bias = bias
-
-    def forward(self, i, b):
-        return self.scale * self.base(i, b) + self.bias
-
-
-def noise_patch(
-    rng,
-    noise,
-    features,
-    tempo,
-    fps,
-    patch_type,
-    loop_bars,
-    seq_feat,
-    seq_feat_weight,
-    mod_feat,
-    mod_feat_weight,
-    merge_type,
-    merge_depth,
-    noise_mean,
-    noise_std,
-):
-    if merge_depth == "low":
-        lays = range(0, 6)
-    elif merge_depth == "mid":
-        lays = range(6, 12)
-    elif merge_depth == "high":
-        lays = range(12, 17)
-    elif merge_depth == "lowmid":
-        lays = range(0, 12)
-    elif merge_depth == "midhigh":
-        lays = range(6, 17)
-    elif merge_depth == "all":
-        lays = range(0, 17)
-
-    feature = seq_feat_weight * features[seq_feat]
-
-    for n in lays:
-
-        if patch_type == "blend":
-            new_noise = Blend(rng=rng, length=len(feature), size=noise[n].size, modulator=feature)
-        elif patch_type == "multiply":
-            new_noise = Multiply(rng=rng, length=len(feature), size=noise[n].size, modulator=feature)
-        elif patch_type == "loop":
-            n_loops = len(feature) / fps / 60 / tempo / 4 / loop_bars
-            new_noise = Loop(rng=rng, length=len(feature), size=noise[n].size, n_loops=n_loops)
-
-        if merge_type == "average":
-            noise[n] = Average(left=noise[n], right=new_noise)
-        elif merge_type == "modulate":
-            noise[n] = Modulate(left=noise[n], right=new_noise, modulator=mod_feat_weight * features[mod_feat])
-        else:  # overwrite
-            noise[n] = new_noise
-
-        noise[n] = ScaleBias(noise[n], scale=noise_std, bias=noise_mean)
-
-    return noise
+    def forward(self, i, b, downscale_factor=1, aspect_ratio=1):
+        modulation = self.modulation[i : i + b, None, None]
+        left, right = self.left(i, b, downscale_factor, aspect_ratio), self.right(i, b, downscale_factor, aspect_ratio)
+        for l, r in zip(left[self.slice], right[self.slice]):
+            l.set_(l * (1 - modulation) + r * modulation)
+        return left

@@ -30,6 +30,7 @@ to_2tuple = _ntuple(2)
 
 def get_sinusoid_encoding_table(n_position, d_hid):
     """Sinusoid position encoding table"""
+
     # TODO: make it with torch instead of numpy
     def get_position_angle_vec(position):
         return [position / np.power(10000, 2 * (hid_j // 2) / d_hid) for hid_j in range(d_hid)]
@@ -420,23 +421,21 @@ class Decoder(nn.Module):
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, decoder_depth)]  # stochastic depth decay rule
 
-        self.decoder_blocks = nn.ModuleList(
-            [
-                Block(
-                    dim=decoder_embed_dim,
-                    attn_target=attn_target,
-                    mlp_ratio=mlp_ratio,
-                    drop=drop_rate,
-                    drop_path=dpr[i],
-                    norm_layer=norm_layer,
-                    non_skip_wt=non_skip_wt,
-                    non_skip_wt_learnable=non_skip_wt_learnable,
-                    layer_scale_type=layer_scale_type,
-                    layer_scale_init_value=layer_scale_init_value,
-                )
-                for i in range(decoder_depth)
-            ]
-        )
+        self.decoder_blocks = nn.ModuleList([
+            Block(
+                dim=decoder_embed_dim,
+                attn_target=attn_target,
+                mlp_ratio=mlp_ratio,
+                drop=drop_rate,
+                drop_path=dpr[i],
+                norm_layer=norm_layer,
+                non_skip_wt=non_skip_wt,
+                non_skip_wt_learnable=non_skip_wt_learnable,
+                layer_scale_type=layer_scale_type,
+                layer_scale_init_value=layer_scale_init_value,
+            )
+            for i in range(decoder_depth)
+        ])
         self.return_interim_layers = return_interim_layers
         self.final_projection = None
         if final_projection is not None:
@@ -551,23 +550,21 @@ class TransformerBlocks(nn.Module):
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, num_blocks)]  # stochastic depth decay rule
 
-        self.blocks = nn.ModuleList(
-            [
-                Block(
-                    dim=embed_dim,
-                    attn_target=attn_target,
-                    mlp_ratio=mlp_ratio,
-                    drop=drop_rate,
-                    drop_path=dpr[i],
-                    norm_layer=norm_layer,
-                    non_skip_wt=non_skip_wt,
-                    non_skip_wt_learnable=non_skip_wt_learnable,
-                    layer_scale_type=layer_scale_type,
-                    layer_scale_init_value=layer_scale_init_value,
-                )
-                for i in range(num_blocks)
-            ]
-        )
+        self.blocks = nn.ModuleList([
+            Block(
+                dim=embed_dim,
+                attn_target=attn_target,
+                mlp_ratio=mlp_ratio,
+                drop=drop_rate,
+                drop_path=dpr[i],
+                norm_layer=norm_layer,
+                non_skip_wt=non_skip_wt,
+                non_skip_wt_learnable=non_skip_wt_learnable,
+                layer_scale_type=layer_scale_type,
+                layer_scale_init_value=layer_scale_init_value,
+            )
+            for i in range(num_blocks)
+        ])
 
     def forward(self, x, use_checkpoint=False):
         for blk in self.blocks:
@@ -657,13 +654,12 @@ class VisionTransformer(nn.Module):
             )
 
         elif patch_embed_type == "generic":
-
             self.patch_embed = PatchEmbedGeneric(patch_embed_params_list, img_size=img_size)
 
         num_patches = self.patch_embed.num_patches
-        assert (
-            self.patch_embed.patches_layout[-1] == self.patch_embed.patches_layout[-2]
-        ), "Interpolation of pos embed not supported for non-square layouts"
+        assert self.patch_embed.patches_layout[-1] == self.patch_embed.patches_layout[-2], (
+            "Interpolation of pos embed not supported for non-square layouts"
+        )
 
         if use_cls_token:
             self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
@@ -689,23 +685,21 @@ class VisionTransformer(nn.Module):
             dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
         elif drop_path_type == "uniform":
             dpr = [drop_path_rate for i in range(depth)]
-        self.blocks = nn.ModuleList(
-            [
-                Block(
-                    dim=embed_dim,
-                    attn_target=attn_target,
-                    mlp_ratio=mlp_ratio,
-                    drop=drop_rate,
-                    drop_path=dpr[i],
-                    norm_layer=norm_layer,
-                    non_skip_wt=non_skip_wt,
-                    non_skip_wt_learnable=non_skip_wt_learnable,
-                    layer_scale_type=layer_scale_type,
-                    layer_scale_init_value=layer_scale_init_value,
-                )
-                for i in range(depth)
-            ]
-        )
+        self.blocks = nn.ModuleList([
+            Block(
+                dim=embed_dim,
+                attn_target=attn_target,
+                mlp_ratio=mlp_ratio,
+                drop=drop_rate,
+                drop_path=dpr[i],
+                norm_layer=norm_layer,
+                non_skip_wt=non_skip_wt,
+                non_skip_wt_learnable=non_skip_wt_learnable,
+                layer_scale_type=layer_scale_type,
+                layer_scale_init_value=layer_scale_init_value,
+            )
+            for i in range(depth)
+        ])
 
         # FIXME: Verify if we use Post encoder, if not, remove it.
         self.post_encoder = None

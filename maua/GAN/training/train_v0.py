@@ -1,4 +1,4 @@
-#%%
+# %%
 import os
 import random
 from glob import glob
@@ -21,7 +21,7 @@ from tqdm import tqdm
 
 vision = padl.transform(vision)
 
-#%%
+# %%
 dataroot = "/home/hans/datasets/diffuse/diffuse/all/"
 workers = 24
 batch_size = 128
@@ -36,7 +36,7 @@ ngpu = 1
 ffcv_cache_path = "ds.beton"
 
 
-#%%
+# %%
 """Now we can compose any functions or callables with a nice piping syntax, combining transforms into a single pipeline. The pipeline has a handy print functionality, to really see what is going on in there."""
 
 
@@ -59,7 +59,7 @@ image_prep = (
 image_prep
 
 
-#%%
+# %%
 """To check the intermediate steps of the padl.transform, we can use a handy subsetting functionality"""
 
 file = choice(glob("/home/hans/datasets/diffuse/diffuse/all/*"))
@@ -69,7 +69,7 @@ item = normalize(torch.from_numpy(item).float().permute(0, 3, 1, 2), [127.5] * 3
 print(item.min(), item.max(), item.shape, item.dtype)
 
 
-#%%
+# %%
 """We can define custom transforms by decorating functions or callable classes with `@padl.transform`. We can also wrap single functions as we do here with `PIL.Image.open`."""
 
 images = [f"{dataroot}/{x}" for x in os.listdir(dataroot)]
@@ -112,7 +112,7 @@ def next_batch(*args, **kwargs):
     return next(loader)
 
 
-#%%
+# %%
 """Pytorch layers are first class citizens in PADL, and can be converted to PADL just as before with `@padl.transform`. PADL tracks all torch functionality by composing the class with a PADL object. In the wrapped class, PADL functionality is isolated under methods beginning `.pd_...`."""
 
 import torch
@@ -151,7 +151,7 @@ class Generator(torch.nn.Module):
             torch.nn.ReLU(True),
             # state size. (ngf) x 32 x 32
             torch.nn.ConvTranspose2d(ngf, img_channels, 4, 2, 1, bias=False),
-            torch.nn.Tanh()
+            torch.nn.Tanh(),
             # state size. (img_channels) x 64 x 64
         )
         self.apply(weights_init)
@@ -194,7 +194,7 @@ class Discriminator(torch.nn.Module):
 netD = Discriminator(ngpu)
 netG = Generator(ngpu)
 
-#%%
+# %%
 """We do something similar for the generator model.
 
 Here we use the keyword `padl.same` which allows for a sort of neat inline lambda function. Standard `lambda` functions are also supported.
@@ -232,12 +232,12 @@ generator = (
 )
 generator
 
-#%%
+# %%
 """Let's check the PADL-saved output. The saved artifact consists of a small python module, which includes only the bits of code which went into defining the generator. The saver tracks down all global variables, imports, functions, weights and data artifacts necessary for redefining and restoring the pipeline in its entirety. This is all packaged together into a compact, exportable directory."""
 
 padl.save(generator, "test.padl", force_overwrite=True, compress=True)
 
-#%%
+# %%
 """When the keywords `padl.batch` or `padl.unbatch` are used, it's no longer to use the `__call__` methods directly anymore. Instead, the pipeline must be "applied" in one of three modes "train", "eval", and "infer". That's because the pipeline needs to be told how to construct the padl.batch, and whether to include gradients, and functionality only needed in training.
 
 The modes are accessed with three key methods: `train_apply`, `eval_apply`, and `infer_apply`. With `infer_apply`, 
@@ -250,16 +250,16 @@ Let's apply the generator. Since it is a sampler, we can just pass an empty tupl
 
 generator.infer_apply(())
 
-#%%
+# %%
 """We can dissect the generating pipeline into preprocessing, forward pass, postprocessing. Let's have a look and 
 validate that `generator.pd_preprocess >> generator.pd_forward >> generator.pd_postproces` is equivalent to `generator`.
 """
 generator.pd_preprocess
-#%%
+# %%
 generator.pd_forward
-#%%
+# %%
 generator.pd_postprocess
-#%%
+# %%
 """There are ways to create branches in the workflow using the operators `/`, `+` and `~`. See [here](link_to_the other_notebook) for details.
 In the following part, we use `+` to add a label to the discriminator pipeline:
 """
@@ -282,7 +282,7 @@ errD_real = (
     >> criterion
 )
 errD_real
-#%%
+# %%
 
 
 @padl.transform
@@ -296,19 +296,19 @@ make_fake_tensor = generator.pd_preprocess >> generator.pd_forward
 errD_fake = padl.same.detach() >> netD >> padl.identity + fake_label >> criterion
 errD_fake
 
-#%%
+# %%
 """A test:"""
 
 errD_fake.infer_apply(torch.randn(1, 3, 64, 64))
 
-#%%
+# %%
 """The generator pipeline:"""
 
 errG = netD >> padl.identity + real_label >> criterion
 errG
 
 
-#%%
+# %%
 """We can now create the optimizers and the iterators so that we can do some learning steps. Beware that
 PyTorch requires specifying how the seed is set in each worker using `init_worker_fn` -- otherwise it's
 possible to identical lines in the batches.
@@ -343,7 +343,6 @@ errD_real_generator = iter(
 """
 with tqdm(range(ceil(1_000_000 / batch_size)), unit_scale=batch_size, unit="img") as pbar:
     for it in pbar:
-
         fake_tensor = next(fake_generator)
 
         netD.zero_grad()
@@ -367,24 +366,24 @@ with tqdm(range(ceil(1_000_000 / batch_size)), unit_scale=batch_size, unit="img"
                 display(generator.infer_apply())
             pbar.write(f"Iteration: {it}; ErrD/real: {ed_r:.3f}; ErrD/fake: {ed_f:.3f}; ErrG: {eg:.3f};")
 
-#%%
+# %%
 """Now let's padl.save the trained model!"""
 
 padl.save(generator, "finished.padl")
 
-#%%
+# %%
 """A really useful feature, and making the finished pipeline super portable, is the ability to reload the full saved pipeline, without any importing or extra definitions. The following cell works, even after restarting the kernel/ or in a new session."""
 
 
 reloader = padl.load("finished.padl")
 
-#%%
+# %%
 """We can now try a few sample generations from the trained pipeline, to check we get what we expect."""
 
 reloader.infer_apply()
 
 
-#%%
+# %%
 generator = (
     generate_noise
     >> padl.batch
@@ -395,7 +394,7 @@ generator = (
     >> padl.transform(PIL.Image.fromarray)
 )
 generator
-#%%
+# %%
 errD_real = (
     next_batch
     >> padl.same.float()
@@ -407,19 +406,19 @@ errD_real = (
     >> padl.transform(lambda *args, **kwargs: optimizerD.step())
 )
 errD_real
-#%%
+# %%
 make_fake_tensor = generator.pd_preprocess >> generator.pd_forward
 make_fake_tensor
-#%%
+# %%
 errD_fake = padl.same.detach() >> netD >> padl.identity + fake_label >> criterion
 errD_fake
-#%%
+# %%
 errG = netD >> padl.identity + real_label >> criterion
 errG
-#%%
+# %%
 train_step = (make_fake_tensor >> (errG + errD_fake)) + errD_real
 train_step
-#%%
+# %%
 G_step = make_fake_tensor >> errG
 
 
@@ -451,7 +450,7 @@ def training_step(self, batch, batch_idx, optimizer_idx):
         return output
 
 
-#%%
+# %%
 fake_tensor = next(fake_generator)
 
 netD.zero_grad()

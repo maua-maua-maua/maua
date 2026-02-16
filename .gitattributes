@@ -1,0 +1,6 @@
+text=auto
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+*.properties    text eol=lf
+*.pl            text eol=lf
+*.py            text eol=lf

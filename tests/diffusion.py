@@ -3,6 +3,7 @@ import gc
 import numpy as np
 import pytest
 import torch
+
 from maua.diffusion.image import get_diffusion_model, image_sample
 from maua.diffusion.video import video_sample
 
@@ -25,7 +26,10 @@ TILE_SIZES = [128, 256, 384]
 SAMPLERS = ["p", "ddim", "plms"]
 
 DIFFUSION_IDS = [f"{tup[0]}-{tup[1]}".replace("-n/a", "") for tup in DIFFUSION_SPEEDS]
-SIZE_ID = lambda x: "->".join(["x".join([str(sz) for sz in tup]) for tup in x])
+
+
+def SIZE_ID(x):
+    return "->".join(["x".join([str(sz) for sz in tup]) for tup in x])
 
 
 @pytest.fixture(scope="module", params=DIFFUSION_SPEEDS, ids=DIFFUSION_IDS)

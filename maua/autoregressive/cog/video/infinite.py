@@ -123,13 +123,13 @@ def my_save_multiple_images(imgs, path, subdir, debug=True):
         single_frame_path = os.path.join(path, subdir)
         os.makedirs(single_frame_path, exist_ok=True)
         for i in range(len(imgs)):
-            save_image(imgs[i], os.path.join(single_frame_path, f'{str(i).rjust(4,"0")}.jpg'), normalize=True)
+            save_image(imgs[i], os.path.join(single_frame_path, f"{str(i).rjust(4, '0')}.jpg"), normalize=True)
             os.chmod(
-                os.path.join(single_frame_path, f'{str(i).rjust(4,"0")}.jpg'),
+                os.path.join(single_frame_path, f"{str(i).rjust(4, '0')}.jpg"),
                 stat.S_IRWXO + stat.S_IRWXG + stat.S_IRWXU,
             )
-        save_image(torch.cat(imgs, dim=0), os.path.join(single_frame_path, f"frame_concat.jpg"), normalize=True)
-        os.chmod(os.path.join(single_frame_path, f"frame_concat.jpg"), stat.S_IRWXO + stat.S_IRWXG + stat.S_IRWXU)
+        save_image(torch.cat(imgs, dim=0), os.path.join(single_frame_path, "frame_concat.jpg"), normalize=True)
+        os.chmod(os.path.join(single_frame_path, "frame_concat.jpg"), stat.S_IRWXO + stat.S_IRWXG + stat.S_IRWXU)
 
 
 def calc_next_tokens_frame_begin_id(text_len, frame_len, total_len):
@@ -188,8 +188,9 @@ def sample_token_sequence(
     if guide_seq is not None:
         guide_index_delta = text_len - guide_text_len
         guide_attention_mask, guide_position_ids = get_masks_and_position_ids(len(guide_seq[0]), guide_text_len)
-        guide_attention_mask, guide_position_ids = guide_attention_mask.to(seq.device), guide_position_ids.to(
-            seq.device
+        guide_attention_mask, guide_position_ids = (
+            guide_attention_mask.to(seq.device),
+            guide_position_ids.to(seq.device),
         )
         guide_tokens = guide_seq[..., : context_length - guide_index_delta]
         guide_input_tokens = guide_tokens.clone()
@@ -264,11 +265,11 @@ def sample_token_sequence(
                     for id, mem_kv in enumerate(mem_kv01):
                         for layer, mem_kv_perlayer in enumerate(mem_kv):
                             if limited_spatial_channel_mem and id == 0:
-                                mems_buffers[id][
-                                    layer, batch_idx : batch_idx + group_size, :text_len
-                                ] = mem_kv_perlayer.expand(min(group_size, input_tokens.shape[0] - batch_idx), -1, -1)[
-                                    :, :text_len
-                                ]
+                                mems_buffers[id][layer, batch_idx : batch_idx + group_size, :text_len] = (
+                                    mem_kv_perlayer.expand(min(group_size, input_tokens.shape[0] - batch_idx), -1, -1)[
+                                        :, :text_len
+                                    ]
+                                )
                                 mems_buffers[id][
                                     layer,
                                     batch_idx : batch_idx + group_size,
@@ -321,9 +322,7 @@ def sample_token_sequence(
                                         layer, batch_idx : batch_idx + group_size, :guide_text_len
                                     ] = guide_mem_kv_perlayer.expand(
                                         min(group_size, input_tokens.shape[0] - batch_idx), -1, -1
-                                    )[
-                                        :, :guide_text_len
-                                    ]
+                                    )[:, :guide_text_len]
                                     guide_next_tokens_frame_begin_id = calc_next_tokens_frame_begin_id(
                                         guide_text_len, FL, guide_mem_kv_perlayer.shape[1]
                                     )
@@ -335,9 +334,7 @@ def sample_token_sequence(
                                         - guide_next_tokens_frame_begin_id,
                                     ] = guide_mem_kv_perlayer.expand(
                                         min(group_size, input_tokens.shape[0] - batch_idx), -1, -1
-                                    )[
-                                        :, guide_next_tokens_frame_begin_id:
-                                    ]
+                                    )[:, guide_next_tokens_frame_begin_id:]
                                 else:
                                     guide_mems_buffers[id][
                                         layer, batch_idx : batch_idx + group_size, : guide_mem_kv_perlayer.shape[1]
@@ -386,9 +383,10 @@ def sample_token_sequence(
                     limited_spatial_channel_mem=limited_spatial_channel_mem,
                     **kw_args,
                 )
-                mem_kv0, mem_kv1 = [o["mem_kv"][0] for o in output_per_layers], [
-                    o["mem_kv"][1] for o in output_per_layers
-                ]
+                mem_kv0, mem_kv1 = (
+                    [o["mem_kv"][0] for o in output_per_layers],
+                    [o["mem_kv"][1] for o in output_per_layers],
+                )
 
                 if guide_seq is not None:
                     guide_logits, *guide_output_per_layers = model(
@@ -404,9 +402,10 @@ def sample_token_sequence(
                         limited_spatial_channel_mem=limited_spatial_channel_mem,
                         **kw_args,
                     )
-                    guide_mem_kv0, guide_mem_kv1 = [o["mem_kv"][0] for o in guide_output_per_layers], [
-                        o["mem_kv"][1] for o in guide_output_per_layers
-                    ]
+                    guide_mem_kv0, guide_mem_kv1 = (
+                        [o["mem_kv"][0] for o in guide_output_per_layers],
+                        [o["mem_kv"][1] for o in guide_output_per_layers],
+                    )
 
                 if not mems_buffers_on_GPU:
                     torch.cuda.empty_cache()
@@ -570,9 +569,9 @@ def process_stage1(
         seq[:, text_len + 1 + given_frame_id * 400 : text_len + 1 + (given_frame_id + 1) * 400] = given_tokens[
             :, given_frame_id
         ]
-        guide_seq[
-            :, guide_text_len + 1 + given_frame_id * 400 : guide_text_len + 1 + (given_frame_id + 1) * 400
-        ] = given_tokens[:, given_frame_id]
+        guide_seq[:, guide_text_len + 1 + given_frame_id * 400 : guide_text_len + 1 + (given_frame_id + 1) * 400] = (
+            given_tokens[:, given_frame_id]
+        )
 
     if use_guidance_stage1:
         video_log_text_attention_weights = 0
@@ -639,7 +638,7 @@ def process_stage2(
             enc_text = tokenizer.encode(seq_text)
             enc_duration = tokenizer.encode(str(float(duration)) + "秒")
             seq = enc_duration + [tokenizer["<n>"]] + enc_text + [tokenizer["<start_of_image>"]] + [-1] * 400 * FN
-            tl = text_len = len(seq) - FL * FN - 1
+            tl = len(seq) - FL * FN - 1
 
             # generation
             seq = torch.cuda.LongTensor(seq, device=device).unsqueeze(0).repeat(total_frames, 1)
@@ -892,7 +891,6 @@ def main(
                 mem_dict["guide_buffer"] = deepcopy(mem_dict["buffer"])
 
         if stage_1 or both_stages:
-
             if input_dir is not None:
                 image_prompt = random.choice(glob(f"{input_dir}/*"))
 
@@ -917,7 +915,7 @@ def main(
             )
 
             out_dir = path + "_stage1"
-            my_save_multiple_images(imgs, out_dir, subdir=f"frames/0", debug=False)
+            my_save_multiple_images(imgs, out_dir, subdir="frames/0", debug=False)
             os.system(f"gifmaker -i '{out_dir}'/frames/0/0*.jpg -o '{out_dir}/0.gif' -d 0.25")
             torch.save(tokens, os.path.join(out_dir, "frame_tokens.pt"))
 
@@ -940,7 +938,7 @@ def main(
                 )
 
                 out_dir = path + "_stage2"
-                my_save_multiple_images(imgs[0], out_dir, subdir=f"frames/0", debug=False)
+                my_save_multiple_images(imgs[0], out_dir, subdir="frames/0", debug=False)
                 os.system(f"gifmaker -i '{out_dir}'/frames/0/0*.jpg -o '{out_dir}/0.gif' -d 0.125")
 
         elif stage_2:
@@ -966,7 +964,7 @@ def main(
                     video_guidance_text="视频",
                 )
                 out_dir = path + "_stage2"
-                my_save_multiple_images(imgs[0], out_dir, subdir=f"frames/0", debug=False)
+                my_save_multiple_images(imgs[0], out_dir, subdir="frames/0", debug=False)
                 os.system(f"gifmaker -i '{out_dir}'/frames/0/0*.jpg -o '{out_dir}/0.gif' -d 0.125")
 
 

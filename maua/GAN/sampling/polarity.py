@@ -8,12 +8,11 @@ from torch.nn.functional import interpolate
 from torchvision.transforms import Normalize
 from tqdm import tqdm
 
-from ..wrappers.stylegan3 import StyleGAN3, StyleGAN3Mapper, StyleGAN3Synthesizer
+from ..wrappers.stylegan3 import StyleGAN3
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-import clip
 
-CLIP, preprocess = clip.load("ViT-B/32", jit=True)
+# CLIP, preprocess = clip.load("ViT-B/32", jit=True)
 normalize = Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
 
 
@@ -22,7 +21,6 @@ def calculate_svds(G, cache_file, N=1600):
     if not os.path.exists(cache_file):
         latents, svds = [], []
         for _ in tqdm(range(N)):
-
             zs = torch.randn((1, G.z_dim), device=device)
             jacobian = torch.autograd.functional.jacobian(
                 lambda z: CLIP.encode_image(normalize(interpolate(G(z), size=224).add(1).div(2))), zs

@@ -68,8 +68,8 @@ if __name__ == "__main__":
     parser.add_argument("--grid", action='store_true', help="Whether to output images together as a grid, rather than image by image")
     parser.add_argument("--out_dir", default="./output/", type=str, help="Directory to output images in")
     args = parser.parse_args()
-    
-    seeds = sum([([int(seed)] if not "-" in seed else list(range(int(seed.split("-")[0]), int(seed.split("-")[1])))) for seed in args.seeds.split(",")], [])
+
+    seeds = sum([([int(seed)] if "-" not in seed else list(range(int(seed.split("-")[0]), int(seed.split("-")[1])))) for seed in args.seeds.split(",")], [])
     # fmt: on
 
     translation = (
@@ -83,7 +83,6 @@ if __name__ == "__main__":
         model_file=args.model_file, output_size=out_size, strategy=args.resize_strategy, layer=args.resize_layer
     ).to(device)
 
-    import matplotlib.pyplot as plt
     from PIL import Image
     from resize_right import resize
 
@@ -130,7 +129,7 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
     )
 
-    out_name = f'{Path(args.model_file.replace("/network-snapshot", "")).stem}'
+    out_name = f"{Path(args.model_file.replace('/network-snapshot', '')).stem}"
     if out_size[0] != G.res or out_size[1] != G.res:
         out_name += f"_{args.resize_strategy}@{args.resize_layer}_{out_size[0]}x{out_size[1]}"
     if args.latent_sampling != "standard":

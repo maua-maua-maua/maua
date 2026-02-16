@@ -73,9 +73,15 @@ class SteerableGenerator(torch.nn.Module):
         main_type = nn.FieldType(self.gspace, [self.gspace.irrep(*id) for id in irreps])
 
         blocks = []
-        for c, channels in enumerate(
-            [n_filters * 3, n_filters * 3, n_filters * 2, n_filters * 2, n_filters, n_filters, n_channels]
-        ):
+        for c, channels in enumerate([
+            n_filters * 3,
+            n_filters * 3,
+            n_filters * 2,
+            n_filters * 2,
+            n_filters,
+            n_filters,
+            n_channels,
+        ]):
             out_type = nn.FieldType(self.gspace, channels * [main_type.representation])
             blocks.append(
                 nn.SequentialModule(
@@ -118,9 +124,14 @@ class SteerableDiscriminator(torch.nn.Module):
         main_type = nn.FieldType(self.gspace, [self.gspace.irrep(1, k) for k in range(maximum_frequency + 1)])
 
         blocks = [nn.MaskModule(in_type, image_size, margin=1)]
-        for c, channels in enumerate(
-            [n_filters, n_filters, n_filters * 2, n_filters * 2, n_filters * 3, n_filters * 3]
-        ):
+        for c, channels in enumerate([
+            n_filters,
+            n_filters,
+            n_filters * 2,
+            n_filters * 2,
+            n_filters * 3,
+            n_filters * 3,
+        ]):
             out_type = nn.FieldType(self.gspace, channels * [main_type.representation])
             blocks.append(
                 nn.SequentialModule(

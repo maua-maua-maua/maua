@@ -417,9 +417,9 @@ if __name__ == "__main__":
             print(
                 f"{correlation.__name__}".ljust(12),
                 f"correlated: {correlation(X, Y1).item():.4f}".ljust(20),
-                f"3quarter: {correlation(X, 0.75*Y1+0.25*Y2).item():.4f}".ljust(20),
-                f"half: {correlation(X, 0.5*Y1+0.5*Y2).item():.4f}".ljust(20),
-                f"quarter: {correlation(X, 0.25*Y1+0.75*Y2).item():.4f}".ljust(20),
+                f"3quarter: {correlation(X, 0.75 * Y1 + 0.25 * Y2).item():.4f}".ljust(20),
+                f"half: {correlation(X, 0.5 * Y1 + 0.5 * Y2).item():.4f}".ljust(20),
+                f"quarter: {correlation(X, 0.25 * Y1 + 0.75 * Y2).item():.4f}".ljust(20),
                 f"random: {correlation(X, Y2).item():.4f}",
             )
         except:

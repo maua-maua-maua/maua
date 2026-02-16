@@ -1,7 +1,5 @@
-import os
-import sys
 import warnings
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 import kornia.geometry.transform as kT
 import numpy as np
@@ -19,7 +17,8 @@ ToRGBInputType = Tuple[Tensor, Tensor]
 
 
 class StyleGAN2Mapper(StyleGANMapper):
-    MapperClsFn = lambda inference: (stylegan2_inference if inference else stylegan2_train).MappingNetwork
+    def MapperClsFn(inference):
+        return (stylegan2_inference if inference else stylegan2_train).MappingNetwork
 
 
 class StyleGAN2Synthesizer(StyleGANSynthesizer):
@@ -48,7 +47,7 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
 
         self.w_dim, self.num_ws = self.G_synth.w_dim, self.G_synth.num_ws
         self.layer_names = [
-            f"bs.{c//2}.conv{1 if block_size == 4 else c % 2}"
+            f"bs.{c // 2}.conv{1 if block_size == 4 else c % 2}"
             for c, block_size in enumerate(sorted(self.G_synth.block_resolutions * 2))
         ]
 
@@ -91,11 +90,19 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
                     noise_l = noises[l].to(c.noise_const, non_blocking=True)
                     if (noise_l.shape[-2], noise_l.shape[-1]) != (c.noise_const.shape[-2], c.noise_const.shape[-1]):
                         warnings.warn(
-                            f"Supplied noise for SynthesisLayer {l} has shape {noise_l.shape} while the expected "
-                            f"shape is {c.noise_const.shape}. Resizing the supplied noise to match..."
+                            f"Supplied noise for SynthesisLayer {l} has shape {tuple(noise_l.shape)} while the expected"
+                            f" shape is {tuple(c.noise_const.shape)}. Resizing the supplied noise to match..."
                         )
                         h, w = c.noise_const.shape[-2], c.noise_const.shape[-1]
-                        noise_l = torch.nn.functional.interpolate(noise_l, (h, w), mode="bicubic", align_corners=False)
+                        if noise_l.shape[-2] > h or noise_l.shape[-1] > w:
+                            # when the noise is larger than the layer, we crop it
+                            start_h, start_w = (noise_l.shape[-2] - h) // 2, (noise_l.shape[-1] - w) // 2
+                            noise_l = noise_l[:, :, start_h : start_h + h, start_w : start_w + w]
+                        else:
+                            # when the noise is smaller than the layer, we stretch it up to the right size
+                            noise_l = torch.nn.functional.interpolate(
+                                noise_l, (h, w), mode="bicubic", align_corners=False
+                            )
                     setattr(c, "noise_const", noise_l)
                     l += 1
 
@@ -119,6 +126,7 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
                 warnings.warn(
                     f"Layer {layer} resizes to multiples of {lay_mult}. --output-size rounded to {lay_mult * target_size}"
                 )
+                output_size = lay_mult * target_size
 
             use_pre_hook = layer == 0
             feat_hook, prev_img_hook, rgb_hook = get_hook(layer_size, target_size, strategy, pre=use_pre_hook)
@@ -226,7 +234,6 @@ def get_hook(layer_size, target_size, strategy, add_noise=True, pre=False):
             noise: Tensor = noise,
             add_noise: bool = add_noise,
         ):
-
             x = torch.nn.functional.interpolate(x, target_size, mode="bicubic", align_corners=False)
 
             if feat and add_noise:

@@ -104,16 +104,14 @@ class CLIPGrads(GradModule):
         clamp_gradient=None,
     ):
         super().__init__(scale)
-        self.clip_models = torch.nn.ModuleList(
-            [clip.load(name, jit=False)[0].eval().requires_grad_(False) for name in perceptors]
-        )
+        self.clip_models = torch.nn.ModuleList([
+            clip.load(name, jit=False)[0].eval().requires_grad_(False) for name in perceptors
+        ])
         self.normalize = Normalize(mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
-        self.cutouts = torch.nn.ModuleList(
-            [
-                make_cutouts(cutouts, cut_size=clip_model.visual.input_resolution, **cutout_kwargs)
-                for clip_model in self.clip_models
-            ]
-        )
+        self.cutouts = torch.nn.ModuleList([
+            make_cutouts(cutouts, cut_size=clip_model.visual.input_resolution, **cutout_kwargs)
+            for clip_model in self.clip_models
+        ])
         self.cutout_batches = cutout_batches
         self.clamp_gradient = clamp_gradient
 
@@ -122,7 +120,6 @@ class CLIPGrads(GradModule):
         device = next(self.clip_models[0].parameters()).device
 
         for prompt in prompts:
-
             if isinstance(prompt, TextPrompt):
                 txt, weight = prompt()
                 tokens = clip.tokenize(txt, truncate=True).to(device)

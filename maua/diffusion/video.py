@@ -214,7 +214,6 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
 
         try:
             for f_n in trange(0, N + wrap_around + turbo, turbo, unit_scale=turbo):
-
                 if constant_seed:
                     seed_everything(constant_seed)
 

@@ -7,7 +7,6 @@ import io
 import os
 import sys
 
-import matplotlib.pylab as pl
 import numpy as np
 import PIL.Image
 import PIL.ImageDraw

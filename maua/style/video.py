@@ -121,7 +121,6 @@ def transfer(
                     start_idx = np.random.randint(0, len(content))
                     frame_range = frame_range[start_idx:] + frame_range[:start_idx]
                 for f_n in frame_range:
-
                     content_frame = resample(torch.from_numpy(content[[f_n]].copy()).to(device), (h, w))
                     content_embeddings = perceptor.get_target_embeddings(contents=content_frame, styles=None)
                     target_embeddings = torch.cat((content_embeddings, style_embeddings))
@@ -162,7 +161,6 @@ def transfer(
                     del curr_frame, prev_frame, init_tensor
 
                     with torch.enable_grad():
-
                         opt, niter = load_optimizer(
                             optimizer, lr, optimizer_kwargs, n_iters // n_passes, pastiche.parameters()
                         )

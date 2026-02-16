@@ -47,7 +47,6 @@ class MultiCropDataset(Dataset):
         file = self.files[index]
 
         try:
-
             img = Image.open(file).convert("RGB")
             L = min(img.size)
             img = to_tensor(img).unsqueeze(0)

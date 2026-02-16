@@ -164,9 +164,10 @@ if __name__ == "__main__":
     # =========================== DATA ============================
     # =============================================================
 
-    ffcv_preprocess = tvt.Compose(
-        [tvt.Resize(args.preprocess_image_size, antialias=True), tvt.CenterCrop(args.preprocess_image_size)]
-    )
+    ffcv_preprocess = tvt.Compose([
+        tvt.Resize(args.preprocess_image_size, antialias=True),
+        tvt.CenterCrop(args.preprocess_image_size),
+    ])
 
     if args.random_crop:
         ffcv_decoder = RandomResizedCropRGBImageDecoder(

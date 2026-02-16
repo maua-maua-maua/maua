@@ -5,7 +5,6 @@ import torch
 from torch import nn
 from torch.nn.functional import interpolate
 from torch_butterfly import Butterfly
-from torch_butterfly.complex_utils import complex_reshape
 from torch_butterfly.multiply import butterfly_multiply
 
 
@@ -289,19 +288,18 @@ class StyleHyperMixerFlyGenerator(nn.Module):
 
         block_resolutions = 2 ** np.arange(2, np.log2(image_size) + 1).astype(int)
         log_n_channels = np.arange(np.log2(ngf), 4, -1)
-        n_channels = np.concatenate(
-            (ngf * np.ones(len(block_resolutions) - len(log_n_channels) + 1), 2**log_n_channels)
-        ).astype(int)
+        n_channels = np.concatenate((
+            ngf * np.ones(len(block_resolutions) - len(log_n_channels) + 1),
+            2**log_n_channels,
+        )).astype(int)
 
-        self.synthesis = nn.ModuleList(
-            [
-                StyleHyperMixerBlock(in_dim, out_dim, w_dim, drop=drop, drop_path=drop)
-                for in_dim, out_dim in zip(n_channels[:-1], n_channels[1:])
-            ]
-        )
-        self.to_rgbs = nn.ModuleList(
-            [StyleGLU(w_dim, out_dim, out_dim, img_channels, drop, internal=False) for out_dim in n_channels[1:]]
-        )
+        self.synthesis = nn.ModuleList([
+            StyleHyperMixerBlock(in_dim, out_dim, w_dim, drop=drop, drop_path=drop)
+            for in_dim, out_dim in zip(n_channels[:-1], n_channels[1:])
+        ])
+        self.to_rgbs = nn.ModuleList([
+            StyleGLU(w_dim, out_dim, out_dim, img_channels, drop, internal=False) for out_dim in n_channels[1:]
+        ])
 
     @staticmethod
     def add_model_specific_args(parent_parser):
@@ -355,9 +353,10 @@ class HyperMixerFlyDiscriminator(nn.Module):
 
         block_resolutions = 2 ** np.arange(np.log2(image_size), 1, -1).astype(int)
         log_n_channels = np.arange(4, np.log2(ndf))
-        n_channels = np.concatenate(
-            (2**log_n_channels, ndf * np.ones(len(block_resolutions) - len(log_n_channels)))
-        ).astype(int)
+        n_channels = np.concatenate((
+            2**log_n_channels,
+            ndf * np.ones(len(block_resolutions) - len(log_n_channels)),
+        )).astype(int)
 
         self.encode = nn.ModuleList(
             [nn.Sequential(Butterfly(img_channels, n_channels[0]), nn.GELU())]
@@ -426,7 +425,7 @@ if __name__ == "__main__":
         print("-" * 130)
         out = model(input)
         print("-" * 130)
-        print("total".ljust(40), f"".ljust(20), f"{tuple(out.shape)}".ljust(25), f"{total_params/1e6:.2f} M".ljust(15))
+        print("total".ljust(40), "".ljust(20), f"{tuple(out.shape)}".ljust(25), f"{total_params / 1e6:.2f} M".ljust(15))
         print()
 
         for handle in handles:

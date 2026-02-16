@@ -50,14 +50,12 @@ def check_consistency_np(flow1, flow2, edges_unreliable=True):
     # areas mapping outside of the frame are also occluded (don't need extra region around these though, so set 0)
     if edges_unreliable:
         reliable_flow = np.where(
-            np.logical_or.reduce(
-                (
-                    warp_coord[..., 0] < 0,
-                    warp_coord[..., 1] < 0,
-                    warp_coord[..., 0] >= h - 1,
-                    warp_coord[..., 1] >= w - 1,
-                )
-            ),
+            np.logical_or.reduce((
+                warp_coord[..., 0] < 0,
+                warp_coord[..., 1] < 0,
+                warp_coord[..., 0] >= h - 1,
+                warp_coord[..., 1] >= w - 1,
+            )),
             0,
             reliable_flow,
         )

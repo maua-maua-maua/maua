@@ -39,7 +39,6 @@ cfg_scale = 7.5
 interp = "slerp"
 
 with torch.autocast("cuda"), torch.inference_mode():
-
     print("loading diffusion model...")
     diffusion = get_diffusion_model(diffusion="stable", timesteps=timesteps, sampler="dpm_2", cfg_scale=cfg_scale)
     diffusion.model.half()
@@ -59,19 +58,17 @@ with torch.autocast("cuda"), torch.inference_mode():
         )
 
     print("encoding images...")
-    latents = torch.cat(
-        [
-            style(
-                diffusion.model.get_first_stage_encoding(
-                    diffusion.model.encode_first_stage(
-                        to_tensor(resize(Image.open(img), size, antialias=True)).cuda().unsqueeze(0)
-                    )
-                ),
-                skip=encode_skip,
-            )
-            for img in tqdm(images)
-        ]
-    )
+    latents = torch.cat([
+        style(
+            diffusion.model.get_first_stage_encoding(
+                diffusion.model.encode_first_stage(
+                    to_tensor(resize(Image.open(img), size, antialias=True)).cuda().unsqueeze(0)
+                )
+            ),
+            skip=encode_skip,
+        )
+        for img in tqdm(images)
+    ])
 
     print("interpolating latents...")
     if interp == "spline":

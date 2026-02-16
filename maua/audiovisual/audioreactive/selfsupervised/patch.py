@@ -3,9 +3,8 @@ import json
 import numpy as np
 import torch
 
-from .latent import latent_patch, spline_loop_latents
-from .mir import ALLFEATS, UNITFEATS
-from .noise import Loop, noise_patch
+from .latent import FeatureLatents, LoopLatents, SegmentationLatents
+from .mir import AUDIO_FEATURES, UNIT_FEATURES
 
 
 def random_choice(rng, options, weights=None, n=1, replacement=False):
@@ -49,11 +48,9 @@ class Patch(torch.nn.Module):
         self.features = features
         self.segmentations = segmentations
 
-        self.n_base_latents = torch.randint(3, 15, size=(), generator=rng, device=rng.device).item()
-        self.sigma_base_noise = 1 + 9 * torch.rand((), generator=rng, device=rng.device).item()
+        self.n_base_latents = 15  # torch.randint(3, 15, size=(), generator=rng, device=rng.device).item()
+        self.sigma_base_noise = 1  # 1 + 9 * torch.rand((), generator=rng, device=rng.device).item()
         self.loops_base_noise = random_choice(rng, [1, 2, 4, 8, 16, 32, 64])
-
-        self.ks = np.unique([k for (_, k) in segmentations]).tolist()
 
         self.min_subpatches, self.max_subpatches = min_subpatches, max_subpatches
         self.randomize_latent_patches()
@@ -68,24 +65,24 @@ class Patch(torch.nn.Module):
         self.rng = torch.Generator(d["device"]).manual_seed(d["seed"])  # ensure torch.Generator is re-initialized
 
     def randomize_latent_patches(self):
-        self.latent_patches = [
+        self.latent_patches = torch.nn.ModuleList([
             self.random_latent_patch()
             for _ in range(
                 torch.randint(
                     self.min_subpatches, self.max_subpatches, size=(), generator=self.rng, device=self.rng.device
                 )
             )
-        ]
+        ])
 
     def randomize_noise_patches(self):
-        self.noise_patches = [
+        self.noise_patches = torch.nn.ModuleList([
             self.random_noise_patch()
             for _ in range(
                 torch.randint(
                     self.min_subpatches, self.max_subpatches, size=(), generator=self.rng, device=self.rng.device
                 )
             )
-        ]
+        ])
 
     def update_intensity(self, val):
         for p in range(len(self.latent_patches)):
@@ -97,13 +94,27 @@ class Patch(torch.nn.Module):
             self.noise_patches[p]["noise_std"] = skewnorm(self.rng, a=5, loc=val, scale=0.5).item()
 
     def random_latent_patch(self):
+        patch_class = random_choice(self.rng, [SegmentationLatents, FeatureLatents, LoopLatents])
+
+        if patch_class == SegmentationLatents:
+            feature = random_choice(self.rng, AUDIO_FEATURES)
+            segments = random_choice(self.rng, [2, 3, 4, 5, 6, 7, 8, 12, 16])
+            sigma = random_choice(self.rng, [1, 2, 4, 8, 16, 32])
+            return SegmentationLatents(feature, segments, sigma)
+
+        elif patch_class == FeatureLatents:
+            raise NotImplementedError()
+
+        elif patch_class == LoopLatents:
+            raise NotImplementedError()
+
         return dict(
             patch_type=random_choice(self.rng, ["segmentation", "feature", "loop"]),
             segments=random_choice(self.rng, self.ks),
             loop_bars=random_choice(self.rng, [4, 8, 16, 32], weights=[2, 2, 2, 1]),
-            seq_feat=random_choice(self.rng, ALLFEATS),
+            seq_feat=random_choice(self.rng, AUDIO_FEATURES),
             seq_feat_weight=1,  # skewnorm(self.rng, a=5, loc=0.666, scale=0.5).item(),
-            mod_feat=random_choice(self.rng, UNITFEATS),
+            mod_feat=random_choice(self.rng, UNIT_FEATURES),
             mod_feat_weight=1,  # skewnorm(self.rng, a=5, loc=0.666, scale=0.5).item(),
             merge_type=random_choice(self.rng, ["average", "modulate"], weights=[1, 3]),
             merge_depth=random_choice(
@@ -115,9 +126,9 @@ class Patch(torch.nn.Module):
         return dict(
             patch_type=random_choice(self.rng, ["blend", "multiply", "loop"]),
             loop_bars=random_choice(self.rng, [4, 8, 16, 32], weights=[2, 2, 2, 1]),
-            seq_feat=random_choice(self.rng, ALLFEATS),
+            seq_feat=random_choice(self.rng, AUDIO_FEATURES),
             seq_feat_weight=1,  # skewnorm(self.rng, a=5, loc=0.666, scale=0.5).item(),
-            mod_feat=random_choice(self.rng, UNITFEATS),
+            mod_feat=random_choice(self.rng, UNIT_FEATURES),
             mod_feat_weight=1,  # skewnorm(self.rng, a=5, loc=0.666, scale=0.5).item(),
             merge_type=random_choice(self.rng, ["average", "modulate"], weights=[1, 3]),
             merge_depth=random_choice(
@@ -128,6 +139,8 @@ class Patch(torch.nn.Module):
         )
 
     def forward(self, latent_palette, downscale_factor=1, aspect_ratio=1):
+        raise NotImplementedError()
+
         self.rng.manual_seed(self.seed)
 
         base_selection = torch.randperm(len(latent_palette), generator=self.rng, device=self.rng.device)[
@@ -153,27 +166,6 @@ class Patch(torch.nn.Module):
             noise = noise_patch(self.rng, noise, self.features, self.tempo, self.fps, **subpatch)
 
         return latents.to(self.rng.device), [n.to(self.rng.device) for n in noise]
-
-    def __repr__(self):
-        reprs = []
-        for patches in [self.latent_patches, self.noise_patches]:
-            header = [""] + [k for k in patches[0]]
-            values = [
-                [str(i + 1)]
-                + [(f"{v:.4f}" if isinstance(v, float) else f"{v}").replace("spectral_", "") for v in p.values()]
-                for i, p in enumerate(patches)
-            ]
-            widths = [max([len(row[n]) for row in [header] + values]) for n in range(len(header))]
-            seps = ["-" * w for w in widths]
-            strs = [" | ".join([row[c].ljust(widths[c]) for c in range(len(row))]) for row in [header, seps] + values]
-            reprs.append(strs)
-        return (
-            "Patch(\n  Latent(\n    "
-            + "\n    ".join(reprs[0])
-            + "\n  ),\n  Noise(\n    "
-            + "\n    ".join(reprs[1])
-            + "\n  )\n)"
-        )
 
     def save(self, path):
         with open(path, mode="w") as f:

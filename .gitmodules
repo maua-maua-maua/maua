@@ -96,4 +96,16 @@
 	url = https://github.com/justinpinkney/stable-diffusion.git
 [submodule "maua/submodules/stablediffusion"]
 	path = maua/submodules/stablediffusion
-	url = https://github.com/Stability-AI/stablediffusion
+	url = https://github.com/w-e-w/stablediffusion
+[submodule "maua/audio"]
+        path = maua/audio
+        url = https://github.com/maua-maua-maua/audio
+[submodule "maua/GAN/studio"]
+        path = maua/GAN/studio
+        url = https://github.com/POSTECH-CVLab/PyTorch-StudioGAN
+[submodule "maua/GAN/nv"]
+        path = maua/GAN/nv
+        url = https://github.com/NVlabs/stylegan2-ada-pytorch
+[submodule "maua/GAN/pix2pix"]
+        path = maua/GAN/pix2pix
+        url = https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix

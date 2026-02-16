@@ -34,7 +34,7 @@ def plot_signals(signals):
     plt.figure(figsize=(32, 4 * len(signals)))
     for sbplt, y in enumerate(signals):
         try:
-            signal = signal.cpu().numpy()
+            signal.cpu().numpy()
         except:
             pass
         plt.subplot(len(signals), 1, sbplt + 1)
