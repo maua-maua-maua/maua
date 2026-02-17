@@ -64,7 +64,7 @@ def sliced_cross_attention(x, context=None, mask=None, self=None):
         max_res = math.floor(math.sqrt(math.sqrt(mem_free_total / 2.5)) / 8) * 64
         raise RuntimeError(
             f"Not enough memory, use lower resolution (max approx. {max_res}x{max_res}). "
-            f"Need: {mem_required/64/gb:0.1f}GB free, Have:{mem_free_total/gb:0.1f}GB free"
+            f"Need: {mem_required / 64 / gb:0.1f}GB free, Have:{mem_free_total / gb:0.1f}GB free"
         )
 
     slice_size = q.shape[1] // steps if (q.shape[1] % steps) == 0 else q.shape[1]
@@ -119,7 +119,7 @@ def get_model(checkpoint):
             os.path.abspath(os.path.dirname(__file__))
             + "/../../submodules/stable_diffusion_image_conditioned/configs/stable-diffusion/sd-image-condition-finetune.yaml"
         )
-        ckpt = f"modelzoo/stable-diffusion-image-conditioned.ckpt"
+        ckpt = "modelzoo/stable-diffusion-image-conditioned.ckpt"
         if not os.path.exists(ckpt):
             download(
                 "https://huggingface.co/lambdalabs/stable-diffusion-image-conditioned/resolve/main/sd-clip-vit-l14-img-embed_ema_only.ckpt",

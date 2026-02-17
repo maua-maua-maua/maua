@@ -46,7 +46,7 @@ def ru_dalle_generate():
     parser.add_argument("--device", type=str, default="cuda:0", help="The device to train on, using 'cpu' will take a long time!")
     parser.add_argument("--low_memory", action="store_true", help="Enable if you have less than 16 GB of (V)RAM to use gradient checkpointing (slower but more memory efficient)")
     parser.add_argument("--no_oversample", action="store_true", help="Disable oversampling procedure. Oversampling is slower but works better when sampling shapes different from what the model was trained on.")
-    parser.add_argument("--checkpoint", type=str, default=None, help=f"Checkpoint to resume from. Either a path to a trained RuDALL-E checkpoint or see the list in --model-help.")  # TODO --model-help
+    parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint to resume from. Either a path to a trained RuDALL-E checkpoint or see the list in --model-help.")  # TODO --model-help
     parser.add_argument("--output_name", type=str, default=None, help="Name to save images under.")
     parser.add_argument("--output_dir", type=str, default="output/", help="Directory to save output images in.")
     # fmt: on
@@ -74,7 +74,7 @@ def ru_dalle_finetune():
     parser.add_argument("--device", type=str, default="cuda:0", help="The device to train on, using 'cpu' will take a long time!")
     parser.add_argument("--low_memory", action="store_true", help="Enable if you have less than 16 GB of (V)RAM to use gradient checkpointing (slower but more memory efficient)")
     parser.add_argument("--adam8bit", action="store_true", help="Enable for even more memory-efficient training.")
-    parser.add_argument("--checkpoint", type=str, default=None, help=f"Checkpoint to resume from. Either a path to a trained RuDALL-E checkpoint see the list in --model-help.")  # TODO --model-help
+    parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint to resume from. Either a path to a trained RuDALL-E checkpoint see the list in --model-help.")  # TODO --model-help
     parser.add_argument("--save_dir", type=str, default="modelzoo/", help="Directory to save finetuned checkpoints in.")
     parser.add_argument("--model_name", type=str, default=None, help="Name for finetuned checkpoints. Will default to the name of input_dir or the first input_img.")
     parser.add_argument("--output_dir", type=str, default="output/", help="Directory to save output images in.")

@@ -29,7 +29,7 @@ class WriteWorker(Thread):
         super().__init__()
         self.Q = input_queue
         self.output_file = output_file
-        self.output_size = f"{2*ceil(output_size[0]/2)}x{2*ceil(output_size[1]/2)}"
+        self.output_size = f"{2 * ceil(output_size[0] / 2)}x{2 * ceil(output_size[1] / 2)}"
         self.fps = fps
         self.audio_file = audio_file
         self.audio_offset = audio_offset
@@ -120,11 +120,14 @@ class VideoWriter:
 
     def __exit__(self, type, value, traceback):
         count = 0
+        last_qsize = self.Q.qsize()
         while not self.Q.qsize() == 0:
-            sleep(1)
-            count += 1
-            if count > 30:
-                break
+            sleep(3)
+            if self.Q.qsize() == last_qsize:
+                count += 1
+                if count > 30:
+                    break
+            last_qsize = self.Q.qsize()
         self.thread.stop()
 
 

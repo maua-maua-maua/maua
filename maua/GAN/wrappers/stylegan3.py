@@ -20,7 +20,8 @@ layer_multipliers = {
 
 
 class StyleGAN3Mapper(StyleGANMapper):
-    MapperClsFn = lambda inference: stylegan3.MappingNetwork
+    def MapperClsFn(inference):
+        return stylegan3.MappingNetwork
 
 
 class StyleGAN3Synthesizer(StyleGANSynthesizer):
@@ -87,7 +88,7 @@ def make_transform_mat(translate: Tuple[float, float], angle: float) -> torch.Te
         m = np.linalg.inv(m)
     except np.linalg.LinAlgError:
         warnings.warn(
-            f"Singular transform matrix, continuing with pseudo-inverse of transform matrix which might not give expected results! (If you want no translation or rotation, set them to None rather than 0)"
+            "Singular transform matrix, continuing with pseudo-inverse of transform matrix which might not give expected results! (If you want no translation or rotation, set them to None rather than 0)"
         )
         m = np.linalg.pinv(m)
     return torch.from_numpy(m)

@@ -1,4 +1,3 @@
-import importlib
 import os
 import sys
 from functools import partial
@@ -79,18 +78,18 @@ def create_models(
             param.requires_grad = value
 
     # vae
-    kl_path = f"modelzoo/glid3xl-kl-f8.pt"
+    kl_path = "modelzoo/glid3xl-kl-f8.pt"
     if not os.path.exists(kl_path):
-        download(MODEL_URLS[f"glid3xl-kl-f8"], kl_path)
+        download(MODEL_URLS["glid3xl-kl-f8"], kl_path)
     ldm = torch.load(kl_path, map_location="cpu")
     ldm.to(device)
     ldm.eval()
     ldm.requires_grad_(use_backward_guidance)
     set_requires_grad(ldm, use_backward_guidance)
 
-    bert_path = f"modelzoo/glid3xl-bert.pt"
+    bert_path = "modelzoo/glid3xl-bert.pt"
     if not os.path.exists(bert_path):
-        download(MODEL_URLS[f"glid3xl-bert"], bert_path)
+        download(MODEL_URLS["glid3xl-bert"], bert_path)
     bert = BERTEmbedder(1280, 32)
     sd = torch.load(bert_path, map_location="cpu")
     bert.load_state_dict(sd)

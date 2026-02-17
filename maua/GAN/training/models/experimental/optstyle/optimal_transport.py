@@ -150,7 +150,6 @@ def fast_cdf_match(target, source, bins=256):
     target, source = target.reshape(C, -1).float(), source.reshape(C, -1).float()
     matched = torch.empty_like(target)
     for i, (target_channel, source_channel) in enumerate(zip(target.contiguous(), source)):
-
         lo = torch.min(target_channel.min(), source_channel.min())
         hi = torch.max(target_channel.max(), source_channel.max())
 

@@ -276,7 +276,7 @@ class LightningGAN(LightningModule):
             # get EMA versions of each metric
             for key, val in metric_val.items():
                 key_ema = f"{key} EMA"
-                if not key_ema in self.metric_emas:
+                if key_ema not in self.metric_emas:
                     self.metric_emas[key_ema] = EWMA(beta=0.9)
                 self.metric_emas[key_ema].update(val)
             metric_emas = {key: avg.get() for key, avg in self.metric_emas.items()}

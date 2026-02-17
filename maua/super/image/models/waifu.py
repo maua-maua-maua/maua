@@ -6,13 +6,12 @@ import numpy as np
 import py7zr
 import torch
 import torch.nn as nn
-from torchvision.transforms.functional import to_pil_image
 
 from ....ops.io import load_image
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/waifu2x")
 
-from Models import CARN_V2, UpConv_7, Vgg_7, network_to_half  # , DCSCN
+from Models import CARN_V2, UpConv_7, network_to_half  # , DCSCN
 
 
 def load_model(model_name="upconv-anime-1", device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
@@ -38,7 +37,7 @@ def load_model(model_name="upconv-anime-1", device=torch.device("cuda" if torch.
 
     elif model_name == "CARN":
         base_path = os.path.dirname(__file__) + "/../../../submodules/waifu2x/model_check_points/CRAN_V2/"
-        if not os.path.exists(f"modelzoo/CARN_model_checkpoint.pt"):
+        if not os.path.exists("modelzoo/CARN_model_checkpoint.pt"):
             with zipfile.ZipFile(f"{base_path}/CRAN_V2_02_28_2019.zip", "r") as zip_ref:
                 zip_ref.extractall("modelzoo")
         model = CARN_V2(
@@ -54,7 +53,7 @@ def load_model(model_name="upconv-anime-1", device=torch.device("cuda" if torch.
             atrous=(1, 1, 1),
         )
         model = network_to_half(model)
-        model.load_state_dict(torch.load(f"modelzoo/CARN_model_checkpoint.pt"))
+        model.load_state_dict(torch.load("modelzoo/CARN_model_checkpoint.pt"))
 
     # TODO checkpoint parameter restore and input shape errors
     # elif model_name == "DCSCN":

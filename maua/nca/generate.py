@@ -35,7 +35,7 @@ with VideoWriter(f"{out_dir}/{name(style_file)}_checkgrid.mp4") as vid, torch.no
         img = to_rgb(x[0]).permute(1, 2, 0).cpu()
         vid.add(zoom(img, 2))
 
-s = "W\u039BV"
+s = "W\u039bV"
 font = PIL.ImageFont.truetype("DejaVuSans.ttf", 256)
 w, h = font.getsize(s)
 print(w, h)

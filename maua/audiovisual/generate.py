@@ -45,7 +45,8 @@ def generate_audiovisal_from_patch(
 
     synthesizer_inputs = patch.process_synthesizer_inputs(mapped_inputs)
 
-    postprocess = lambda video: patch.force_output_size(patch.process_outputs(video))
+    def postprocess(video):
+        return patch.force_output_size(patch.process_outputs(video))
 
     renderer_kwargs["fps"] = patch.fps
     renderer_kwargs["audio_file"] = patch.audio_file

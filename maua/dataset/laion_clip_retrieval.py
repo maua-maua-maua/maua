@@ -4,7 +4,6 @@ import json
 import multiprocessing as mp
 from pathlib import Path
 from urllib.parse import unquote, urlparse
-from uuid import uuid4
 
 import filetype
 import requests
@@ -55,9 +54,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     # fmt: on
 
-    assert (
-        len(args.texts) > 0 or len(args.images) > 0 or len(args.urls) > 0
-    ), "At least one text, image, or url prompt must be supplied!"
+    assert len(args.texts) > 0 or len(args.images) > 0 or len(args.urls) > 0, (
+        "At least one text, image, or url prompt must be supplied!"
+    )
 
     texts = args.texts + [None for _ in args.images] + [None for _ in args.urls]
     images = [None for _ in args.texts] + args.images + [None for _ in args.urls]
@@ -66,24 +65,22 @@ if __name__ == "__main__":
     candidates = []
     for text, image, url in zip(tqdm(texts, desc="Retrieving similar images from knn5.laion.ai"), images, urls):
         data = (
-            json.dumps(
-                {
-                    "text": "|T|E|X|T|",
-                    "image": encode_image_prompt(image),
-                    "image_url": url,
-                    "embedding_input": None,
-                    "modality": args.modality,
-                    "num_images": args.number,
-                    "indice_name": args.index,
-                    "num_result_ids": args.number,
-                    "use_mclip": args.multilingual,
-                    "deduplicate": not args.no_deduplicate,
-                    "use_safety_model": args.safety,
-                    "use_violence_detector": not args.no_violence,
-                    "aesthetic_score": str(args.aesthetic_score) if args.aesthetic_score else '""',
-                    "aesthetic_weight": str(args.aesthetic_weight),
-                }
-            )
+            json.dumps({
+                "text": "|T|E|X|T|",
+                "image": encode_image_prompt(image),
+                "image_url": url,
+                "embedding_input": None,
+                "modality": args.modality,
+                "num_images": args.number,
+                "indice_name": args.index,
+                "num_result_ids": args.number,
+                "use_mclip": args.multilingual,
+                "deduplicate": not args.no_deduplicate,
+                "use_safety_model": args.safety,
+                "use_violence_detector": not args.no_violence,
+                "aesthetic_score": str(args.aesthetic_score) if args.aesthetic_score else '""',
+                "aesthetic_weight": str(args.aesthetic_weight),
+            })
             .replace(" ", "")
             .replace("|T|E|X|T|", text if text is not None else "null")
             .replace('"null"', "null")
@@ -103,7 +100,6 @@ if __name__ == "__main__":
             session.mount("http://", adapter)
             session.mount("https://", adapter)
             with session.get(url, allow_redirects=True, headers=USER_AGENT) as response:
-
                 # figure out filename (preferably based on what tne server thinks the filename is)
                 fname = Path(urlparse(url).path).name
                 if "Content-Disposition" in response.headers:

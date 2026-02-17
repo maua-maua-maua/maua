@@ -1,4 +1,3 @@
-import sys
 import traceback
 from copy import deepcopy
 from pathlib import Path
@@ -16,6 +15,7 @@ from tqdm import tqdm
 
 from ..GAN.wrappers.stylegan2 import StyleGAN2
 from ..ops.video import VideoWriter
+from .ari2 import EMAFade
 from .audioreactive.selfsupervised.features.rosa.segment import BINS_PER_OCTAVE, N_OCTAVES, laplacian_segmentation_rosa
 from .audioreactive.selfsupervised.mir import retrieve_music_information
 from .audioreactive.selfsupervised.patch import Patch
@@ -111,32 +111,6 @@ def show_segmentation(audio, sr, segmentation):
     return list(bound_segs), list(bound_times)
 
 
-class EMAFade(torch.nn.Module):
-    # TODO this fading strategy is very brittle, especially for short sections
-
-    def __init__(self, fade_frames) -> None:
-        super().__init__()
-        self.fade_frames = fade_frames
-        self.smooth_schedule = torch.cat((torch.linspace(1, 0, fade_frames), torch.linspace(0, 1, fade_frames)))
-        self.avg = None
-
-    def forward(self, x, i, total_length):
-        batch_size = x.shape[0]
-        fade_start = total_length - self.fade_frames
-        if i < self.fade_frames or i + batch_size >= fade_start:
-            for batch_idx, frame_idx in enumerate(range(i, i + batch_size)):
-                if frame_idx == fade_start:
-                    self.avg = x[batch_idx]
-                if self.fade_frames < frame_idx < fade_start or self.avg is None:
-                    continue
-                else:
-                    smooth_idx = frame_idx - fade_start if frame_idx - fade_start >= 0 else self.fade_frames + frame_idx
-                    self.avg *= 1 - self.smooth_schedule[smooth_idx]
-                    self.avg += x[batch_idx] * self.smooth_schedule[smooth_idx]
-                    x[batch_idx] = self.avg.clone()
-        return x
-
-
 class HelpPrinted(Exception):
     pass
 
@@ -168,7 +142,6 @@ def generate_interactive(
     print(SEGMENTATION)
     response = input("> ")
     while response != "next":
-
         # parse response
         try:
             if response == "next" or response == "n":
@@ -215,8 +188,7 @@ def generate_interactive(
     final = {}
 
     for s, (label, start, end) in enumerate(segments):
-
-        print(f"Segment {s+1}: {start} - {end}")
+        print(f"Segment {s + 1}: {start} - {end}")
 
         sf, ef = round(start * fps), round(end * fps)
         feats = {k: feat[sf:ef] for k, feat in features.items()}
@@ -227,7 +199,6 @@ def generate_interactive(
         intensity = 0.666
 
         while response != "next":
-
             try:
                 # parse response
                 if response == "next" or response == "n":
@@ -311,7 +282,7 @@ def generate_interactive(
                             patch_file = out_file.replace(".mp4", ".json")
                             patch.save(patch_file)
 
-                play_video(out_file, title=f"Segment {s+1}: {start} - {end}, version {r}")
+                play_video(out_file, title=f"Segment {s + 1}: {start} - {end}, version {r}")
             except HelpPrinted:
                 continue
             except:

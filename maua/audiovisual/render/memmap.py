@@ -25,7 +25,6 @@ class MemMap(Renderer):
         if os.path.exists(cache_file):
             os.remove(cache_file)
         with NpyAppendArray(cache_file) as frames:
-
             for inputs in tqdm(loader):
                 frame = synthesizer(**inputs)
                 frames.append(frame.add(1).div(2).clamp(0, 1).mul(255).cpu().numpy().astype(np.uint8))

@@ -5,7 +5,7 @@ import torch
 from torch.nn.functional import conv1d, pad
 from torchaudio.functional import contrast, highpass_biquad, lowpass_biquad
 
-from .efficient_quantile import quantile
+# from .efficient_quantile import quantile
 
 
 def gaussian_filter(x, sigma, mode: str = "circular", causal: float = 1):
@@ -19,7 +19,7 @@ def gaussian_filter(x, sigma, mode: str = "circular", causal: float = 1):
 
     kernel = torch.arange(-radius, radius + 1, dtype=torch.float32, device=x.device)
     kernel = torch.exp(-0.5 / sigma**2 * kernel**2)
-    # kernel[radius + 1 :] = kernel[radius + 1 :] * causal  # make kernel less responsive to future information
+    kernel[radius + 1 :] = kernel[radius + 1 :] * causal  # make kernel less responsive to future information
     kernel = kernel / kernel.sum()
     kernel = kernel.view(1, 1, len(kernel)).repeat(channels, 1, 1)
 
@@ -50,7 +50,7 @@ def gaussian_filter(x, sigma, mode: str = "circular", causal: float = 1):
 
 
 # @torch.jit.script
-def normalize(array):
+def normalize(array: torch.Tensor) -> torch.Tensor:
     array = array - array.min()
     array = array / (array.max() + 1e-8)
     return array
@@ -99,6 +99,22 @@ def onset_envelope(flux):
     return u
 
 
+def quantile_peaks(sig, quantile=0.75):
+    locs = torch.arange(0, sig.shape[0], device=sig.device)
+    peaks = torch.ones(sig.shape, dtype=bool, device=sig.device)
+
+    main = sig[locs]
+    plus = sig[(locs + 1).clamp(0, sig.shape[0] - 1)]
+    minus = sig[(locs - 1).clamp(0, sig.shape[0] - 1)]
+
+    peaks &= torch.gt(main, plus)
+    peaks &= torch.gt(main, minus)
+
+    peaks &= sig[locs] > quantile(sig[peaks], quantile)
+
+    return peaks
+
+
 def clamp_peaks_percentile(signal, percent):
     if len(signal.shape) < 2:
         signal = signal.unsqueeze(1)
@@ -130,7 +146,7 @@ def clamp_lower_percentile(signal, percentile):
     return torch.clamp(signal, torch.quantile(signal, percentile / 100, dim=0), None)
 
 
-def emphasize(envs, strength, percentile):
+def emphasize(envs, strength=2, percentile=50):
     min = envs.min(dim=0).values
     x = envs - min
     max = x.max(dim=0).values
@@ -151,8 +167,8 @@ def high_pass(audio, sr, fmin=4000):
     return highpass_biquad(audio, sr, fmin)
 
 
-def contrast_enhance(audio, sr, strength=75):
-    return contrast(audio, sr, strength)
+def contrast_enhance(audio, strength=75):
+    return contrast(audio, strength)
 
 
 def confusion_matrix(target, prediction, num_classes):

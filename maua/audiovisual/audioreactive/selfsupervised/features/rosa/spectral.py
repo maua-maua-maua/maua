@@ -175,16 +175,14 @@ with torch.no_grad():
         torch.linspace(p1 + p2 + p3, 0.5, 11)[:-1],
         torch.linspace(0.5, 1.1, 100),
     ]
-    ys = torch.cat(
-        (
-            0.5 * torch.ones(len(xs[0])),
-            xs[1] / p1,
-            (xs[2] - p1) / p2 + 1,
-            (xs[3] - p1 - p2) / p3 + 2,
-            (xs[4] - p1 - p2 - p3) / p4 + 3,
-            4.5 * torch.ones(len(xs[5])),
-        )
-    )
+    ys = torch.cat((
+        0.5 * torch.ones(len(xs[0])),
+        xs[1] / p1,
+        (xs[2] - p1) / p2 + 1,
+        (xs[3] - p1 - p2) / p3 + 2,
+        (xs[4] - p1 - p2 - p3) / p4 + 3,
+        4.5 * torch.ones(len(xs[5])),
+    ))
     xs = torch.cat(xs)
     COEFFS = natural_cubic_spline_coeffs(xs, ys.reshape(1, -1, 1))  # pre-calculate spline coefficients
 

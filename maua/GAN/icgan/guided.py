@@ -6,7 +6,7 @@ def checkin(i, best_ind, total_losses, losses, regs, out, noise=None, emb=None, 
     name = None
     if save_every and i % save_every == 0:
         name = "output/frame_%05d.jpg" % sample_num
-    pil_image = save(out, name)
+    save(out, name)
     vals0 = [
         sample_num,
         i,
@@ -79,15 +79,12 @@ def icgan_clip():
     download_image = True  # @param {type:'boolean'}
     download_video = True  # @param {type:'boolean'}
     truncation = 0.85  # @param {type:'number'}
-    stochastic_truncation = True  # @param {type:'boolean'}
     optimizer = "CMA-ES"  # @param ['SGD','Adam','CMA-ES','CMA-ES + SGD interleaved','CMA-ES + Adam interleaved','CMA-ES + terminal SGD','CMA-ES + terminal Adam']
     pop_size = 50  # @param {type:'integer'}
     clip_model = "ViT-B/32"  # @param ['ViT-B/32','RN50','RN101','RN50x4']
     augmentations = 64  # @param {type:'integer'}
     learning_rate = 0.1  # @param {type:'number'}
     noise_normality_loss = 0  # @param {type:'number'}
-    minimum_entropy_loss = 0.0001  # @param {type:'number'}
-    total_variation_loss = 0.1  # @param {type:'number'}
     iterations = 100  # @param {type:'integer'}
     terminal_iterations = 100  # @param {type:'integer'}
     show_every = 1  # @param {type:'integer'}
@@ -98,8 +95,6 @@ def icgan_clip():
     if seed == 0:
         seed = None
 
-    softmax_temp = 1
-    emb_factor = 0.067  # calculated empirically
     loss_factor = 100
     sigma0 = 0.5  # http://cma.gforge.inria.fr/cmaes_sourcecode_page.html#practical
     cma_adapt = True
@@ -107,8 +102,6 @@ def icgan_clip():
     cma_active = True
     cma_elitist = False
     noise_size = 128
-    class_size = 1000
-    channels = 3
     if gen_model == "icgan":
         class_index = None
 
@@ -146,7 +139,6 @@ def icgan_clip():
     # Load CLIP model
     if clip_model != last_clip_model:
         perceptor, preprocess = clip.load(clip_model)
-        last_clip_model = clip_model
     clip_res = perceptor.visual.input_resolution
     sideX = sideY = int(size)
     if sideX <= clip_res and sideY <= clip_res:
@@ -169,14 +161,11 @@ def icgan_clip():
     replace_to_inplace_relu(model)
     replace_to_inplace_relu(perceptor)
     ind2name = {index: wn.of2ss("%08dn" % offset).lemma_names()[0] for offset, index in utils.IMAGENET.items()}
-    eps = 1e-8
 
     # Create noise and instance vector
     noise_vector = truncnorm.rvs(
         -2 * truncation, 2 * truncation, size=(pop_size, noise_size), random_state=state
-    ).astype(
-        np.float32
-    )  # see https://github.com/tensorflow/hub/issues/214
+    ).astype(np.float32)  # see https://github.com/tensorflow/hub/issues/214
     noise_vector = torch.tensor(noise_vector, requires_grad=requires_grad, device="cuda")
     if input_features is not None:
         instance_vector = torch.tensor(input_features, requires_grad=False, device="cuda")

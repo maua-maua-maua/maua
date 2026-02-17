@@ -15,9 +15,9 @@ from ...flow.lib import flow_warp_map, get_consistency_map
 from ...grad import CLIPGrads, ColorMatchGrads, ContentPrompt, LPIPSGrads, StylePrompt, TextPrompt, VGGGrads
 from ...ops.video import write_video
 from ...super.video.framerate import rife
-from ..processors.guided import GuidedDiffusion
 from ..image import build_output_name
 from ..multires import round64
+from ..processors.guided import GuidedDiffusion
 
 decord.bridge.set_bridge("torch")
 
@@ -47,9 +47,9 @@ class VideoFrames(Dataset):
 
     def __getitem__(self, idx):
         if isinstance(idx, (list, np.ndarray, torch.Tensor)):
-            return torch.stack(
-                [self.reader[i].permute(2, 0, 1).unsqueeze(0).div(127.5).sub(1).to(self.device) for i in idx]
-            )
+            return torch.stack([
+                self.reader[i].permute(2, 0, 1).unsqueeze(0).div(127.5).sub(1).to(self.device) for i in idx
+            ])
         return self.reader[idx].permute(2, 0, 1).unsqueeze(0).div(127.5).sub(1).to(self.device)
 
 
@@ -120,7 +120,6 @@ def update_optical_flow(cache, frames, content, turbo):
     # remove old cache, initialize new ones
     cache.forward.clear(), cache.backward.clear(), cache.reliable.clear()
     with cache.new, cache.forward, cache.backward, cache.reliable:
-
         # load a new frame halfway between each pair of
         for f_n in range(len(frames)):
             prev = content[(start_idx + (f_n - 1) * turbo) % len(content)].add(1).div(2)

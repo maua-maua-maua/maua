@@ -37,8 +37,8 @@ def rms(y, sr, frame_length=2048, hop_length=1024, center=True, pad_mode="reflec
     return torch.sqrt(power).unsqueeze(-1)
 
 
-def drop_strength(audio, sr):
-    return emphasize(gaussian_filter(rms(audio, sr), 10), strength=10, percentile=50).unsqueeze(1)
+def drop_strength(audio, sr, smooth=10, strength=10, percentile=50):
+    return emphasize(gaussian_filter(rms(audio, sr), smooth), strength=strength, percentile=percentile).unsqueeze(1)
 
 
 def chromagram(audio, sr):
@@ -60,7 +60,7 @@ def tonnetz(y, sr, chroma_fn=lambda a, sr: chromagram(a, sr).T):
 def mfcc(y, sr, n_mfcc=20, norm=False, **kwargs):
     S = power_to_db(melspectrogram(y, sr, **kwargs))
     M = dct(S.permute(1, 0), norm="ortho").permute(1, 0)[:n_mfcc]
-    if norm == True:
+    if norm:
         M = M / M.norm(p=2)
     return M.T
 
@@ -182,10 +182,10 @@ if __name__ == "__main__":
         diff.sum().backward()
 
         print(
-            f"{f'{name} numpy'.ljust(20)} {f_np.min().item():.4f}, {f_np.mean().item():.4f}, {f_np.max().item():.4f}, {tuple(f_np.shape)}, {t_np*1000:.4f} ms"
+            f"{f'{name} numpy'.ljust(20)} {f_np.min().item():.4f}, {f_np.mean().item():.4f}, {f_np.max().item():.4f}, {tuple(f_np.shape)}, {t_np * 1000:.4f} ms"
         )
         print(
-            f"{f'{name} torch'.ljust(20)} {f_th.min().item():.4f}, {f_th.mean().item():.4f}, {f_th.max().item():.4f}, {tuple(f_th.shape)}, {t_th*1000:.4f} ms"
+            f"{f'{name} torch'.ljust(20)} {f_th.min().item():.4f}, {f_th.mean().item():.4f}, {f_th.max().item():.4f}, {tuple(f_th.shape)}, {t_th * 1000:.4f} ms"
         )
         print(f"{name} diff".ljust(20), diff.min().item(), diff.mean().item(), diff.max().item())
         print(f"{name} grad norm".ljust(20), torch.norm(audio.grad).item(), "\n")

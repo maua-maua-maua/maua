@@ -160,13 +160,13 @@ def my_save_multiple_images(imgs, path, subdir, debug=True):
         single_frame_path = os.path.join(path, subdir)
         os.makedirs(single_frame_path, exist_ok=True)
         for i in range(len(imgs)):
-            save_image(imgs[i], os.path.join(single_frame_path, f'{str(i).rjust(4,"0")}.jpg'), normalize=True)
+            save_image(imgs[i], os.path.join(single_frame_path, f"{str(i).rjust(4, '0')}.jpg"), normalize=True)
             os.chmod(
-                os.path.join(single_frame_path, f'{str(i).rjust(4,"0")}.jpg'),
+                os.path.join(single_frame_path, f"{str(i).rjust(4, '0')}.jpg"),
                 stat.S_IRWXO + stat.S_IRWXG + stat.S_IRWXU,
             )
-        save_image(torch.cat(imgs, dim=0), os.path.join(single_frame_path, f"frame_concat.jpg"), normalize=True)
-        os.chmod(os.path.join(single_frame_path, f"frame_concat.jpg"), stat.S_IRWXO + stat.S_IRWXG + stat.S_IRWXU)
+        save_image(torch.cat(imgs, dim=0), os.path.join(single_frame_path, "frame_concat.jpg"), normalize=True)
+        os.chmod(os.path.join(single_frame_path, "frame_concat.jpg"), stat.S_IRWXO + stat.S_IRWXG + stat.S_IRWXU)
 
 
 def calc_next_tokens_frame_begin_id(text_len, frame_len, total_len):
@@ -307,11 +307,11 @@ def my_filling_sequence(
                     for id, mem_kv in enumerate(mem_kv01):
                         for layer, mem_kv_perlayer in enumerate(mem_kv):
                             if limited_spatial_channel_mem and id == 0:
-                                mems_buffers[id][
-                                    layer, batch_idx : batch_idx + group_size, :text_len
-                                ] = mem_kv_perlayer.expand(min(group_size, input_tokens.shape[0] - batch_idx), -1, -1)[
-                                    :, :text_len
-                                ]
+                                mems_buffers[id][layer, batch_idx : batch_idx + group_size, :text_len] = (
+                                    mem_kv_perlayer.expand(min(group_size, input_tokens.shape[0] - batch_idx), -1, -1)[
+                                        :, :text_len
+                                    ]
+                                )
                                 mems_buffers[id][
                                     layer,
                                     batch_idx : batch_idx + group_size,
@@ -366,9 +366,7 @@ def my_filling_sequence(
                                         layer, batch_idx : batch_idx + group_size, :guider_text_len
                                     ] = guider_mem_kv_perlayer.expand(
                                         min(group_size, input_tokens.shape[0] - batch_idx), -1, -1
-                                    )[
-                                        :, :guider_text_len
-                                    ]
+                                    )[:, :guider_text_len]
                                     guider_next_tokens_frame_begin_id = calc_next_tokens_frame_begin_id(
                                         guider_text_len, frame_len, guider_mem_kv_perlayer.shape[1]
                                     )
@@ -380,9 +378,7 @@ def my_filling_sequence(
                                         - guider_next_tokens_frame_begin_id,
                                     ] = guider_mem_kv_perlayer.expand(
                                         min(group_size, input_tokens.shape[0] - batch_idx), -1, -1
-                                    )[
-                                        :, guider_next_tokens_frame_begin_id:
-                                    ]
+                                    )[:, guider_next_tokens_frame_begin_id:]
                                 else:
                                     guider_mems_buffers[id][
                                         layer, batch_idx : batch_idx + group_size, : guider_mem_kv_perlayer.shape[1]
@@ -431,9 +427,10 @@ def my_filling_sequence(
                     limited_spatial_channel_mem=limited_spatial_channel_mem,
                     **kw_args,
                 )
-                mem_kv0, mem_kv1 = [o["mem_kv"][0] for o in output_per_layers], [
-                    o["mem_kv"][1] for o in output_per_layers
-                ]
+                mem_kv0, mem_kv1 = (
+                    [o["mem_kv"][0] for o in output_per_layers],
+                    [o["mem_kv"][1] for o in output_per_layers],
+                )
 
                 if guider_seq is not None:
                     guider_logits, *guider_output_per_layers = model(
@@ -449,9 +446,10 @@ def my_filling_sequence(
                         limited_spatial_channel_mem=limited_spatial_channel_mem,
                         **kw_args,
                     )
-                    guider_mem_kv0, guider_mem_kv1 = [o["mem_kv"][0] for o in guider_output_per_layers], [
-                        o["mem_kv"][1] for o in guider_output_per_layers
-                    ]
+                    guider_mem_kv0, guider_mem_kv1 = (
+                        [o["mem_kv"][0] for o in guider_output_per_layers],
+                        [o["mem_kv"][1] for o in guider_output_per_layers],
+                    )
 
                 if not mems_buffers_on_GPU:
                     torch.cuda.empty_cache()
@@ -652,9 +650,9 @@ def process_stage1(
         seq[:, text_len + 1 + given_frame_id * 400 : text_len + 1 + (given_frame_id + 1) * 400] = given_tokens[
             :, given_frame_id
         ]
-        guider_seq[
-            :, guider_text_len + 1 + given_frame_id * 400 : guider_text_len + 1 + (given_frame_id + 1) * 400
-        ] = given_tokens[:, given_frame_id]
+        guider_seq[:, guider_text_len + 1 + given_frame_id * 400 : guider_text_len + 1 + (given_frame_id + 1) * 400] = (
+            given_tokens[:, given_frame_id]
+        )
     output_list = []
 
     if use_guide:
@@ -707,7 +705,7 @@ def process_stage1(
         logging.debug("moving in model1 takes time: {:.2f}".format(time.time() - move_start_time))
 
     # decoding
-    imgs, sred_imgs, txts = [], [], []
+    imgs, _sred_imgs, _txts = [], [], []
     for seq in output_tokens:
         decoded_imgs = [
             torch.nn.functional.interpolate(
@@ -801,15 +799,15 @@ def process_stage2(
         seq = torch.cuda.LongTensor(seq, device=device).unsqueeze(0).repeat(generate_batchsize_total, 1)
         for sample_i in range(sample_num):
             for i in range(generate_batchsize_persample):
-                seq[sample_i * generate_batchsize_persample + i][
-                    text_len + 1 : text_len + 1 + 400
-                ] = parent_given_tokens[sample_i][2 * i]
-                seq[sample_i * generate_batchsize_persample + i][
-                    text_len + 1 + 400 : text_len + 1 + 800
-                ] = parent_given_tokens[sample_i][2 * i + 1]
-                seq[sample_i * generate_batchsize_persample + i][
-                    text_len + 1 + 800 : text_len + 1 + 1200
-                ] = parent_given_tokens[sample_i][2 * i + 2]
+                seq[sample_i * generate_batchsize_persample + i][text_len + 1 : text_len + 1 + 400] = (
+                    parent_given_tokens[sample_i][2 * i]
+                )
+                seq[sample_i * generate_batchsize_persample + i][text_len + 1 + 400 : text_len + 1 + 800] = (
+                    parent_given_tokens[sample_i][2 * i + 1]
+                )
+                seq[sample_i * generate_batchsize_persample + i][text_len + 1 + 800 : text_len + 1 + 1200] = (
+                    parent_given_tokens[sample_i][2 * i + 2]
+                )
 
         if use_guidance:
             guider_seq = (
@@ -825,12 +823,12 @@ def process_stage2(
             )
             for sample_i in range(sample_num):
                 for i in range(generate_batchsize_persample):
-                    guider_seq[sample_i * generate_batchsize_persample + i][
-                        text_len + 1 : text_len + 1 + 400
-                    ] = parent_given_tokens[sample_i][2 * i]
-                    guider_seq[sample_i * generate_batchsize_persample + i][
-                        text_len + 1 + 400 : text_len + 1 + 800
-                    ] = parent_given_tokens[sample_i][2 * i + 1]
+                    guider_seq[sample_i * generate_batchsize_persample + i][text_len + 1 : text_len + 1 + 400] = (
+                        parent_given_tokens[sample_i][2 * i]
+                    )
+                    guider_seq[sample_i * generate_batchsize_persample + i][text_len + 1 + 400 : text_len + 1 + 800] = (
+                        parent_given_tokens[sample_i][2 * i + 1]
+                    )
                     guider_seq[sample_i * generate_batchsize_persample + i][
                         text_len + 1 + 800 : text_len + 1 + 1200
                     ] = parent_given_tokens[sample_i][2 * i + 2]
@@ -936,10 +934,10 @@ def process_stage2(
 
     for sample_i in range(sample_num):
         my_save_multiple_images(
-            decoded_sr_videos[sample_i], outputdir, subdir=f"frames/{sample_i+sample_num*gpu_rank}", debug=False
+            decoded_sr_videos[sample_i], outputdir, subdir=f"frames/{sample_i + sample_num * gpu_rank}", debug=False
         )
         os.system(
-            f"gifmaker -i '{outputdir}'/frames/'{sample_i+sample_num*gpu_rank}'/0*.jpg -o '{outputdir}/{sample_i+sample_num*gpu_rank}.gif' -d 0.125"
+            f"gifmaker -i '{outputdir}'/frames/'{sample_i + sample_num * gpu_rank}'/0*.jpg -o '{outputdir}/{sample_i + sample_num * gpu_rank}.gif' -d 0.125"
         )
 
     logging.info("Direct super-resolution completed. Taken time {:.2f}\n".format(time.time() - dsr_starttime))

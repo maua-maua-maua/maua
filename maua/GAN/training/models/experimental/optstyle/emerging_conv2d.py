@@ -212,7 +212,6 @@ if __name__ == "__main__":
 
         with trange(n_iters) as progress:
             for it in progress:
-
                 lat = torch.randn((batch_size, 512), device="cuda")
                 w = M(lat)
                 if d > 0:
@@ -270,7 +269,6 @@ if __name__ == "__main__":
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, n_iters, eta_min=1e-6)
 
     for it in range(n_iters):
-
         optim.zero_grad()
         x = torch.randn(shape, device="cuda")
         z = layer(x)
@@ -287,13 +285,13 @@ if __name__ == "__main__":
             print(
                 f"{mse.item():.4f}".ljust(10),
                 f"{l1.item():.4f}".ljust(10),
-                f"{torch.quantile(abspdiff,0.01).item():.4f}".ljust(10),
-                f"{torch.quantile(abspdiff,0.05).item():.4f}".ljust(10),
-                f"{torch.quantile(abspdiff,0.25).item():.4f}".ljust(10),
-                f"{torch.quantile(abspdiff,0.50).item():.4f}".ljust(10),
-                f"{torch.quantile(abspdiff,0.75).item():.4f}".ljust(10),
-                f"{torch.quantile(abspdiff,0.95).item():.4f}".ljust(10),
-                f"{torch.quantile(abspdiff,0.99).item():.4f}".ljust(10),
+                f"{torch.quantile(abspdiff, 0.01).item():.4f}".ljust(10),
+                f"{torch.quantile(abspdiff, 0.05).item():.4f}".ljust(10),
+                f"{torch.quantile(abspdiff, 0.25).item():.4f}".ljust(10),
+                f"{torch.quantile(abspdiff, 0.50).item():.4f}".ljust(10),
+                f"{torch.quantile(abspdiff, 0.75).item():.4f}".ljust(10),
+                f"{torch.quantile(abspdiff, 0.95).item():.4f}".ljust(10),
+                f"{torch.quantile(abspdiff, 0.99).item():.4f}".ljust(10),
             )
 
     with torch.no_grad():

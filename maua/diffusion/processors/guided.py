@@ -1,4 +1,3 @@
-import importlib
 import os
 import sys
 from dataclasses import dataclass
@@ -78,56 +77,46 @@ class SecondaryDiffusionImageNet2(torch.nn.Module):
         self.net = torch.nn.Sequential(
             ConvBlock(3 + 16, cs[0]),
             ConvBlock(cs[0], cs[0]),
-            SkipBlock(
-                [
+            SkipBlock([
+                self.down,
+                ConvBlock(cs[0], cs[1]),
+                ConvBlock(cs[1], cs[1]),
+                SkipBlock([
                     self.down,
-                    ConvBlock(cs[0], cs[1]),
-                    ConvBlock(cs[1], cs[1]),
-                    SkipBlock(
-                        [
+                    ConvBlock(cs[1], cs[2]),
+                    ConvBlock(cs[2], cs[2]),
+                    SkipBlock([
+                        self.down,
+                        ConvBlock(cs[2], cs[3]),
+                        ConvBlock(cs[3], cs[3]),
+                        SkipBlock([
                             self.down,
-                            ConvBlock(cs[1], cs[2]),
-                            ConvBlock(cs[2], cs[2]),
-                            SkipBlock(
-                                [
-                                    self.down,
-                                    ConvBlock(cs[2], cs[3]),
-                                    ConvBlock(cs[3], cs[3]),
-                                    SkipBlock(
-                                        [
-                                            self.down,
-                                            ConvBlock(cs[3], cs[4]),
-                                            ConvBlock(cs[4], cs[4]),
-                                            SkipBlock(
-                                                [
-                                                    self.down,
-                                                    ConvBlock(cs[4], cs[5]),
-                                                    ConvBlock(cs[5], cs[5]),
-                                                    ConvBlock(cs[5], cs[5]),
-                                                    ConvBlock(cs[5], cs[4]),
-                                                    self.up,
-                                                ]
-                                            ),
-                                            ConvBlock(cs[4] * 2, cs[4]),
-                                            ConvBlock(cs[4], cs[3]),
-                                            self.up,
-                                        ]
-                                    ),
-                                    ConvBlock(cs[3] * 2, cs[3]),
-                                    ConvBlock(cs[3], cs[2]),
-                                    self.up,
-                                ]
-                            ),
-                            ConvBlock(cs[2] * 2, cs[2]),
-                            ConvBlock(cs[2], cs[1]),
+                            ConvBlock(cs[3], cs[4]),
+                            ConvBlock(cs[4], cs[4]),
+                            SkipBlock([
+                                self.down,
+                                ConvBlock(cs[4], cs[5]),
+                                ConvBlock(cs[5], cs[5]),
+                                ConvBlock(cs[5], cs[5]),
+                                ConvBlock(cs[5], cs[4]),
+                                self.up,
+                            ]),
+                            ConvBlock(cs[4] * 2, cs[4]),
+                            ConvBlock(cs[4], cs[3]),
                             self.up,
-                        ]
-                    ),
-                    ConvBlock(cs[1] * 2, cs[1]),
-                    ConvBlock(cs[1], cs[0]),
+                        ]),
+                        ConvBlock(cs[3] * 2, cs[3]),
+                        ConvBlock(cs[3], cs[2]),
+                        self.up,
+                    ]),
+                    ConvBlock(cs[2] * 2, cs[2]),
+                    ConvBlock(cs[2], cs[1]),
                     self.up,
-                ]
-            ),
+                ]),
+                ConvBlock(cs[1] * 2, cs[1]),
+                ConvBlock(cs[1], cs[0]),
+                self.up,
+            ]),
             ConvBlock(cs[0] * 2, cs[0]),
             torch.nn.Conv2d(cs[0], 3, 3, padding=1),
         )
@@ -169,23 +158,21 @@ def create_models(
 ):
     checkpoint_path, checkpoint_config = get_checkpoint(checkpoint)
     model_config = model_and_diffusion_defaults()
-    model_config.update(
-        {
-            "attention_resolutions": "32, 16, 8",
-            "class_cond": False,
-            "diffusion_steps": diffusion_steps,
-            "rescale_timesteps": True,
-            "timestep_respacing": timestep_respacing,
-            "learn_sigma": True,
-            "noise_schedule": "linear",
-            "num_channels": 256,
-            "num_head_channels": 64,
-            "num_res_blocks": 2,
-            "resblock_updown": True,
-            "use_fp16": True,
-            "use_scale_shift_norm": True,
-        }
-    )
+    model_config.update({
+        "attention_resolutions": "32, 16, 8",
+        "class_cond": False,
+        "diffusion_steps": diffusion_steps,
+        "rescale_timesteps": True,
+        "timestep_respacing": timestep_respacing,
+        "learn_sigma": True,
+        "noise_schedule": "linear",
+        "num_channels": 256,
+        "num_head_channels": 64,
+        "num_res_blocks": 2,
+        "resblock_updown": True,
+        "use_fp16": True,
+        "use_scale_shift_norm": True,
+    })
     model_config.update(checkpoint_config)
     diffusion_model, diffusion = create_model_and_diffusion(**model_config)
     diffusion_model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))

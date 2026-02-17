@@ -62,8 +62,12 @@ def transfer_multires(
             device=device,
         )
         img = match_histogram(img, style_imgs, match_hist)
+
         gc.collect()
         torch.cuda.empty_cache()
+
+        tensor2img(img).save(f"output/{'_'.join([Path(arg).stem for arg in sys.argv[1:]])}_{size}.jpg")
+
     return img
 
 
@@ -74,17 +78,16 @@ if __name__ == "__main__":
         init_img=None,
         init_type="content",
         match_hist="avg",
-        sizes=[512, 724, 1024, 1448, 2048],
+        sizes=[256, 1024, 2048],
         parameterization="rgb",
         perceptor="pgg-vgg19",
         perceptor_kwargs={},
         optimizer="LBFGS",
-        lr=0.5,
+        lr=0.05,
         optimizer_kwargs=dict(tolerance_grad=-1.0, tolerance_change=-1.0, history_size=100),
-        n_iters=[500, 400, 300, 200, 100],
+        n_iters=[500, 250, 100],
         content_weight=1,
-        style_weight=5000,
+        style_weight=50000,
         style_scale=1,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     )
-    tensor2img(img).save(f"output/{'_'.join([Path(arg).stem for arg in sys.argv[1:]])}.png")
