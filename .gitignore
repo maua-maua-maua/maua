@@ -3,20 +3,16 @@ output/*
 !output/.gitkeep
 modelzoo/*
 !modelzoo/.gitkeep
-cache/*
-!cache/.gitkeep
 workspace/*
-workspace/audio_cache/*
+workspace/cache/*
 maua/audiovisual/patches/*
 !maua/audiovisual/patches/examples/
 !maua/audiovisual/patches/base/
 !maua/audiovisual/patches/primitives/
-!workspace/.gitkeep
-!workspace/Wavefunk - Dwelling in the Kelp.mp3
-!workspace/Wavefunk - Tau Ceti Alpha.mp3
-!workspace/Wavefunk - Temper.mp3
-!workspace/audio_cache/
-!workspace/audio_cache/.gitkeep
+!workspace/cache/
+!workspace/examples/audio/
+!workspace/examples/image/
+!workspace/examples/video/
 maua/ops/triton
 **__pycache__
 **.pyc

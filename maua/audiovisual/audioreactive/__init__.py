@@ -3,6 +3,11 @@ from functools import wraps
 
 import joblib
 
+from maua.audiovisual.audioreactive.audio import *
+from maua.audiovisual.audioreactive.latent import *
+from maua.audiovisual.audioreactive.mir import *
+from maua.audiovisual.audioreactive.signal import *
+from maua.audiovisual.audioreactive.util import *
 from maua.ops.io import hash
 
 
@@ -11,7 +16,7 @@ def cache_to_workspace(name):
         @wraps(function)
         def wrapper(*args, **kwargs):
             arghash = "_".join([hash(a) for a in [*args, *kwargs.values()]])
-            cache_file = f"workspace/audio_cache/{name}_{arghash}.npy"
+            cache_file = f"workspace/cache/{name}_{arghash}.npy"
             if not os.path.exists(cache_file):
                 result = function(*args, **kwargs)
                 joblib.dump(result, cache_file, compress=9)
@@ -26,10 +31,3 @@ def cache_to_workspace(name):
         return wrapper
 
     return decorator
-
-
-from maua.audiovisual.audioreactive.audio import *
-from maua.audiovisual.audioreactive.latent import *
-from maua.audiovisual.audioreactive.mir import *
-from maua.audiovisual.audioreactive.signal import *
-from maua.audiovisual.audioreactive.util import *

@@ -33,7 +33,7 @@ def load_audio(audio_file, offset=0, duration=-1, cache=True):
             duration -= offset
 
     cache_file = (
-        f"workspace/audio_cache/{Path(audio_file.replace('/', '_')).stem}"
+        f"workspace/cache/{Path(audio_file.replace('/', '_')).stem}"
         + ("" if duration == -1 else f"_length{duration}")
         + ("" if offset == 0 else f"_start{offset}")
         + ".npy"
