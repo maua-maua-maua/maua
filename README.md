@@ -1,43 +1,20 @@
 # Maua
 
-## 👷 ⛏️ WIP 🛠️ 👷
-
 Maua is a Python library (and command line interface) for synthesizing images, video, and audio using deep learning.
 
 While many research groups publish code to reproduce results of their papers, it is often still time intensive to set up the environment correctly and figure out how to run the algorithms on your own data. The goal of Maua is to collect these methods in one place to make it easy to use them as creative tools. The primary design goal is composability. Combining different methods in unique ways exponentially expands the space of possible results--and so the creative freedom.
 
-Maua is still under construction for now and so the API and functionality are subject to change.
-
 ## Installation
 
-Deep learning is very compute hungry, this means that a decent GPU is practically a requirement. [Install CUDA](https://developer.nvidia.com/cuda-downloads) and then Maua can be installed using pip as follows: 
+Deep learning is very compute hungry, this means that a decent GPU is practically a requirement. [Install CUDA](https://developer.nvidia.com/cuda-downloads) and then Maua can be installed using uv as follows: 
 
 ```bash
-pip install numpy Cython torch --extra-index-url https://download.pytorch.org/whl/cu116
-pip install git+https://github.com/maua-maua-maua/maua.git --extra-index-url https://pypi.ngc.nvidia.com --extra-index-url https://download.pytorch.org/whl/cu116
+uv pip install git+https://github.com/maua-maua-maua/maua.git
 ```
 
 Currently installation has only been tested on a Ubuntu 20.04 machine with NVIDIA GPUs. Other configurations are also possible but might be more involved. If you're running into problems, feel free to open an issue!
 
-### Compiling Extensions
-
-```
-python maua/submodules/pycuda/configure.py --cuda-enable-gl
-mv siteconf.py maua/submodules/pycuda
-pip install -e maua/submodules/pycuda
-
-git clone https://github.com/NVIDIA/apex
-cd apex
-python setup.py install --cuda_ext --cpp_ext 
-cd ..
-
-pip install maua[flow]
-```
-
-
 ## Usage
-
-WARNING: some of the examples below might be out of date.
 
 ### Command line
 
@@ -47,8 +24,6 @@ python -m maua --help
 python -m maua autoregressive --help
 python -m maua.diffusion.sample --help
 ```
-
-#### Examples
 
 Generate images with classifier-free guided diffusion:
 ```bash
@@ -69,8 +44,6 @@ python -m maua super image upscale /path/to/image.png /path/to/image2.png /path/
 
 All of the command line functions are also available for import within python.
 
-#### Examples
-
 High resolution diffusion:
 ```python
 from maua.diffusion.sample import main as diffusion
@@ -90,7 +63,7 @@ Thank you to everyone that makes their work available to the community. Maua inc
 
 ## Citations
 
-Maua relies on many innovations coming directly from the research community. It's safe to say that if you use Maua in any way for research related purposes you should be citing some papers. For now, please do a quick web-search based on the file path (these are generally named after the method). A full list of papers to cite will be compiled and documented clearly in the future.
+Maua relies on many innovations coming directly from the research community. It's safe to say that if you use Maua in any way for research related purposes you should be citing some papers, please do your best to find the relevant papers and cite them!
 
 ## License
 

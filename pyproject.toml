@@ -1,8 +1,51 @@
-[tool.isort]
-line-length = 120
+[tool.uv]
+# Acknowledges preview APIs (e.g. extra-build-dependencies) so uv does not warn on every install.
+preview = true
+# basicsr / gfpgan declare tb-nightly; that wheel provides the same top-level `tensorboard` module
+# as stable `tensorboard`, which triggers uv's duplicate-module warning. Training code only needs
+# the TensorBoard API; mirror upstream requirements but swap tb-nightly → tensorboard (BasicSR 1.4.2).
+dependency-metadata = [
+    { name = "basicsr", version = "1.4.2", requires-dist = [
+        "addict",
+        "future",
+        "lmdb",
+        "numpy>=1.17",
+        "opencv-python",
+        "pillow",
+        "pyyaml",
+        "requests",
+        "scikit-image",
+        "scipy",
+        "tensorboard>=2.11",
+        "torch>=1.7",
+        "torchvision",
+        "tqdm",
+        "yapf",
+    ] },
+    { name = "gfpgan", version = "1.3.8", requires-dist = [
+        "basicsr>=1.4.2",
+        "facexlib>=0.2.5",
+        "lmdb",
+        "numpy",
+        "opencv-python",
+        "pyyaml",
+        "scipy",
+        "tensorboard>=2.11",
+        "torch>=1.7",
+        "torchvision",
+        "tqdm",
+        "yapf",
+    ] },
+]
 
-[tool.black]
-line-length = 120
+[tool.uv.pip]
+# glumpy 1.2.1 uses setuptools fetch_build_eggs(), which runs `python -m pip` inside the
+# build environment; uv's isolated builders do not ship pip, so the build fails otherwise.
+no-build-isolation-package = ["glumpy"]
+# mmcv-full 1.7.2 setup imports pkg_resources; setuptools 82+ removed pkg_resources, so the
+# build needs an older setuptools in the isolated env (see pypa/setuptools#5007).
+# youtokentome: setup imports Cython without declaring it as a build dependency.
+extra-build-dependencies = { "mmcv-full" = ["setuptools<82"], "youtokentome" = ["cython"] }
 
 [tool.ruff]
 line-length = 120
