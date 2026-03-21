@@ -1,7 +1,6 @@
 import os
 import sys
 from pathlib import Path
-from typing import List, Union
 
 import torch
 from einops import rearrange
@@ -9,8 +8,8 @@ from PIL import Image
 from torch import Tensor
 from torchvision.transforms.functional import resize
 
-from ....ops.io import load_image
-from ....utility import download
+from maua.ops.io import load_image
+from maua.utility import download
 
 
 def load_model(model_name="latent-diffusion", device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
@@ -22,7 +21,8 @@ def load_model(model_name="latent-diffusion", device=torch.device("cuda" if torc
     ]:
         with open(file, "r") as f:
             txt = (
-                f.read()
+                f
+                .read()
                 .replace("print", "None # print")
                 .replace("None # None #", "None #")
                 .replace("    self.z_shape, np.prod(self.z_shape)))", "#    self.z_shape, np.prod(self.z_shape)))")
@@ -51,7 +51,7 @@ def load_model(model_name="latent-diffusion", device=torch.device("cuda" if torc
 
 
 @torch.inference_mode()
-def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
+def upscale(images: list[Tensor | Image.Image | Path | str], model):
     model, DDIMSampler, device = model
     up_f = 4
     for img in images:

@@ -5,11 +5,10 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
+from maua.diffusion.image import get_diffusion_model
 from maua.diffusion.processors.stable import StableDiffusion
+from maua.ops.video import VideoWriter
 from maua.prompt import ImagePrompt
-
-from ..ops.video import VideoWriter
-from .image import get_diffusion_model
 
 
 def slerp(a, b, t):

@@ -10,7 +10,7 @@ import sys
 import numpy as np
 import PIL.Image
 import torch
-import torchvision.models as models
+from torchvision import models
 from tqdm import tqdm
 
 os.environ["FFMPEG_BINARY"] = "ffmpeg"

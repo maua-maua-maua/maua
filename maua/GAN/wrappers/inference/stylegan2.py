@@ -9,13 +9,12 @@
 # modified by Hans Brouwer for Maua
 #
 from math import sqrt
-from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
 from torch import Tensor
 
-from .ops import (
+from maua.GAN.wrappers.inference.ops import (
     activation_funcs,
     bias_act,
     conv2d_resample,
@@ -68,8 +67,8 @@ class Conv2dLayer(torch.nn.Module):
         activation: str = "linear",  # Activation function: 'relu', 'lrelu', etc.
         up: int = 1,  # Integer upsampling factor.
         down: int = 1,  # Integer downsampling factor.
-        resample_filter: List[int] = [1, 3, 3, 1],  # Low-pass filter to apply when resampling activations
-        conv_clamp: Optional[float] = None,  # Clamp the output to +-X, None = disable clamping.
+        resample_filter: list[int] = [1, 3, 3, 1],  # Low-pass filter to apply when resampling activations
+        conv_clamp: float | None = None,  # Clamp the output to +-X, None = disable clamping.
         trainable: bool = True,  # Update the weights of this layer during training?
     ):
         super().__init__()
@@ -121,8 +120,8 @@ class MappingNetwork(torch.nn.Module):
         w_dim: int,  # Intermediate latent (W) dimensionality.
         num_ws: int,  # Number of intermediate latents to output, None = do not broadcast.
         num_layers: int = 8,  # Number of mapping layers.
-        embed_features: Optional[int] = None,  # Label embedding dimensionality, None = same as w_dim.
-        layer_features: Optional[int] = None,  # Number of intermediate features in the mapping layers
+        embed_features: int | None = None,  # Label embedding dimensionality, None = same as w_dim.
+        layer_features: int | None = None,  # Number of intermediate features in the mapping layers
         activation: str = "lrelu",  # Activation function: 'relu', 'lrelu', etc.
         lr_multiplier: float = 0.01,  # Learning rate multiplier for the mapping layers.
         w_avg_beta: float = 0.998,  # Decay for tracking the moving average of W during training, None = do not track.
@@ -161,9 +160,9 @@ class MappingNetwork(torch.nn.Module):
     def forward(
         self,
         z: Tensor,
-        c: Optional[Tensor],
+        c: Tensor | None,
         truncation_psi: float = 1.0,
-        truncation_cutoff: Optional[int] = None,
+        truncation_cutoff: int | None = None,
     ):
         # Embed, normalize, and concat inputs.
         x = None
@@ -203,8 +202,8 @@ class SynthesisLayer(torch.nn.Module):
         up: int = 1,  # Integer upsampling factor.
         use_noise: bool = True,  # Enable noise input?
         activation: str = "lrelu",  # Activation function: 'relu', 'lrelu', etc.
-        resample_filter: List[int] = [1, 3, 3, 1],  # Low-pass filter to apply when resampling activations.
-        conv_clamp: Optional[float] = None,  # Clamp the output of convolution layers to +-X, None = disable clamping.
+        resample_filter: list[int] = [1, 3, 3, 1],  # Low-pass filter to apply when resampling activations.
+        conv_clamp: float | None = None,  # Clamp the output of convolution layers to +-X, None = disable clamping.
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -253,7 +252,7 @@ class SynthesisLayer(torch.nn.Module):
 
 class ToRGBLayer(torch.nn.Module):
     def __init__(
-        self, in_channels: int, out_channels: int, w_dim: int, kernel_size: int = 1, conv_clamp: Optional[float] = None
+        self, in_channels: int, out_channels: int, w_dim: int, kernel_size: int = 1, conv_clamp: float | None = None
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -282,7 +281,7 @@ class SynthesisBlock(torch.nn.Module):
         img_channels: int,  # Number of output color channels.
         is_last: bool,  # Is this the last block?
         architecture: str = "skip",  # Architecture: 'orig', 'skip', 'resnet'.
-        resample_filter: List[int] = [1, 3, 3, 1],  # Low-pass filter to apply when resampling activations.
+        resample_filter: list[int] = [1, 3, 3, 1],  # Low-pass filter to apply when resampling activations.
         conv_clamp: int = 256.0,  # Clamp the output of convolution layers to +-X, None = disable clamping.
         use_fp16: bool = False,  # Use FP16 for this block?
         **layer_kwargs,  # Arguments for SynthesisLayer.
@@ -339,11 +338,11 @@ class SynthesisBlock(torch.nn.Module):
 
     def forward(
         self,
-        x: Optional[Tensor],
-        img: Optional[Tensor],
+        x: Tensor | None,
+        img: Tensor | None,
         ws: Tensor,
         noise_mode: str = "const",
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor]:
         w_idx = 0
 
         # Input.
@@ -462,9 +461,9 @@ class Generator(torch.nn.Module):
     def forward(
         self,
         z: Tensor,
-        c: Optional[Tensor] = None,
+        c: Tensor | None = None,
         truncation_psi: float = 1.0,
-        truncation_cutoff: Optional[float] = None,
+        truncation_cutoff: float | None = None,
         noise_mode="const",
     ):
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff)

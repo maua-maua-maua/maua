@@ -1,9 +1,9 @@
 from functools import partial
 
 import torch
-import torch.nn as nn
+from torch import nn
 
-from ..loss import feature_loss, gram_matrix
+from maua.loss import feature_loss, gram_matrix
 
 
 class Perceptor(nn.Module):
@@ -94,8 +94,8 @@ class Perceptor(nn.Module):
         return self.loss
 
 
-from .vgg_kbc import KBCPerceptor
-from .vgg_pgg import PGGPerceptor
+from maua.perceptors.vgg_kbc import KBCPerceptor
+from maua.perceptors.vgg_pgg import PGGPerceptor
 
 
 def load_perceptor(name: str) -> Perceptor:

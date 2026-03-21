@@ -5,7 +5,6 @@ import sys
 from functools import partial
 from glob import glob
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -28,8 +27,8 @@ from rudalle.dalle.fp16 import FP16Module
 from rudalle.dalle.model import DalleModel
 from rudalle.dalle.utils import exists, is_empty
 
-from . import SURREALIST_XL_DICT
-from .generate import get_col_mask, get_conv_mask, get_image_pos_embeddings, get_row_mask
+from maua.autoregressive.ru_dalle import SURREALIST_XL_DICT
+from maua.autoregressive.ru_dalle.generate import get_col_mask, get_conv_mask, get_image_pos_embeddings, get_row_mask
 
 MODELS.update({"Surrealist_XL": SURREALIST_XL_DICT})
 
@@ -196,7 +195,7 @@ def train(
 
 class Layer(torch.nn.Module):
     def __init__(self, x, f, *args, **kwargs):
-        super(Layer, self).__init__()
+        super().__init__()
         self.x = x
         self.f = f
         self.args = args
@@ -246,9 +245,11 @@ def forward(self, input_ids, attention_mask, return_loss=False, use_cache=False,
         layers.append(
             Layer(
                 t.layers[i],
-                lambda x: x[0] * layernorms[i // norm_every][0] + layernorms[i // norm_every][1]
-                if norm_every and i % norm_every == 0
-                else x[0],
+                lambda x: (
+                    x[0] * layernorms[i // norm_every][0] + layernorms[i // norm_every][1]
+                    if norm_every and i % norm_every == 0
+                    else x[0]
+                ),
                 torch.mul(
                     attention_mask,
                     t._get_layer_mask(i)[: attention_mask.size(2), : attention_mask.size(3)],
@@ -285,9 +286,9 @@ def forward(self, input_ids, attention_mask, return_loss=False, use_cache=False,
 
 
 def finetune(
-    input_dir: Union[str, Path] = None,
-    images: List[Union[str, Path, Image.Image]] = [],
-    captions: List[str] = [],
+    input_dir: str | Path = None,
+    images: list[str | Path | Image.Image] = [],
+    captions: list[str] = [],
     model_name=None,
     num_examples=500,
     steps=500,
@@ -300,9 +301,9 @@ def finetune(
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     low_memory=False,
     adam8bit=False,
-    checkpoint: Optional[Union[str, Path]] = None,
+    checkpoint: str | Path | None = None,
     save_dir="modelzoo/",
-) -> Tuple[Union[FP16Module, DalleModel], Optional[Tuple[int, int]]]:
+) -> tuple[FP16Module | DalleModel, tuple[int, int] | None]:
     f"""Finetune a RuDALL-E model on a set of images (and possibly captions).
 
     Args:
@@ -427,7 +428,7 @@ def main(args):
         save_dir=args.save_dir,
     )
 
-    from .generate import generate
+    from maua.autoregressive.ru_dalle.generate import generate
 
     outputs = generate(
         model.eval(),

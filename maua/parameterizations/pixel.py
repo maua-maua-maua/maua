@@ -28,8 +28,8 @@ from torch import nn, optim
 from torch.nn import functional as F
 from torchvision.transforms import functional as TF
 
-from ..loss import replace_grad
-from . import Parameterization
+from maua.loss import replace_grad
+from maua.parameterizations import Parameterization
 
 
 def hsv_augment(input):
@@ -145,7 +145,8 @@ class Pixel(Parameterization):
         super().__init__(width * scale, height * scale)
         self.pallet_inertia = 2
         pallet = (
-            torch.linspace(0, self.pallet_inertia, pallet_size)
+            torch
+            .linspace(0, self.pallet_inertia, pallet_size)
             .pow(gamma)
             .view(pallet_size, 1, 1)
             .repeat(1, n_pallets, 3)
@@ -241,7 +242,8 @@ class Pixel(Parameterization):
         colors_disc = pallet[value_rounds]
         colors_disc = (colors_disc * pallets).sum(dim=2)
         colors_disc = F.interpolate(
-            colors_disc.movedim(2, 0)
+            colors_disc
+            .movedim(2, 0)
             .unsqueeze(0)
             .to(torch.device("cuda" if torch.cuda.is_available() else "cpu"), memory_format=torch.channels_last),
             (height, width),
@@ -251,7 +253,8 @@ class Pixel(Parameterization):
         colors_cont = pallet[value_floors] * (1 - value_fracs) + pallet[value_ceils] * value_fracs
         colors_cont = (colors_cont * pallet_weights).sum(dim=2)
         colors_cont = F.interpolate(
-            colors_cont.movedim(2, 0)
+            colors_cont
+            .movedim(2, 0)
             .unsqueeze(0)
             .to(torch.device("cuda" if torch.cuda.is_available() else "cpu"), memory_format=torch.channels_last),
             (height, width),

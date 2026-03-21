@@ -1,7 +1,6 @@
 import os
 import shutil
 from pathlib import Path
-from typing import List, Union
 
 import numpy as np
 import torch
@@ -11,20 +10,20 @@ from torch import Tensor
 from torch.nn.functional import grid_sample
 from tqdm import tqdm
 
-from ..flow import flow_warp_map, get_flow_model, preprocess_optical_flow
-from ..loss import feature_loss, tv_loss
-from ..ops.image import match_histogram, resample, scaled_height_width
-from ..ops.io import load_images
-from ..ops.video import write_video
-from ..optimizers import load_optimizer
-from ..parameterizations import load_parameterization
-from ..perceptors import load_perceptor
+from maua.flow import flow_warp_map, get_flow_model, preprocess_optical_flow
+from maua.loss import feature_loss, tv_loss
+from maua.ops.image import match_histogram, resample, scaled_height_width
+from maua.ops.io import load_images
+from maua.ops.video import write_video
+from maua.optimizers import load_optimizer
+from maua.parameterizations import load_parameterization
+from maua.perceptors import load_perceptor
 
 
 @torch.no_grad()
 def transfer(
-    content_video: Union[str, Path],
-    style_imgs: List[Union[Tensor, Image.Image, str, Path]],
+    content_video: str | Path,
+    style_imgs: list[Tensor | Image.Image | str | Path],
     init_video=None,
     init_type="content",
     match_hist="avg",

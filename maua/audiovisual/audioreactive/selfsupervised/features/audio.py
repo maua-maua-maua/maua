@@ -4,10 +4,19 @@ import librosa as rosa
 import torch
 from torch.nn.functional import pad
 
-from .processing import emphasize, gaussian_filter, normalize
-from .rosa.beat import onset_strength, plp
-from .rosa.convert import power_to_db
-from .rosa.spectral import chroma_cens, chroma_cqt, dct, hpss, istft, melspectrogram, spectrogram, stft
+from maua.audiovisual.audioreactive.selfsupervised.features.processing import emphasize, gaussian_filter, normalize
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.beat import onset_strength, plp
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.convert import power_to_db
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.spectral import (
+    chroma_cens,
+    chroma_cqt,
+    dct,
+    hpss,
+    istft,
+    melspectrogram,
+    spectrogram,
+    stft,
+)
 
 
 def harmonic(audio, margin=8.0):

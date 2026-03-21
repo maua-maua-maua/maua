@@ -8,11 +8,11 @@ class Renderer:
 
 def get_output_class(renderer):
     if renderer == "memmap":
-        from .memmap import MemMap
+        from maua.audiovisual.render.memmap import MemMap
 
         return MemMap
     if renderer == "ffmpeg":
-        from .ffmpeg import FFMPEG
+        from maua.audiovisual.render.ffmpeg import FFMPEG
 
         return FFMPEG
     raise NotImplementedError

@@ -3,8 +3,8 @@ import json
 import numpy as np
 import torch
 
-from .latent import FeatureLatents, LoopLatents, SegmentationLatents
-from .mir import AUDIO_FEATURES, UNIT_FEATURES
+from maua.audiovisual.audioreactive.selfsupervised.latent import FeatureLatents, LoopLatents, SegmentationLatents
+from maua.audiovisual.audioreactive.selfsupervised.mir import AUDIO_FEATURES, UNIT_FEATURES
 
 
 def random_choice(rng, options, weights=None, n=1, replacement=False):
@@ -102,10 +102,7 @@ class Patch(torch.nn.Module):
             sigma = random_choice(self.rng, [1, 2, 4, 8, 16, 32])
             return SegmentationLatents(feature, segments, sigma)
 
-        elif patch_class == FeatureLatents:
-            raise NotImplementedError()
-
-        elif patch_class == LoopLatents:
+        elif patch_class == FeatureLatents or patch_class == LoopLatents:
             raise NotImplementedError()
 
         return dict(

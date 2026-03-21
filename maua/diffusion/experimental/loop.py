@@ -5,19 +5,19 @@ import decord
 import easydict
 import numpy as np
 import torch
+from maua.diffusion.multires import round64
 from npy_append_array import NpyAppendArray
 from torch.nn.functional import grid_sample
 from torch.utils.data import Dataset
 from tqdm import tqdm, trange
 
-from ...flow import get_flow_model
-from ...flow.lib import flow_warp_map, get_consistency_map
-from ...grad import CLIPGrads, ColorMatchGrads, ContentPrompt, LPIPSGrads, StylePrompt, TextPrompt, VGGGrads
-from ...ops.video import write_video
-from ...super.video.framerate import rife
-from ..image import build_output_name
-from ..multires import round64
-from ..processors.guided import GuidedDiffusion
+from maua.diffusion.image import build_output_name
+from maua.diffusion.processors.guided import GuidedDiffusion
+from maua.flow import get_flow_model
+from maua.flow.lib import flow_warp_map, get_consistency_map
+from maua.grad import CLIPGrads, ColorMatchGrads, ContentPrompt, LPIPSGrads, StylePrompt, TextPrompt, VGGGrads
+from maua.ops.video import write_video
+from maua.super.video.framerate import rife
 
 decord.bridge.set_bridge("torch")
 

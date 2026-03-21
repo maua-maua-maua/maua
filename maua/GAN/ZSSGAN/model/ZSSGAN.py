@@ -15,7 +15,7 @@ class SG2Generator(torch.nn.Module):
     def __init__(
         self, checkpoint_path, latent_size=512, map_layers=8, img_size=256, channel_multiplier=2, device="cuda:0"
     ):
-        super(SG2Generator, self).__init__()
+        super().__init__()
 
         self.generator = Generator(img_size, latent_size, map_layers, channel_multiplier=channel_multiplier).to(device)
 
@@ -95,7 +95,7 @@ class SG2Generator(torch.nn.Module):
 
 class SG2Discriminator(torch.nn.Module):
     def __init__(self, checkpoint_path, img_size=256, channel_multiplier=2, device="cuda:0"):
-        super(SG2Discriminator, self).__init__()
+        super().__init__()
 
         self.discriminator = Discriminator(img_size, channel_multiplier=channel_multiplier).to(device)
 
@@ -135,7 +135,7 @@ class SG2Discriminator(torch.nn.Module):
 
 class ZSSGAN(torch.nn.Module):
     def __init__(self, args):
-        super(ZSSGAN, self).__init__()
+        super().__init__()
 
         device = "cuda:0"
 
@@ -216,5 +216,5 @@ class ZSSGAN(torch.nn.Module):
         par_frozen = dict(self.generator_frozen.named_parameters())
         par_train = dict(self.generator_trainable.named_parameters())
 
-        for k in par_frozen.keys():
+        for k in par_frozen:
             par_frozen[k] = par_train[k]

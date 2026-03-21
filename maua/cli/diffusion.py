@@ -1,12 +1,11 @@
 import argparse
 
+from maua.cli import main_function
 from maua.diffusion.finetune_stable import argument_parser as finetune_stable_argument_parser
 from maua.diffusion.image import argument_parser as image_argument_parser
 from maua.diffusion.klmc2_animation import argument_parser as klmc2_animation_argument_parser
 from maua.diffusion.temporalvideo_hf import argument_parser as temporalvideo_hf_argument_parser
 from maua.diffusion.video import argument_parser as video_argument_parser
-
-from . import main_function
 
 
 def argument_parser():

@@ -1,17 +1,16 @@
 from pathlib import Path
-from typing import List, Union
 
 import torch
 from PIL import Image
 from torch import Tensor
 
-from .video import transfer
+from maua.style.video import transfer
 
 
 @torch.no_grad()
 def transfer_multires(
-    content_video: Union[str, Path],
-    style_imgs: List[Union[Tensor, Image.Image, str, Path]],
+    content_video: str | Path,
+    style_imgs: list[Tensor | Image.Image | str | Path],
     match_hist="avg",
     sizes=[128, 256, 512],
     parameterization="rgb",

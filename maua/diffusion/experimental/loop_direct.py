@@ -3,14 +3,14 @@ import sys
 import decord
 import numpy as np
 import torch
+from maua.diffusion.multires import round64
 from tqdm import tqdm
 
-from ...grad import ContentPrompt, StylePrompt, TextPrompt
-from ...ops.video import write_video
-from ..image import build_output_name
-from ..multires import round64
-from ..processors.glide import GLIDE
-from .loop import VideoFrames, initialize_cache_files, initialize_optical_flow, warp
+from maua.diffusion.experimental.loop import VideoFrames, initialize_cache_files, initialize_optical_flow, warp
+from maua.diffusion.image import build_output_name
+from maua.diffusion.processors.glide import GLIDE
+from maua.grad import ContentPrompt, StylePrompt, TextPrompt
+from maua.ops.video import write_video
 
 decord.bridge.set_bridge("torch")
 

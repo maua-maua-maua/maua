@@ -1,13 +1,12 @@
 import argparse
 from pathlib import Path
-from typing import Tuple
 from uuid import uuid4
 
 import torch
 
-from ..ops.video import write_video
-from .patches.base import get_patch_from_file
-from .render import get_output_class
+from maua.audiovisual.patches.base import get_patch_from_file
+from maua.audiovisual.render import get_output_class
+from maua.ops.video import write_video
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -21,10 +20,10 @@ def generate_audiovisal_from_patch(
     renderer: str,
     renderer_kwargs: dict,
     fps: float,
-    out_size: Tuple[int],
+    out_size: tuple[int],
     resize_strategy: str,
     resize_layer: int,
-) -> Tuple[torch.Tensor, Tuple[torch.Tensor, int]]:
+) -> tuple[torch.Tensor, tuple[torch.Tensor, int]]:
     patch = get_patch_from_file(patch_file, patch_name)(
         model_file,
         audio_file,

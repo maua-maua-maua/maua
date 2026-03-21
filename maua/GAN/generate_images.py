@@ -1,23 +1,22 @@
 import argparse
+from collections.abc import Generator as PythonGenerator
 from pathlib import Path
-from typing import Generator as PythonGenerator
-from typing import List
 
 import torch
 import torchvision as tv
 from numpy import sqrt
 from torch.nn.functional import one_hot
 
-from ..ops.io import tensor2img
-from .sampling import sample_latents
-from .wrappers import MauaGenerator, get_generator_class
+from maua.GAN.sampling import sample_latents
+from maua.GAN.wrappers import MauaGenerator, get_generator_class
+from maua.ops.io import tensor2img
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def generate_images(
     G: MauaGenerator,
-    seeds: List[int],
+    seeds: list[int],
     class_idx: int,
     truncation: torch.Tensor,
     latent_sampling: str,

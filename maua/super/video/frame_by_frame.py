@@ -14,8 +14,8 @@ from pathlib import Path
 from decord import VideoReader
 from tqdm import tqdm
 
-from ...ops.video import VideoWriter
-from ...super.image import upscale as upscale_images
+from maua.ops.video import VideoWriter
+from maua.super.image import upscale as upscale_images
 
 
 @torch.inference_mode()

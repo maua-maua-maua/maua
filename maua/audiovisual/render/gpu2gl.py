@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from ...GAN.wrappers.stylegan2 import StyleGAN2Mapper, StyleGAN2Synthesizer
+from maua.GAN.wrappers.stylegan2 import StyleGAN2Mapper, StyleGAN2Synthesizer
 
 torch.backends.cudnn.allow_tf32 = True
 torch.backends.cuda.matmul.allow_tf32 = True

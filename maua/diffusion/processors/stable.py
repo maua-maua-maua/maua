@@ -12,16 +12,16 @@ from huggingface_hub import hf_hub_download
 from omegaconf import OmegaConf
 from torch import autocast, einsum
 
-from ...prompt import ImagePrompt, TextPrompt
-from ...utility import download
-from .base import BaseDiffusionProcessor
-from .latent import LatentDiffusion, load_model_from_config
+from maua.diffusion.processors.base import BaseDiffusionProcessor
+from maua.diffusion.processors.latent import LatentDiffusion, load_model_from_config
+from maua.prompt import ImagePrompt, TextPrompt
+from maua.utility import download
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/k_diffusion")
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/stable_diffusion")
-from ...submodules.k_diffusion import k_diffusion
-from ...submodules.stable_diffusion.ldm.models.diffusion.ddim import DDIMSampler
-from ...submodules.stable_diffusion.ldm.models.diffusion.plms import PLMSSampler
+from maua.submodules.k_diffusion import k_diffusion
+from maua.submodules.stable_diffusion.ldm.models.diffusion.ddim import DDIMSampler
+from maua.submodules.stable_diffusion.ldm.models.diffusion.plms import PLMSSampler
 
 
 def default(val, d):

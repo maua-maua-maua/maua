@@ -1,14 +1,13 @@
 import os
 import sys
 from pathlib import Path
-from typing import List, Union
 
 import torch
 from PIL import Image
 from torch import Tensor
 
-from ....ops.io import load_image
-from ....utility import download
+from maua.ops.io import load_image
+from maua.utility import download
 
 URLS = {
     "x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
@@ -41,7 +40,7 @@ def load_model(model_name="pbaylies-hr-paintings", device=torch.device("cuda" if
 
 
 @torch.inference_mode()
-def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
+def upscale(images: list[Tensor | Image.Image | Path | str], model):
     for img in images:
         input = load_image(img).detach().squeeze().permute(1, 2, 0).mul(255).cpu().numpy()
         large = model.enhance(input)[0]

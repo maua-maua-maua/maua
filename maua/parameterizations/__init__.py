@@ -1,5 +1,5 @@
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 class Parameterization(nn.Module):
@@ -46,8 +46,8 @@ class Parameterization(nn.Module):
         return self.decode()
 
 
-from .rgb import RGB
-from .vqgan import VQGAN
+from maua.parameterizations.rgb import RGB
+from maua.parameterizations.vqgan import VQGAN
 
 
 def load_parameterization(which: str):

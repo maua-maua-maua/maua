@@ -23,4 +23,6 @@ SURREALIST_XL_DICT = dict(
 )
 
 
-from . import api as api, finetune as finetune, generate as generate
+from maua.autoregressive.ru_dalle import api as api
+from maua.autoregressive.ru_dalle import finetune as finetune
+from maua.autoregressive.ru_dalle import generate as generate

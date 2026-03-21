@@ -6,8 +6,8 @@ import torch
 from kornia.geometry.transform import rotate
 from scipy import signal
 
-from ... import audioreactive as ar
-from ...patches.base.stylegan2 import StyleGAN2Patch
+from maua.audiovisual import audioreactive as ar
+from maua.audiovisual.patches.base.stylegan2 import StyleGAN2Patch
 
 
 def random_selection(latents, n):

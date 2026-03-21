@@ -1,10 +1,10 @@
 def get_extractor(name):
     if name.lower() == "swav":
-        from .swav import SwAV
+        from maua.GAN.metrics.extractors.swav import SwAV
 
         return SwAV(), 224
     elif name.lower() == "inception":
-        from .inception import Inception
+        from maua.GAN.metrics.extractors.inception import Inception
 
         return Inception(), 299
     else:

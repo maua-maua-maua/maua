@@ -2,14 +2,13 @@ from math import ceil
 from queue import Empty, Queue
 from threading import Thread
 from time import sleep
-from typing import Union
 
 import ffmpeg
 import numpy as np
 import torch
 
-from .image import resample
-from .io import tensor2bytes
+from maua.ops.image import resample
+from maua.ops.io import tensor2bytes
 
 
 class WriteWorker(Thread):
@@ -46,7 +45,8 @@ class WriteWorker(Thread):
                 audio_kwargs["t"] = self.audio_duration
             audio = ffmpeg.input(self.audio_file, **audio_kwargs)
             self.ffmpeg_proc = (
-                ffmpeg.input("pipe:", format="rawvideo", pix_fmt="rgb24", framerate=self.fps, s=self.output_size)
+                ffmpeg
+                .input("pipe:", format="rawvideo", pix_fmt="rgb24", framerate=self.fps, s=self.output_size)
                 .output(
                     audio,
                     self.output_file,
@@ -63,7 +63,8 @@ class WriteWorker(Thread):
             )
         else:
             self.ffmpeg_proc = (
-                ffmpeg.input("pipe:", format="rawvideo", pix_fmt="rgb24", framerate=self.fps, s=self.output_size)
+                ffmpeg
+                .input("pipe:", format="rawvideo", pix_fmt="rgb24", framerate=self.fps, s=self.output_size)
                 .output(
                     self.output_file,
                     framerate=self.fps,
@@ -132,7 +133,7 @@ class VideoWriter:
 
 
 def write_video(
-    tensor: Union[torch.Tensor, np.ndarray],
+    tensor: torch.Tensor | np.ndarray,
     output_file: str,
     fps: float = 24,
     audio_file=None,

@@ -1,16 +1,15 @@
 import os
 import sys
 import warnings
-from typing import Optional, Tuple
 
 import numpy as np
 import torch
 from torch.nn.functional import interpolate, pad
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../GAN/nv")
-from ..load import load_network
-from ..nv.networks import stylegan3
-from .stylegan import StyleGAN, StyleGANMapper, StyleGANSynthesizer
+from maua.GAN.load import load_network
+from maua.GAN.nv.networks import stylegan3
+from maua.GAN.wrappers.stylegan import StyleGAN, StyleGANMapper, StyleGANSynthesizer
 
 layer_multipliers = {
     1024: {0: 64, 1: 64, 2: 64, 3: 32, 4: 32, 5: 16, 6: 8, 7: 8, 8: 4, 9: 4, 10: 2, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1},
@@ -26,7 +25,7 @@ class StyleGAN3Mapper(StyleGANMapper):
 
 class StyleGAN3Synthesizer(StyleGANSynthesizer):
     def __init__(
-        self, model_file: str, inference: bool, output_size: Optional[Tuple[int, int]], strategy: str, layer: int
+        self, model_file: str, inference: bool, output_size: tuple[int, int] | None, strategy: str, layer: int
     ) -> None:
         super().__init__()
 
@@ -60,7 +59,7 @@ class StyleGAN3Synthesizer(StyleGANSynthesizer):
             self.G_synth.input.transform.copy_(make_transform_mat(translation, rotation))
         return self.G_synth.forward(latents)
 
-    def change_output_resolution(self, output_size: Tuple[int, int], strategy: str, layer: int):
+    def change_output_resolution(self, output_size: tuple[int, int], strategy: str, layer: int):
         self.refresh_model_hooks()
 
         if output_size != (self.G_synth.img_resolution, self.G_synth.img_resolution):
@@ -80,7 +79,7 @@ class StyleGAN3Synthesizer(StyleGANSynthesizer):
         self.output_size = output_size
 
 
-def make_transform_mat(translate: Tuple[float, float], angle: float) -> torch.Tensor:
+def make_transform_mat(translate: tuple[float, float], angle: float) -> torch.Tensor:
     s = np.sin(angle.squeeze().cpu() / 360.0 * np.pi * 2)
     c = np.cos(angle.squeeze().cpu() / 360.0 * np.pi * 2)
     m = np.array([[c, s, translate.squeeze().cpu()[0]], [-s, c, translate.squeeze().cpu()[1]], [0, 0, 0]])

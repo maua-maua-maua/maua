@@ -1,13 +1,12 @@
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
 
 import torch
 from tqdm import tqdm
 
-from ..GAN.wrappers.stylegan2 import StyleGAN2
-from ..ops.video import VideoWriter
-from .audioreactive.selfsupervised.sample import load_audio
+from maua.audiovisual.audioreactive.selfsupervised.sample import load_audio
+from maua.GAN.wrappers.stylegan2 import StyleGAN2
+from maua.ops.video import VideoWriter
 
 torch.backends.cudnn.allow_tf32 = True
 torch.use_deterministic_algorithms(False)
@@ -59,9 +58,9 @@ class Section(torch.nn.Module):
 def audio_reactive_interpolation(
     sections,
     audio_file: str,
-    auxiliary_audio: Optional[Dict[str, str]] = None,
+    auxiliary_audio: dict[str, str] | None = None,
     stylegan2_checkpoint: str = "/home/hans/modelzoo/koanGAN/select/koancept.pkl",
-    render_sections: Optional[slice] = None,
+    render_sections: slice | None = None,
     aspect_ratio: float = 2,
     height: int = 1024,
     fade_time: float = 2,

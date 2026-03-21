@@ -1,5 +1,3 @@
-from typing import Tuple
-
 import numpy as np
 import torch
 from torch.nn.functional import conv1d, pad
@@ -74,9 +72,9 @@ def cart2pol(x, y):
 
 def median_filter2d(
     x,
-    k: Tuple[int, int] = (3, 3),
-    s: Tuple[int, int] = (1, 1),
-    p: Tuple[int, int, int, int] = (1, 1, 1, 1),
+    k: tuple[int, int] = (3, 3),
+    s: tuple[int, int] = (1, 1),
+    p: tuple[int, int, int, int] = (1, 1, 1, 1),
     mode: str = "reflect",
 ):
     x = pad(x, p, mode=mode)

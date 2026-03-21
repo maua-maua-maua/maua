@@ -2,8 +2,8 @@ import numpy as np
 import torch
 from torch.nn.functional import pad
 
-from .convert import hz_to_octs
-from .spectral import spectrogram
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.convert import hz_to_octs
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.spectral import spectrogram
 
 
 def estimate_tuning(y, sr, n_fft=2048, resolution=0.01, bins_per_octave=12, **kwargs):

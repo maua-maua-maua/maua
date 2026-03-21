@@ -9,8 +9,8 @@ from torchcubicspline import NaturalCubicSpline, natural_cubic_spline_coeffs
 from torchvision.transforms.functional import resize, to_tensor
 from tqdm import tqdm
 
-from ..ops.video import VideoWriter
-from .image import get_diffusion_model
+from maua.diffusion.image import get_diffusion_model
+from maua.ops.video import VideoWriter
 
 
 def slerp(a, b, t):

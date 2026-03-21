@@ -65,7 +65,8 @@ if __name__ == "__main__":
     candidates = []
     for text, image, url in zip(tqdm(texts, desc="Retrieving similar images from knn5.laion.ai"), images, urls):
         data = (
-            json.dumps({
+            json
+            .dumps({
                 "text": "|T|E|X|T|",
                 "image": encode_image_prompt(image),
                 "image_url": url,

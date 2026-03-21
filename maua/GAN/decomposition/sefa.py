@@ -1,5 +1,4 @@
 import torch
-import utils.misc as misc
 
 
 def apply_sefa(generator, backbone, z, fake_label, num_semantic_axis, maximum_variations, num_cols):

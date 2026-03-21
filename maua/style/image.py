@@ -4,26 +4,25 @@ Neural style transfer
 
 import gc
 from pathlib import Path
-from typing import List, Union
 
 import torch
 from PIL import Image
 from torch import Tensor
 from tqdm import tqdm
 
-from ..loss import tv_loss
-from ..ops.image import match_histogram, resample
-from ..ops.io import load_images, tensor2img
-from ..optimizers import load_optimizer
-from ..parameterizations import load_parameterization
-from ..perceptors import load_perceptor
+from maua.loss import tv_loss
+from maua.ops.image import match_histogram, resample
+from maua.ops.io import load_images, tensor2img
+from maua.optimizers import load_optimizer
+from maua.parameterizations import load_parameterization
+from maua.perceptors import load_perceptor
 
 
 @torch.no_grad()
 def transfer(
-    content_img: Union[Tensor, Image.Image, str],
-    style_imgs: List[Union[Tensor, Image.Image, str]],
-    init_img: Union[Tensor, Image.Image, str] = None,
+    content_img: Tensor | Image.Image | str,
+    style_imgs: list[Tensor | Image.Image | str],
+    init_img: Tensor | Image.Image | str = None,
     init_type="content",
     match_hist="avg",
     size=512,

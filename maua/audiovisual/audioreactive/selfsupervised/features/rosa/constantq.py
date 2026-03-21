@@ -3,9 +3,9 @@ import torch
 from torch.nn.functional import pad
 from torchaudio.functional import resample
 
-from .convert import note_to_hz
-from .pitch import estimate_tuning
-from .spectral import stft
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.convert import note_to_hz
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.pitch import estimate_tuning
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.spectral import stft
 
 HANN_BANDWIDTH = 1.50018310546875
 
@@ -68,9 +68,7 @@ def vqt(
     num_twos = __num_two_factors(hop_length)
     if num_twos < n_octaves - 1:
         raise Exception(
-            "hop_length must be a positive integer multiple of 2^{0:d} for {1:d}-octave CQT/VQT".format(
-                n_octaves - 1, n_octaves
-            )
+            f"hop_length must be a positive integer multiple of 2^{n_octaves - 1:d} for {n_octaves:d}-octave CQT/VQT"
         )
 
     # Now do the recursive bit

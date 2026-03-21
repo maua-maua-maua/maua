@@ -2,7 +2,7 @@ import os
 
 import torch
 
-from ..utility import download
+from maua.utility import download
 
 AVAILABLE_MODELS = [
     "flownet/flownetc_8x1_sfine_sintel_384x448",
@@ -85,8 +85,9 @@ def get_prediction_fn(model, device="cuda"):
     if not os.path.exists(checkpoint_file):
         download(f"https://download.openmmlab.com/mmflow/{model}.pth", checkpoint_file)
     model = init_model(config_file, checkpoint_file, device=device)
-    return (
-        lambda img1, img2: torch.from_numpy(
+    return lambda img1, img2: (
+        torch
+        .from_numpy(
             inference_model(
                 model,
                 img1.detach().squeeze().permute(1, 2, 0).cpu().numpy(),

@@ -1,7 +1,7 @@
 import argparse
 
 # from ..optimizers import OPTIMIZERS
-from . import main_function
+from maua.cli import main_function
 
 
 def argument_parser():

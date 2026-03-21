@@ -5,11 +5,11 @@ from kornia.color import rgb_to_hsv
 from torch.nn.functional import mse_loss
 from torchvision.transforms import Normalize
 
-from .loss import spherical_dist_loss
-from .ops.cutouts import make_cutouts
-from .ops.image import resample
-from .perceptors import load_perceptor
-from .prompt import ContentPrompt, StylePrompt, TextPrompt
+from maua.loss import spherical_dist_loss
+from maua.ops.cutouts import make_cutouts
+from maua.ops.image import resample
+from maua.perceptors import load_perceptor
+from maua.prompt import ContentPrompt, StylePrompt, TextPrompt
 
 
 class GradModule(torch.nn.Module):

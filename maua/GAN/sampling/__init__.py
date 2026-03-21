@@ -1,9 +1,9 @@
 import numpy as np
 import torch
 
-from .jacnorm import jacobian_norm_rejection
-from .langevin import langevin_with_critic
-from .polarity import polarity_sampling
+from maua.GAN.sampling.jacnorm import jacobian_norm_rejection
+from maua.GAN.sampling.langevin import langevin_with_critic
+from maua.GAN.sampling.polarity import polarity_sampling
 
 
 def sample_latents(G, seeds, batch_size, truncation, how, langevin_critic):

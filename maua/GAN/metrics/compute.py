@@ -1,7 +1,7 @@
 import os
+from collections.abc import Callable
 from glob import glob
 from pathlib import Path
-from typing import Callable, List, Union
 from zipfile import ZipFile
 
 import numpy as np
@@ -13,10 +13,10 @@ from torch.utils.data.dataloader import DataLoader
 from torchvision.transforms.functional import to_tensor
 from tqdm import tqdm
 
-from .extractors import get_extractor
-from .frechet import frechet_distance
-from .kernel import kernel_distance
-from .prdc import prdc
+from maua.GAN.metrics.extractors import get_extractor
+from maua.GAN.metrics.frechet import frechet_distance
+from maua.GAN.metrics.kernel import kernel_distance
+from maua.GAN.metrics.prdc import prdc
 
 EXTENSIONS = {"bmp", "jpg", "jpeg", "pgm", "png", "ppm", "tif", "tiff", "webp", "npy"}
 SIZE = 224
@@ -93,11 +93,11 @@ class GeneratorImages(Dataset):
 
 @torch.inference_mode()
 def compute(
-    real_samples: Union[str, Path, DataLoader],
+    real_samples: str | Path | DataLoader,
     fake_samples: Callable,
     n_samples: int = 10_000,
     extractor: str = "SwAV",
-    metrics: List[str] = ["frechet", "kernel", "prdc"],
+    metrics: list[str] = ["frechet", "kernel", "prdc"],
     batch_size: int = 32,
     num_workers: int = torch.multiprocessing.cpu_count(),
     device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
@@ -203,7 +203,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     # fmt: on
 
-    from ..load import load_network
+    from maua.GAN.load import load_network
 
     G = load_network(args.checkpoint).eval().to(args.device)
 

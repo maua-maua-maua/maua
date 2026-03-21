@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 import torch.nn.functional as F
 from torch.nn.functional import mse_loss
@@ -39,7 +37,7 @@ def scaled_mse_loss(input: torch.Tensor, target: torch.Tensor, eps: float = 1e-8
 def feature_loss(
     input: torch.Tensor,
     target: torch.Tensor,
-    norm_weights: Optional[str] = "elements",
+    norm_weights: str | None = "elements",
     scaled: bool = True,
 ):
     if scaled:

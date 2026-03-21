@@ -12,10 +12,10 @@ import re
 
 import numpy as np
 
-from .nv import dnnlib, legacy
-from .nv.networks import stylegan2 as stylegan2_train
-from .nv.networks import stylegan3
-from .wrappers.inference import stylegan2 as stylegan2_inference
+from maua.GAN.nv import dnnlib, legacy
+from maua.GAN.nv.networks import stylegan2 as stylegan2_train
+from maua.GAN.nv.networks import stylegan3
+from maua.GAN.wrappers.inference import stylegan2 as stylegan2_inference
 
 
 def convert_to_rgb(state_ros, state_nv, ros_name, nv_name):
@@ -44,8 +44,8 @@ def determine_config(state_nv):
     mapping_names = [name for name in state_nv.keys() if "mapping.fc" in name]
     sythesis_names = [name for name in state_nv.keys() if "synthesis.b" in name]
 
-    n_mapping = max([int(re.findall("(\d+)", n)[0]) for n in mapping_names]) + 1
-    resolution = max([int(re.findall("(\d+)", n)[0]) for n in sythesis_names])
+    n_mapping = max([int(re.findall(r"(\d+)", n)[0]) for n in mapping_names]) + 1
+    resolution = max([int(re.findall(r"(\d+)", n)[0]) for n in sythesis_names])
     n_layers = np.log(resolution / 2) / np.log(2)
 
     return n_mapping, n_layers
@@ -129,8 +129,7 @@ def load_rosinality2ada(path, blur_scale=4.0, for_inference=False):
             )
             state_nv[nv_key] = val
 
-            if int(num) > num_map:
-                num_map = int(num)
+            num_map = max(num_map, int(num))
 
         if key.startswith("noises"):
             n = int(key.split("_")[1])
@@ -160,8 +159,7 @@ def load_rosinality2ada(path, blur_scale=4.0, for_inference=False):
             else:
                 raise Exception(f"Key {key} not recognized!")
 
-            if r > max_res:
-                max_res = r
+            max_res = max(max_res, r)
 
         if key.startswith("to_rgbs"):
             n = int(key.split(".")[1])

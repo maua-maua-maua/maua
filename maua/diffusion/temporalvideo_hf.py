@@ -1,6 +1,6 @@
 import argparse
 import os
-from typing import Optional
+import urllib.request
 import warnings
 from pathlib import Path
 
@@ -12,17 +12,14 @@ from torchvision.io.video import read_video, write_video
 from torchvision.models.optical_flow import Raft_Large_Weights, raft_large
 from torchvision.transforms.functional import resize
 from torchvision.utils import flow_to_image
-from tqdm import trange
-import urllib.request
-
-from tqdm import tqdm
+from tqdm import tqdm, trange
 
 raft_transform = Raft_Large_Weights.DEFAULT.transforms()
 
 
 def download(url: str, output_path: str) -> None:
     class DownloadProgressBar(tqdm):
-        def update_to(self, b: int = 1, bsize: int = 1, tsize: Optional[int] = None):
+        def update_to(self, b: int = 1, bsize: int = 1, tsize: int | None = None):
             if tsize is not None:
                 self.total = tsize
             self.update(b * bsize - self.n)

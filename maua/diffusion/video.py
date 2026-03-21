@@ -10,12 +10,12 @@ decord.bridge.set_bridge("torch")
 
 import argparse
 import os
+from collections.abc import Callable
 from functools import partial, reduce
 from glob import glob
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Thread
-from typing import Callable, Optional, Tuple, Union
 
 import easydict
 import matplotlib.pyplot as plt
@@ -26,14 +26,14 @@ from torch.utils.data import Dataset
 from torchvision.transforms.functional import to_pil_image, to_tensor
 from tqdm import trange
 
-from ..flow import get_flow_model
-from ..flow.lib import decode_mflo, encode_mflo, flow_warp_map, get_consistency_map
-from ..ops.image import match_histogram, sharpen
-from ..ops.video import write_video
-from ..prompt import ContentPrompt, ImagePrompt, StylePrompt, TextPrompt
-from ..utility import seed_everything
-from .image import build_output_name, get_diffusion_model, round64, width_height
-from .processors.base import BaseDiffusionProcessor
+from maua.diffusion.image import build_output_name, get_diffusion_model, round64, width_height
+from maua.diffusion.processors.base import BaseDiffusionProcessor
+from maua.flow import get_flow_model
+from maua.flow.lib import decode_mflo, encode_mflo, flow_warp_map, get_consistency_map
+from maua.ops.image import match_histogram, sharpen
+from maua.ops.video import write_video
+from maua.prompt import ContentPrompt, ImagePrompt, StylePrompt, TextPrompt
+from maua.utility import seed_everything
 
 
 class VideoFrames(Dataset):
@@ -168,12 +168,12 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         self,
         diffusion: BaseDiffusionProcessor,
         init: str,
-        text: Optional[str] = None,
-        image: Optional[str] = None,
-        style: Optional[str] = None,
-        size: Tuple[int] = (256, 256),
+        text: str | None = None,
+        image: str | None = None,
+        style: str | None = None,
+        size: tuple[int] = (256, 256),
         first_skip: float = 0.4,
-        first_frame_init: Optional[str] = None,
+        first_frame_init: str | None = None,
         skip: float = 0.7,
         blend: float = 2,
         consistency_trust: float = 0.75,
@@ -181,10 +181,10 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
         turbo: int = 1,
         noise_injection: float = 0.02,
         flow_exaggeration: float = 1.0,
-        pre_hook: Optional[Callable] = None,
-        post_hook: Optional[Callable] = None,
+        pre_hook: Callable | None = None,
+        post_hook: Callable | None = None,
         hist_persist: bool = False,
-        constant_seed: Optional[int] = None,
+        constant_seed: int | None = None,
         device: str = "cuda",
         preview: bool = False,
     ):
@@ -303,12 +303,12 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
 
 @torch.no_grad()
 def video_sample(
-    diffusion: Union[str, BaseDiffusionProcessor],
+    diffusion: str | BaseDiffusionProcessor,
     init: str,
-    text: Optional[str] = None,
-    image: Optional[str] = None,
-    style: Optional[str] = None,
-    size: Tuple[int] = (256, 256),
+    text: str | None = None,
+    image: str | None = None,
+    style: str | None = None,
+    size: tuple[int] = (256, 256),
     timesteps: int = 50,
     first_skip: float = 0.4,
     first_frame_init: str = None,
@@ -329,7 +329,7 @@ def video_sample(
     match_hist: bool = False,
     hist_persist: bool = False,
     sharpness: float = 1.0,
-    constant_seed: Optional[int] = None,
+    constant_seed: int | None = None,
     device: str = "cuda",
     preview: bool = False,
 ):

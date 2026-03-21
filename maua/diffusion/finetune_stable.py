@@ -47,7 +47,7 @@ class ImageLogger(Callback):
         grid = grid.permute(1, 2, 0)
         grid = grid.cpu().numpy()
         grid = (grid * 255).astype(np.uint8)
-        filename = "samples_gs-{:06}_e-{:06}_b-{:06}.png".format(global_step, current_epoch, batch_idx)
+        filename = f"samples_gs-{global_step:06}_e-{current_epoch:06}_b-{batch_idx:06}.png"
         path = os.path.join(save_dir, filename)
         os.makedirs(save_dir, exist_ok=True)
         Image.fromarray(grid).save(path)

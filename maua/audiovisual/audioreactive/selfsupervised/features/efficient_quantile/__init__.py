@@ -1,6 +1,7 @@
 import torch
-
-from .efficient_quantile import _efficient_quantile
+from maua.audiovisual.audioreactive.selfsupervised.features.efficient_quantile.efficient_quantile import (
+    _efficient_quantile,
+)
 
 
 def quantile(tensor, q):

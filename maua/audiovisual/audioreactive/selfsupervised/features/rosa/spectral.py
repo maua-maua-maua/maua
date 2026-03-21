@@ -3,8 +3,8 @@ import torch
 from torch.nn.functional import conv1d
 from torchcubicspline import natural_cubic_spline_coeffs
 
-from ..processing import median_filter2d
-from .convert import cq_to_chroma, hz_to_mel, mel_to_hz
+from maua.audiovisual.audioreactive.selfsupervised.features.processing import median_filter2d
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.convert import cq_to_chroma, hz_to_mel, mel_to_hz
 
 
 def stft(
@@ -278,7 +278,7 @@ def chroma_cens(
     return cens / torch.norm(cens, p=2, dim=0)  # L2-Normalization
 
 
-from .constantq import cqt
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.constantq import cqt
 
 
 def chroma_cqt(

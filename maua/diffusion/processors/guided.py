@@ -6,11 +6,11 @@ from functools import partial
 import torch
 from tqdm import trange
 
-from ...utility import download
-from .base import BaseDiffusionProcessor
+from maua.diffusion.processors.base import BaseDiffusionProcessor
+from maua.utility import download
 
 sys.path.insert(0, os.path.dirname(__file__) + "/../../submodules/guided_diffusion")
-from ...submodules.guided_diffusion.guided_diffusion.script_util import (
+from maua.submodules.guided_diffusion.guided_diffusion.script_util import (
     create_model_and_diffusion,
     model_and_diffusion_defaults,
 )

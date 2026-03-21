@@ -1,11 +1,9 @@
-from typing import Optional
-
 import numpy as np
 import torch
 from torch import Tensor
 
-from ..load import load_network
-from . import MauaGenerator, MauaMapper, MauaSynthesizer
+from maua.GAN.load import load_network
+from maua.GAN.wrappers import MauaGenerator, MauaMapper, MauaSynthesizer
 
 
 class StyleGANMapper(MauaMapper):
@@ -29,7 +27,7 @@ class StyleGANMapper(MauaMapper):
         if self.c_dim > 0:
             self.modulation_targets["class_conditioning"] = (self.c_dim,)
 
-    def forward(self, latent_z: Tensor, class_conditioning: Optional[Tensor] = None, truncation: float = 1.0):
+    def forward(self, latent_z: Tensor, class_conditioning: Tensor | None = None, truncation: float = 1.0):
         return self.G_map.forward(latent_z, class_conditioning, truncation_psi=truncation)
 
 

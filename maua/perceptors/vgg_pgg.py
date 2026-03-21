@@ -3,11 +3,11 @@ from os import path
 
 import gdown
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.utils.model_zoo import load_url
 
-from ..perceptors import Perceptor
-from ..utility import download
+from maua.perceptors import Perceptor
+from maua.utility import download
 
 
 class PGGPerceptor(Perceptor):
@@ -144,7 +144,7 @@ def build_sequential(channel_list, pooling):
 
 class VGG(nn.Module):
     def __init__(self, features, num_classes=1000):
-        super(VGG, self).__init__()
+        super().__init__()
         self.features = features
         self.classifier = nn.Sequential(
             nn.Linear(512 * 7 * 7, 4096),
@@ -159,7 +159,7 @@ class VGG(nn.Module):
 
 class VGG_SOD(nn.Module):
     def __init__(self, features, num_classes=100):
-        super(VGG_SOD, self).__init__()
+        super().__init__()
         self.features = features
         self.classifier = nn.Sequential(
             nn.Linear(512 * 7 * 7, 4096),
@@ -174,7 +174,7 @@ class VGG_SOD(nn.Module):
 
 class VGG_FCN32S(nn.Module):
     def __init__(self, features, num_classes=1000):
-        super(VGG_FCN32S, self).__init__()
+        super().__init__()
         self.features = features
         self.classifier = nn.Sequential(
             nn.Conv2d(512, 4096, (7, 7)),
@@ -188,7 +188,7 @@ class VGG_FCN32S(nn.Module):
 
 class VGG_PRUNED(nn.Module):
     def __init__(self, features, num_classes=1000):
-        super(VGG_PRUNED, self).__init__()
+        super().__init__()
         self.features = features
         self.classifier = nn.Sequential(
             nn.Linear(512 * 7 * 7, 4096),
@@ -202,7 +202,7 @@ class VGG_PRUNED(nn.Module):
 
 class NIN(nn.Module):
     def __init__(self, pooling):
-        super(NIN, self).__init__()
+        super().__init__()
         if pooling == "max":
             pool2d = nn.MaxPool2d((3, 3), (2, 2), (0, 0), ceil_mode=True)
         elif pooling == "avg":

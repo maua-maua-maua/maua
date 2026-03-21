@@ -1,25 +1,28 @@
 import traceback
 from copy import deepcopy
 from pathlib import Path
-from typing import Optional
 
 import cv2
 import librosa as rosa
 import librosa.display
 import matplotlib
-import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from matplotlib import patches
 from tqdm import tqdm
 
-from ..GAN.wrappers.stylegan2 import StyleGAN2
-from ..ops.video import VideoWriter
-from .ari2 import EMAFade
-from .audioreactive.selfsupervised.features.rosa.segment import BINS_PER_OCTAVE, N_OCTAVES, laplacian_segmentation_rosa
-from .audioreactive.selfsupervised.mir import retrieve_music_information
-from .audioreactive.selfsupervised.patch import Patch
-from .audioreactive.selfsupervised.sample import load_audio
+from maua.audiovisual.ari2 import EMAFade
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.segment import (
+    BINS_PER_OCTAVE,
+    N_OCTAVES,
+    laplacian_segmentation_rosa,
+)
+from maua.audiovisual.audioreactive.selfsupervised.mir import retrieve_music_information
+from maua.audiovisual.audioreactive.selfsupervised.patch import Patch
+from maua.audiovisual.audioreactive.selfsupervised.sample import load_audio
+from maua.GAN.wrappers.stylegan2 import StyleGAN2
+from maua.ops.video import VideoWriter
 
 WELCOME = """
 Welcome to Hans' audio-reactive video synthesizer!
@@ -119,10 +122,10 @@ class HelpPrinted(Exception):
 def generate_interactive(
     audio_file: str,
     stylegan2_checkpoint: str,
-    latent_seeds: Optional[str] = None,
+    latent_seeds: str | None = None,
     fps: float = 24,
     audio_offset: float = 0,
-    audio_duration: Optional[float] = None,
+    audio_duration: float | None = None,
     batch_size: int = 32,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
 ):

@@ -5,9 +5,9 @@ from uuid import uuid4
 import torch
 from tqdm import tqdm
 
-from ..audiovisual.audioreactive.selfsupervised.features.processing import gaussian_filter
-from ..ops.video import VideoWriter
-from .wrappers import MauaGenerator, get_generator_class
+from maua.audiovisual.audioreactive.selfsupervised.features.processing import gaussian_filter
+from maua.GAN.wrappers import MauaGenerator, get_generator_class
+from maua.ops.video import VideoWriter
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

@@ -5,9 +5,9 @@ import numpy as np
 import torch
 from omegaconf import OmegaConf
 
-from ...prompt import TextPrompt
-from ...utility import download
-from .base import BaseDiffusionProcessor
+from maua.diffusion.processors.base import BaseDiffusionProcessor
+from maua.prompt import TextPrompt
+from maua.utility import download
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/VQGAN")
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/latent_diffusion")

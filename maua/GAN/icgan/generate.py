@@ -47,12 +47,12 @@ import imageio
 import nltk
 import numpy as np
 import torch
-import torchvision.transforms as transforms
 from nltk.corpus import wordnet as wn
 from PIL import Image as Image_PIL
 from pytorch_pretrained_biggan import utils
 from scipy.stats import truncnorm
 from torch import nn
+from torchvision import transforms
 from tqdm import tqdm
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../submodules/ic_gan/stylegan2_ada_pytorch")
@@ -83,7 +83,6 @@ def replace_to_inplace_relu(
             setattr(model, child_name, nn.ReLU(inplace=False))
         else:
             replace_to_inplace_relu(child)
-    return
 
 
 def load_icgan(experiment_name, root_="modelzoo/"):

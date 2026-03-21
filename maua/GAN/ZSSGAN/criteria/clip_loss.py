@@ -2,14 +2,14 @@ import clip
 import numpy as np
 import PIL
 import torch
-import torchvision.transforms as transforms
+from torchvision import transforms
 
 from maua.GAN.ZSSGAN.utils.text_templates import imagenet_templates, part_templates
 
 
 class DirectionLoss(torch.nn.Module):
     def __init__(self, loss_type="mse"):
-        super(DirectionLoss, self).__init__()
+        super().__init__()
 
         self.loss_type = loss_type
 
@@ -35,7 +35,7 @@ class CLIPLoss(torch.nn.Module):
         direction_loss_type="cosine",
         target_img=None,
     ):
-        super(CLIPLoss, self).__init__()
+        super().__init__()
 
         self.device = device
         self.model, self.clip_preprocess = clip.load("ViT-B/32", device=self.device)

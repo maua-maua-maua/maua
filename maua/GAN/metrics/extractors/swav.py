@@ -6,7 +6,7 @@
 #
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 try:
     from torchvision.models.utils import load_state_dict_from_url
@@ -51,7 +51,7 @@ class BasicBlock(nn.Module):
         dilation=1,
         norm_layer=None,
     ):
-        super(BasicBlock, self).__init__()
+        super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         if groups != 1 or base_width != 64:
@@ -101,7 +101,7 @@ class Bottleneck(nn.Module):
         dilation=1,
         norm_layer=None,
     ):
-        super(Bottleneck, self).__init__()
+        super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         width = int(planes * (base_width / 64.0)) * groups
@@ -156,7 +156,7 @@ class ResNet(nn.Module):
         nmb_prototypes=0,
         eval_mode=False,
     ):
-        super(ResNet, self).__init__()
+        super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
@@ -172,9 +172,7 @@ class ResNet(nn.Module):
             replace_stride_with_dilation = [False, False, False]
         if len(replace_stride_with_dilation) != 3:
             raise ValueError(
-                "replace_stride_with_dilation should be None or a 3-element tuple, got {}".format(
-                    replace_stride_with_dilation
-                )
+                f"replace_stride_with_dilation should be None or a 3-element tuple, got {replace_stride_with_dilation}"
             )
         self.groups = groups
         self.base_width = width_per_group
@@ -335,7 +333,7 @@ class ResNet(nn.Module):
 
 class MultiPrototypes(nn.Module):
     def __init__(self, output_dim, nmb_prototypes):
-        super(MultiPrototypes, self).__init__()
+        super().__init__()
         self.nmb_heads = len(nmb_prototypes)
         for i, k in enumerate(nmb_prototypes):
             self.add_module("prototypes" + str(i), nn.Linear(output_dim, k, bias=False))

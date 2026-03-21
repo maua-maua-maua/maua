@@ -4,12 +4,12 @@ import torch
 from torch.nn.functional import conv2d, l1_loss, mse_loss, pad
 from tqdm import trange
 
-from .....wrappers import get_generator_class
+from maua.GAN.wrappers import get_generator_class
 
 pyximport.install(inplace=True)
 
-# from . import inverse_op_naive as inverse_op
-from . import inverse_op_cython as inverse_op
+# from maua.GAN.training.models.experimental.optstyle import inverse_op_naive as inverse_op
+from maua.GAN.training.models.experimental.optstyle import inverse_op_cython as inverse_op
 
 
 def rmse(x, y):
@@ -121,7 +121,7 @@ class EmergingConv2d(torch.nn.Module):
 
 class InvertibleLeakyReLU(torch.nn.Module):
     def __init__(self, negative_slope=0.1):
-        super(InvertibleLeakyReLU, self).__init__()
+        super().__init__()
         self.negative_slope = torch.nn.Parameter(torch.tensor(negative_slope))
 
     def forward(self, input, reverse=False):

@@ -24,7 +24,7 @@ def destitch(img, tile_size, overtile=1):
 
 def smoothstep(x, N=2):
     result = torch.zeros_like(x)
-    for n in range(0, N + 1):
+    for n in range(N + 1):
         result += comb(N + n, n) * comb(2 * N + 1, N - n) * (-x) ** n
     result *= x ** (N + 1)
     return result

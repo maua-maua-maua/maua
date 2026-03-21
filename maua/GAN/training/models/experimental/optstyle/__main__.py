@@ -1,7 +1,6 @@
 import argparse
+from collections.abc import Generator as PythonGenerator
 from pathlib import Path
-from typing import Generator as PythonGenerator
-from typing import List
 
 import torch
 import torchvision as tv
@@ -9,16 +8,16 @@ from numpy import sqrt
 from torch.nn.functional import one_hot
 from torchvision.transforms.functional import to_tensor
 
-from ......ops.io import tensor2img
-from .....sampling import sample_latents
-from .....wrappers import MauaGenerator, get_generator_class
+from maua.GAN.sampling import sample_latents
+from maua.GAN.wrappers import MauaGenerator, get_generator_class
+from maua.ops.io import tensor2img
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def generate_images(
     G: MauaGenerator,
-    seeds: List[int],
+    seeds: list[int],
     class_idx: int,
     truncation: torch.Tensor,
     latent_sampling: str,
@@ -85,7 +84,7 @@ if __name__ == "__main__":
     from PIL import Image
     from resize_right import resize
 
-    from .optimal_transport import sliced_optimal_transport
+    from maua.GAN.training.models.experimental.optstyle.optimal_transport import sliced_optimal_transport
 
     im = Image.open("/home/hans/HDDs/datasets/2020:11:11:11:22:33/tumblr_pnzb8cidoo1r20fq5o1_1280.jpg")
     im = to_tensor(im).cuda().mean(0)[None, None, ...]

@@ -1,6 +1,5 @@
 from copy import deepcopy
 from pathlib import Path
-from typing import List, Tuple, Union
 
 import numpy as np
 import torch
@@ -14,7 +13,7 @@ def save_image(tensor, filename):
     to_pil_image(tensor.squeeze().add(1).div(2).clamp(0, 1)).save(filename)
 
 
-def load_image(im: Union[Tensor, Image, Path, str]):
+def load_image(im: Tensor | Image | Path | str):
     return im if isinstance(im, Tensor) else (img2tensor(im) if isinstance(im, Image) else img2tensor(open_img(im)))
 
 
@@ -29,7 +28,7 @@ def load_images(*inputs):
             results.append(img2tensor(maybe_nested_paths_imgs_or_tensors))
         if isinstance(maybe_nested_paths_imgs_or_tensors, Tensor):
             results.append(maybe_nested_paths_imgs_or_tensors)
-        if isinstance(maybe_nested_paths_imgs_or_tensors, List):
+        if isinstance(maybe_nested_paths_imgs_or_tensors, list):
             results.append(load_images(*maybe_nested_paths_imgs_or_tensors))
     return results
 
@@ -44,7 +43,7 @@ def tensor2img(tensor, format: str = "RGB"):
     )
 
 
-def tensor2bytes(tensor: torch.Tensor, value_range: Tuple[int, int] = (0, 1)) -> np.ndarray:
+def tensor2bytes(tensor: torch.Tensor, value_range: tuple[int, int] = (0, 1)) -> np.ndarray:
     """Converts a PyTorch [1,C,H,W] tensor to bytes (e.g. for passing to FFMPEG)
 
     Args:
@@ -55,7 +54,8 @@ def tensor2bytes(tensor: torch.Tensor, value_range: Tuple[int, int] = (0, 1)) ->
     """
     mn, mx = value_range
     return (
-        tensor.squeeze(0)
+        tensor
+        .squeeze(0)
         .permute(1, 2, 0)
         .clamp(mn, mx)
         .sub(mn)
@@ -70,7 +70,7 @@ def tensor2bytes(tensor: torch.Tensor, value_range: Tuple[int, int] = (0, 1)) ->
     )
 
 
-def tensor2imgs(tensor: torch.Tensor, format: str = "RGB") -> List[Image]:
+def tensor2imgs(tensor: torch.Tensor, format: str = "RGB") -> list[Image]:
     """Converts a PyTorch [B,C,H,W] tensor to PIL images
 
     Args:

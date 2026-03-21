@@ -1,6 +1,6 @@
 import argparse
 
-from . import autoregressive, diffusion, style, super
+from maua.cli import autoregressive, diffusion, style, super
 
 
 def argument_parser():

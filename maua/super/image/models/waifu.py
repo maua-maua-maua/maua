@@ -5,9 +5,9 @@ import zipfile
 import numpy as np
 import py7zr
 import torch
-import torch.nn as nn
+from torch import nn
 
-from ....ops.io import load_image
+from maua.ops.io import load_image
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/waifu2x")
 

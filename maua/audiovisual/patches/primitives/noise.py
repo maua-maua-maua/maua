@@ -1,6 +1,6 @@
 import torch
 
-from ...audioreactive import gaussian_filter
+from maua.audiovisual.audioreactive import gaussian_filter
 
 
 class LoopNoise(torch.nn.Module):

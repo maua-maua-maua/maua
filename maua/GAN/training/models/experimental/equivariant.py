@@ -1,5 +1,3 @@
-from typing import List, Optional, Tuple
-
 import numpy as np
 import torch
 from escnn import gspaces, nn
@@ -10,9 +8,9 @@ class ExtractRotation(nn.EquivariantModule):
     Extract the regular representation corresponding to a single rotation from a vector field
     """
 
-    def __init__(self, gspace: gspaces.GSpace, channels: int, irreps: List):
+    def __init__(self, gspace: gspaces.GSpace, channels: int, irreps: list):
         assert isinstance(gspace, gspaces.GSpace)
-        super(ExtractRotation, self).__init__()
+        super().__init__()
 
         self.space = gspace
         self.G = gspace.fibergroup
@@ -33,7 +31,7 @@ class ExtractRotation(nn.EquivariantModule):
         kernel = kernel.reshape(-1, 1)
         self.register_buffer("kernel", torch.tensor(kernel, dtype=torch.get_default_dtype()))
 
-    def forward(self, input: nn.GeometricTensor, rotation: Optional[float]) -> nn.GeometricTensor:
+    def forward(self, input: nn.GeometricTensor, rotation: float | None) -> nn.GeometricTensor:
         assert input.type == self.in_type
         shape = input.shape
         x_hat = input.tensor.view(shape[0], len(self.in_type), self.rho.size, *shape[2:])
@@ -49,7 +47,7 @@ class ExtractRotation(nn.EquivariantModule):
 
         return nn.GeometricTensor(y, self.out_type, input.coords)
 
-    def evaluate_output_shape(self, input_shape: Tuple[int, ...]) -> Tuple[int, ...]:
+    def evaluate_output_shape(self, input_shape: tuple[int, ...]) -> tuple[int, ...]:
         assert len(input_shape) >= 2
         assert input_shape[1] == self.in_type.size
         return (input_shape[0], self.out_type.size, *input_shape[2:])
@@ -57,7 +55,7 @@ class ExtractRotation(nn.EquivariantModule):
 
 class SteerableGenerator(torch.nn.Module):
     def __init__(self, latent_dim=128, n_mlp=4, n_channels=3, n_filters=64, maximum_frequency=6):
-        super(SteerableGenerator, self).__init__()
+        super().__init__()
 
         # Mapping Network
         self.mapping = torch.nn.Sequential(
@@ -103,7 +101,7 @@ class SteerableGenerator(torch.nn.Module):
 
         self.extract_rotation = ExtractRotation(self.gspace, channels, irreps)
 
-    def forward(self, z: torch.Tensor, r: Optional[float] = None):
+    def forward(self, z: torch.Tensor, r: float | None = None):
         w = self.mapping(z)
         w = w[..., None, None].tile(1, 1, 4, 4)
         x = nn.GeometricTensor(w, self.input_type)
@@ -114,7 +112,7 @@ class SteerableGenerator(torch.nn.Module):
 
 class SteerableDiscriminator(torch.nn.Module):
     def __init__(self, image_size=32, n_channels=3, n_filters=64, maximum_frequency=6):
-        super(SteerableDiscriminator, self).__init__()
+        super().__init__()
 
         # the model is equivariant under arbitrary rotations and flips
         self.gspace = gspaces.flipRot2dOnR2(N=-1, maximum_frequency=maximum_frequency)

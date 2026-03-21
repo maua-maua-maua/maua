@@ -78,7 +78,8 @@ class Cutouts(nn.Module):
             else:
                 size = int(
                     max_size
-                    * torch.zeros(
+                    * torch
+                    .zeros(
                         1,
                     )
                     .normal_(mean=0.8, std=0.3)

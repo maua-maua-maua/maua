@@ -14,16 +14,15 @@
 
 import math
 from functools import partial
-from typing import List
 
 # import hydra
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, trunc_normal_
+from torch import nn
 from torch.nn.functional import mse_loss
 from torch.nn.modules.utils import _ntuple
+from torch.utils import checkpoint
 
 to_2tuple = _ntuple(2)
 
@@ -970,11 +969,11 @@ class VisionTransformer(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        out_feat_keys: List[str] = None,
+        out_feat_keys: list[str] = None,
         npatch_to_keep: int = None,
         mask: torch.Tensor = None,
         use_checkpoint: bool = False,
-    ) -> List[torch.Tensor]:
+    ) -> list[torch.Tensor]:
         if out_feat_keys is None or len(out_feat_keys) == 0:
             x = self.forward_features(x, npatch_to_keep, mask=mask, use_checkpoint=use_checkpoint)
             if not isinstance(x, tuple):
@@ -1047,9 +1046,7 @@ class VisionTransformer(nn.Module):
     def get_layer_id(self, layer_name):
         # https://github.com/microsoft/unilm/blob/master/beit/optim_factory.py#L33
         num_layers = self.get_num_layers()
-        if layer_name in ["cls_token", "pos_embed"]:
-            return 0
-        elif layer_name.find("patch_embed") != -1:
+        if layer_name in ["cls_token", "pos_embed"] or layer_name.find("patch_embed") != -1:
             return 0
         elif layer_name.find("blocks") != -1:
             return int(layer_name.split("blocks")[1].split(".")[1]) + 1

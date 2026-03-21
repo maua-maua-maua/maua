@@ -1,5 +1,4 @@
 import math
-from typing import List, Optional
 
 import numpy as np
 import torch
@@ -87,7 +86,7 @@ def _autocorrelation_correlation(X, Y, center: bool = True):
 
 
 @torch.jit.script
-def _rv(Ms: List[Tensor], center: bool = True, modified: bool = True, standardize: bool = False):
+def _rv(Ms: list[Tensor], center: bool = True, modified: bool = True, standardize: bool = False):
     """
     This function computes the RV matrix correlation coefficients between pairs of arrays. The number and order of
     objects (rows) for the two arrays must match. The number of variables in each array may vary. The RV2 coefficient is
@@ -188,7 +187,7 @@ def _matrix_rank(X, tol: float = 1e-8) -> int:
 def _smi(
     X,
     Y,
-    n_components: Optional[int] = 10,
+    n_components: int | None = 10,
     projection: str = "orthogonal",
     significance: bool = False,
     B: int = 10_000,
@@ -229,7 +228,8 @@ def _smi(
     # Compute SMI values
     if projection == "orthogonal":
         m = (
-            torch.arange(rankX, device=X.device)[:, None]
+            torch
+            .arange(rankX, device=X.device)[:, None]
             .tile(1, rankX)
             .min(torch.arange(rankY, device=X.device)[None, :].tile(rankY, 1))
             .add(1)
@@ -311,7 +311,7 @@ def _r4(X, Y, center: bool = True):
 
 
 @torch.jit.script
-def _rG(X, Y, n_components: Optional[int] = None, center: bool = True):
+def _rG(X, Y, n_components: int | None = None, center: bool = True):
     if center:
         X = X - X.mean(0)
         Y = Y - Y.mean(0)

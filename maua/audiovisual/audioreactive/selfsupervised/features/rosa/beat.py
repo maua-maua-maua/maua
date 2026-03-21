@@ -1,10 +1,10 @@
 import torch
 from torch.nn.functional import pad
 
-from ..processing import normalize
-from .convert import power_to_db
-from .helpers import sync_agg
-from .spectral import istft, melspectrogram, stft
+from maua.audiovisual.audioreactive.selfsupervised.features.processing import normalize
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.convert import power_to_db
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.helpers import sync_agg
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.spectral import istft, melspectrogram, stft
 
 
 def onset_strength(y, sr, hop_length=1024, n_fft=2048, aggregate=torch.mean):

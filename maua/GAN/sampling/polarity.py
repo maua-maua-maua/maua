@@ -8,7 +8,7 @@ from torch.nn.functional import interpolate
 from torchvision.transforms import Normalize
 from tqdm import tqdm
 
-from ..wrappers.stylegan3 import StyleGAN3
+from maua.GAN.wrappers.stylegan3 import StyleGAN3
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

@@ -26,7 +26,7 @@ import torchvision
 from PIL import Image
 from tqdm import tqdm
 
-from ..utility import download, unzip
+from maua.utility import download, unzip
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../submodules/rq_vae_transformer/")
 from rqvae.models import create_model

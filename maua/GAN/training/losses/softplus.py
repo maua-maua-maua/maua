@@ -1,6 +1,6 @@
 import torch
 
-from . import Loss
+from maua.GAN.training.losses import Loss
 
 
 class DiscriminatorSoftPlus(Loss):

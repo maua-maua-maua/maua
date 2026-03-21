@@ -1,9 +1,21 @@
 import librosa as rosa
 import scipy
 
-from .features.audio import chromagram, drop_strength, mfcc, onsets, rms, spectral_contrast, spectral_flatness, tonnetz
-from .features.processing import gaussian_filter, normalize
-from .features.rosa.segment import laplacian_segmentation, laplacian_segmentation_rosa
+from maua.audiovisual.audioreactive.selfsupervised.features.audio import (
+    chromagram,
+    drop_strength,
+    mfcc,
+    onsets,
+    rms,
+    spectral_contrast,
+    spectral_flatness,
+    tonnetz,
+)
+from maua.audiovisual.audioreactive.selfsupervised.features.processing import gaussian_filter, normalize
+from maua.audiovisual.audioreactive.selfsupervised.features.rosa.segment import (
+    laplacian_segmentation,
+    laplacian_segmentation_rosa,
+)
 
 UNIT_FEATURES = [rms, drop_strength, onsets, spectral_flatness]
 AUDIO_FEATURES = [chromagram, tonnetz, mfcc, spectral_contrast] + UNIT_FEATURES

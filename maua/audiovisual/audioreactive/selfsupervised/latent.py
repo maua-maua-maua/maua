@@ -1,13 +1,17 @@
 from enum import Enum
-from typing import Union
 
 import numpy as np
 import torch
 from torchcubicspline import NaturalCubicSpline, natural_cubic_spline_coeffs
 
-from .features.audio import onsets
-from .features.processing import gaussian_filter, normalize
-from .mir import chromagram, estimate_beats, estimate_tempo, laplacian_segmentation
+from maua.audiovisual.audioreactive.selfsupervised.features.audio import onsets
+from maua.audiovisual.audioreactive.selfsupervised.features.processing import gaussian_filter, normalize
+from maua.audiovisual.audioreactive.selfsupervised.mir import (
+    chromagram,
+    estimate_beats,
+    estimate_tempo,
+    laplacian_segmentation,
+)
 
 
 def spline_loop_latents(y, size, n_loops=1):
@@ -224,7 +228,7 @@ class MergeDepth(Enum):
 
 
 class MergeLatents(Latents):
-    def __init__(self, left: Latents, right: Latents, depth: Union[MergeDepth, slice] = MergeDepth.ALL):
+    def __init__(self, left: Latents, right: Latents, depth: MergeDepth | slice = MergeDepth.ALL):
         super().__init__(seeds=None)
         self.left = left
         self.right = right
@@ -243,7 +247,7 @@ class OverwriteLatents(MergeLatents):
 
 class AverageLatents(MergeLatents):
     def __init__(
-        self, left: Latents, right: Latents, depth: Union[MergeDepth, slice] = MergeDepth.ALL, left_weight: float = 0.5
+        self, left: Latents, right: Latents, depth: MergeDepth | slice = MergeDepth.ALL, left_weight: float = 0.5
     ):
         super().__init__(left, right, depth)
         self.left_weight = left_weight

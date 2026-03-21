@@ -6,7 +6,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .mir import chroma
+from maua.audiovisual.audioreactive.mir import chroma
 
 # ====================================================================================
 # ==================================== utilities =====================================

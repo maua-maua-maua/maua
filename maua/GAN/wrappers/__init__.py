@@ -1,4 +1,4 @@
-from typing import Generator
+from collections.abc import Generator
 
 import torch
 from torch.utils.data import DataLoader, TensorDataset
@@ -78,7 +78,7 @@ class MauaGenerator(torch.nn.Module):
                 if hasattr(mod, "use_fp16"):
                     mod.use_fp16 = True
                 if hasattr(mod, "noise_const"):
-                    setattr(mod, "noise_const", mod.noise_const.half())
+                    mod.noise_const = mod.noise_const.half()
 
             self.mapper = self.mapper.half()
             # self.synthesizer = self.synthesizer.half()
@@ -100,11 +100,11 @@ class MauaGenerator(torch.nn.Module):
 
 def get_generator_class(architecture: str) -> MauaGenerator:
     if architecture == "stylegan3":
-        from .stylegan3 import StyleGAN3
+        from maua.GAN.wrappers.stylegan3 import StyleGAN3
 
         return StyleGAN3
     if architecture == "stylegan2":
-        from .stylegan2 import StyleGAN2
+        from maua.GAN.wrappers.stylegan2 import StyleGAN2
 
         return StyleGAN2
     else:

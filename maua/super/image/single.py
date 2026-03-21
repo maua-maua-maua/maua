@@ -1,14 +1,14 @@
 import gc
 import os
 import shutil
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 
 import torch
 from tqdm import tqdm
 
-from ...ops.io import tensor2img
-from .models import bsrgan, latent_diffusion, realesrgan, swinir, waifu
+from maua.ops.io import tensor2img
+from maua.super.image.models import bsrgan, latent_diffusion, realesrgan, swinir, waifu
 
 torch.backends.cudnn.benchmark = True
 torch.backends.cuda.matmul.allow_tf32 = True

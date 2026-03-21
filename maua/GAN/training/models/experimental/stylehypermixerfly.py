@@ -1,5 +1,3 @@
-from typing import Tuple
-
 import numpy as np
 import torch
 from torch import nn
@@ -114,7 +112,7 @@ class HyperMixerBlock(nn.Module):
         self,
         in_dim: int,
         out_dim: int,
-        mlp_ratio: Tuple[float, float] = (0.5, 2.0),
+        mlp_ratio: tuple[float, float] = (0.5, 2.0),
         drop: float = 0.1,
         drop_path: float = 0.1,
     ) -> None:
@@ -212,7 +210,7 @@ class StyleHyperMixerBlock(nn.Module):
         in_dim: int,
         out_dim: int,
         w_dim: int,
-        mlp_ratio: Tuple[float, float] = (0.5, 2.0),
+        mlp_ratio: tuple[float, float] = (0.5, 2.0),
         drop: float = 0.1,
         drop_path: float = 0.1,
     ) -> None:

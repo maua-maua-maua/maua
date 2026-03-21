@@ -16,7 +16,8 @@ def generate(prompt, num_candidates, top_k, top_p, device):
     model.to(device=device)
 
     images = (
-        model.sampling(
+        model
+        .sampling(
             prompt=prompt,
             top_k=top_k,
             top_p=top_p,

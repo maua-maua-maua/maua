@@ -1,6 +1,6 @@
 #!python
 
-from .cli.entrypoint import argument_parser
+from maua.cli.entrypoint import argument_parser
 
 
 def main():

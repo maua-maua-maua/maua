@@ -1,7 +1,7 @@
 import torch
 
-from ....ops.image import resample
-from ... import audioreactive as ar
+from maua.audiovisual import audioreactive as ar
+from maua.ops.image import resample
 
 
 class MauaPatch:

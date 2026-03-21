@@ -51,7 +51,7 @@ from maua.super.image import upscale
 
 images = [image_sample(text="A street art mural of a dapper turtle with wings", timesteps=100) for i in range(5)]
 
-for pil_image in upscale(images, model_name='latent-diffusion'):
+for pil_image in upscale(images, model_name="latent-diffusion"):
     pil_image.save(f"output/{i}.png")
 ```
 

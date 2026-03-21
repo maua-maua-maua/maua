@@ -1,14 +1,13 @@
 import os
 import sys
 from pathlib import Path
-from typing import List, Union
 
 import torch
 from PIL import Image
 from torch import Tensor
 
-from ....ops.io import load_image
-from ....utility import download
+from maua.ops.io import load_image
+from maua.utility import download
 
 URLS = {
     "BSRGAN": "https://github.com/cszn/KAIR/releases/download/v1.0/BSRGAN.pth",
@@ -23,7 +22,7 @@ def load_model(model_name="BSRGAN", device=torch.device("cuda" if torch.cuda.is_
         f.write(txt)
 
     sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/BSRGAN")
-    from ....submodules.BSRGAN.models.network_rrdbnet import RRDBNet
+    from maua.submodules.BSRGAN.models.network_rrdbnet import RRDBNet
 
     checkpoint = f"modelzoo/{model_name}.pth"
     if not os.path.exists(checkpoint):
@@ -41,7 +40,7 @@ def load_model(model_name="BSRGAN", device=torch.device("cuda" if torch.cuda.is_
 
 
 @torch.inference_mode()
-def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
+def upscale(images: list[Tensor | Image.Image | Path | str], model):
     for img in images:
         img_L = load_image(img).to(model.device)
         img_E = model(img_L)

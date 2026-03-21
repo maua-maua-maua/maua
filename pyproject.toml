@@ -59,3 +59,11 @@ extend-exclude = [
     "maua/GAN/nv",
     "maua/GAN/pix2pix",
 ]
+
+[tool.ruff.lint]
+extend-select = ["TID252"]
+extend-ignore = ["E402"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+# Prefer `from maua...` over `from .` / `from ..` (PEP 8: absolute imports).
+ban-relative-imports = "all"

@@ -87,7 +87,7 @@ def frechet_distance(feats1, feats2, eps=1e-6):
     if torch.is_complex(covmean):  # Numerical error might give slight imaginary component
         if not torch.allclose(torch.diagonal(covmean).imag, 0, atol=1e-3):
             m = torch.max(torch.abs(covmean.imag))
-            raise ValueError("Imaginary component {}".format(m))
+            raise ValueError(f"Imaginary component {m}")
         covmean = covmean.real
 
     distance = diff @ diff + torch.trace(sigma1) + torch.trace(sigma2) - 2 * torch.trace(covmean)

@@ -8,7 +8,7 @@ import gdown
 import torch
 from torch.nn import functional as F
 
-from ....utility import download
+from maua.utility import download
 
 URLS = {
     "RIFE-1.0": "1U2AGFY00hafsPmm94-6deeM-9feGN-qg",
@@ -28,7 +28,7 @@ URLS = {
     "RIFE-3.9": "1iosmPTt2ayAdSMqnI1cxO_R1-Qhrranp",
     "RIFE-4.0": "1mUK9iON6Es14oK46-cCflRoPTeGiI_A9",
 }
-VERSIONS = [ver.replace("RIFE-", "") for ver in URLS.keys()]
+VERSIONS = [ver.replace("RIFE-", "") for ver in URLS]
 
 
 def load_model(model_name="RIFE-2.3", device="cuda", fp16=False):
@@ -54,9 +54,9 @@ def load_model(model_name="RIFE-2.3", device="cuda", fp16=False):
 
     sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/RIFE/")
     if version.startswith("1"):
-        from ....submodules.RIFE.model.oldmodel.RIFE_HD import Model
+        from maua.submodules.RIFE.model.oldmodel.RIFE_HD import Model
     elif version.startswith("2"):
-        from ....submodules.RIFE.model.oldmodel.RIFE_HDv2 import Model
+        from maua.submodules.RIFE.model.oldmodel.RIFE_HDv2 import Model
     else:
         for file in glob(f"{model_dir}/*.py"):
             with open(file, "r") as f:

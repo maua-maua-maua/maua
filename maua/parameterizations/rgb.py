@@ -1,7 +1,7 @@
 import torch
 
-from ..loss import clamp_with_grad
-from . import Parameterization
+from maua.loss import clamp_with_grad
+from maua.parameterizations import Parameterization
 
 
 def to_colorspace(tensor, colorspace):

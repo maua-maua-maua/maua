@@ -1,11 +1,10 @@
 from functools import partial
-from typing import Dict
 
 import torch
-import torch.nn as nn
+from torch import nn
 from torchvision import models, transforms
 
-from ..perceptors import Perceptor
+from maua.perceptors import Perceptor
 
 
 class KBCPerceptor(Perceptor):
@@ -74,5 +73,5 @@ class Scale(nn.Module):
     def extra_repr(self):
         return f"(scale): {self.scale.item():g}"
 
-    def forward(self, input: Dict[str, torch.Tensor]):
+    def forward(self, input: dict[str, torch.Tensor]):
         return self.module(input) * self.scale

@@ -2,9 +2,9 @@ import contextlib
 import os
 
 import torch
-import torch.nn as nn
+from torch import nn
 
-from ....utility import download
+from maua.utility import download
 
 
 @contextlib.contextmanager

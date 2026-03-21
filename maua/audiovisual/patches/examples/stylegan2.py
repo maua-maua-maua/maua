@@ -1,7 +1,7 @@
 import torch
 
-from ... import audioreactive as ar
-from ...patches.base.stylegan2 import StyleGAN2Patch
+from maua.audiovisual import audioreactive as ar
+from maua.audiovisual.patches.base.stylegan2 import StyleGAN2Patch
 
 # audio input | filtering | feature | GAN input  | merge |
 # ----------- | --------- | ------- | ---------- | ----- |

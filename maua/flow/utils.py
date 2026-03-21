@@ -158,7 +158,7 @@ def compute_color(u, v):
     k1[k1 == ncols + 1] = 1
     f = fk - k0
 
-    for i in range(0, np.size(colorwheel, 1)):
+    for i in range(np.size(colorwheel, 1)):
         tmp = colorwheel[:, i]
         col0 = tmp[k0 - 1] / 255
         col1 = tmp[k1 - 1] / 255

@@ -9,11 +9,11 @@ NIMA is released under the MIT license. See LICENSE for the fill license text.
 import os
 
 import torch
-import torchvision.models as models
 import torchvision.transforms.functional as tvtf
+from torchvision import models
 
-from ..submodules.NIMA.model.model import NIMA
-from ..utility import download
+from maua.submodules.NIMA.model.model import NIMA
+from maua.utility import download
 
 global nima_model
 nima_model = None

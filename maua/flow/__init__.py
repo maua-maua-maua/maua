@@ -2,12 +2,12 @@ from typing import List
 
 import torch
 
-from ..ops.image import luminance
-from . import mm, sniklaus
+from maua.flow import mm, sniklaus
+from maua.ops.image import luminance
 
 
 def get_flow_model(
-    which: List[str] = [
+    which: list[str] = [
         # "unflow",
         # "pwc",
         # "spynet",
@@ -36,22 +36,25 @@ def get_flow_model(
         import cv2
 
         pred_fns.append(
-            lambda im1, im2: torch.from_numpy(
-                cv2.calcOpticalFlowFarneback(
-                    luminance(im1.detach().squeeze().permute(1, 2, 0)).mul(255).byte().cpu().numpy(),
-                    luminance(im2.detach().squeeze().permute(1, 2, 0)).mul(255).byte().cpu().numpy(),
-                    flow=None,
-                    pyr_scale=0.8,
-                    levels=15,
-                    winsize=15,
-                    iterations=15,
-                    poly_n=7,
-                    poly_sigma=1.5,
-                    flags=10,
+            lambda im1, im2: (
+                torch
+                .from_numpy(
+                    cv2.calcOpticalFlowFarneback(
+                        luminance(im1.detach().squeeze().permute(1, 2, 0)).mul(255).byte().cpu().numpy(),
+                        luminance(im2.detach().squeeze().permute(1, 2, 0)).mul(255).byte().cpu().numpy(),
+                        flow=None,
+                        pyr_scale=0.8,
+                        levels=15,
+                        winsize=15,
+                        iterations=15,
+                        poly_n=7,
+                        poly_sigma=1.5,
+                        flags=10,
+                    )
                 )
+                .unsqueeze(0)
+                .to(im1.device)
             )
-            .unsqueeze(0)
-            .to(im1.device)
         )
 
     if "deepflow2" in which:
@@ -64,15 +67,26 @@ def get_flow_model(
     return lambda im1, im2: torch.mean(torch.stack([pred(im1, im2) for pred in pred_fns]), dim=0).to(im1).float()
 
 
-from .consistency import check_consistency as check_consistency, check_consistency_np as check_consistency_np
-from .lib import (
+from maua.flow.consistency import check_consistency as check_consistency
+from maua.flow.consistency import check_consistency_np as check_consistency_np
+from maua.flow.lib import (
     flow_warp_map as flow_warp_map,
+)
+from maua.flow.lib import (
     get_consistency_map as get_consistency_map,
+)
+from maua.flow.lib import (
     preprocess_optical_flow as preprocess_optical_flow,
 )
-from .utils import (
+from maua.flow.utils import (
     flow_to_image as flow_to_image,
+)
+from maua.flow.utils import (
     read_flow as read_flow,
+)
+from maua.flow.utils import (
     resample_flow as resample_flow,
+)
+from maua.flow.utils import (
     write_flow as write_flow,
 )

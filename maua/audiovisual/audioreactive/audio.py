@@ -9,7 +9,7 @@ from openunmix.predict import separate
 from scipy import signal
 from torchaudio.functional import resample
 
-from . import cache_to_workspace
+from maua.audiovisual.audioreactive import cache_to_workspace
 
 
 def load_audio(audio_file, offset=0, duration=-1, cache=True):

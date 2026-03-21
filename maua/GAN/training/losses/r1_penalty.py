@@ -1,7 +1,7 @@
 import torch
 from torch.autograd import grad
 
-from . import Loss
+from maua.GAN.training.losses import Loss
 
 
 class DiscriminatorR1Penalty(Loss):

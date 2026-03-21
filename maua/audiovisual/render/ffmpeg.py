@@ -3,8 +3,8 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data._utils.collate import default_collate
 from tqdm import tqdm
 
-from ...ops.video import VideoWriter
-from . import Renderer
+from maua.audiovisual.render import Renderer
+from maua.ops.video import VideoWriter
 
 torch._C._set_cublas_allow_tf32(True)
 torch.use_deterministic_algorithms(False)
@@ -53,7 +53,7 @@ class FFMPEG(Renderer):
                 if hasattr(mod, "use_fp16"):
                     mod.use_fp16 = True
                 if hasattr(mod, "noise_const"):
-                    setattr(mod, "noise_const", mod.noise_const.half())
+                    mod.noise_const = mod.noise_const.half()
 
             synthesizer.G_synth.apply(force_half)
 

@@ -2,7 +2,7 @@ import os
 
 import torch
 
-from ..utility import download
+from maua.utility import download
 
 
 def load_aesthetic_model():

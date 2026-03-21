@@ -1,14 +1,13 @@
 import os
 import sys
 from pathlib import Path
-from typing import List, Union
 
 import torch
 from PIL import Image
 from torch import Tensor
 
-from ....ops.io import load_image
-from ....utility import download
+from maua.ops.io import load_image
+from maua.utility import download
 
 URLS = {
     "L-DFOWMFC-GAN": "https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/003_realSR_BSRGAN_DFOWMFC_s64w8_SwinIR-L_x4_GAN.pth",
@@ -20,7 +19,7 @@ URLS = {
 
 def load_model(model_name="L-DFOWMFC-GAN", device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
     sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/SwinIR")
-    from ....submodules.SwinIR.models.network_swinir import SwinIR
+    from maua.submodules.SwinIR.models.network_swinir import SwinIR
 
     model = (
         SwinIR(
@@ -64,7 +63,7 @@ def load_model(model_name="L-DFOWMFC-GAN", device=torch.device("cuda" if torch.c
 
 
 @torch.inference_mode()
-def upscale(images: List[Union[Tensor, Image.Image, Path, str]], model):
+def upscale(images: list[Tensor | Image.Image | Path | str], model):
     window_size = 8
     for img in images:
         img_lq = load_image(img).float().to(model.device)[:, :3]

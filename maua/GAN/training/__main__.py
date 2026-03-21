@@ -13,7 +13,7 @@ from ffcv.transforms import ToTensor, ToTorchImage
 from pytorch_lightning import Trainer as LightningTrainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, TQDMProgressBar
 
-from .trainer import LightningGAN, WeightsEMA
+from maua.GAN.training.trainer import LightningGAN, WeightsEMA
 
 HERE = os.path.abspath(os.path.dirname(__file__))
 

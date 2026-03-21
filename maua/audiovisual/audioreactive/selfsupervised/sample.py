@@ -1,15 +1,14 @@
 from pathlib import Path
-from typing import Optional
 
 import torch
 import torchaudio
 from torchaudio.functional import resample
 from tqdm import tqdm
 
-from ....GAN.wrappers.stylegan2 import StyleGAN2
-from ....ops.video import VideoWriter
-from .mir import retrieve_music_information
-from .patch import Patch
+from maua.audiovisual.audioreactive.selfsupervised.mir import retrieve_music_information
+from maua.audiovisual.audioreactive.selfsupervised.patch import Patch
+from maua.GAN.wrappers.stylegan2 import StyleGAN2
+from maua.ops.video import VideoWriter
 
 
 def load_audio(audio_file, offset, duration, fps):
@@ -35,12 +34,12 @@ def load_audio(audio_file, offset, duration, fps):
 def generate(
     audio_file: str,
     stylegan2_checkpoint: str,
-    patch_file: Optional[str] = None,
+    patch_file: str | None = None,
     seed: int = None,
-    latent_seeds: Optional[str] = None,
+    latent_seeds: str | None = None,
     fps: float = 30,
     audio_offset: float = 0,
-    audio_duration: Optional[float] = None,
+    audio_duration: float | None = None,
     downscale_factor: float = 4,
     aspect_ratio: float = 1,
     batch_size: int = 32,

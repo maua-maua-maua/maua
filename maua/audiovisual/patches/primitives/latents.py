@@ -3,10 +3,9 @@ from math import ceil
 import numpy as np
 import torch
 import torch.nn.functional as F
+from maua.audiovisual.audioreactive.inputs import slerp
+from maua.audiovisual.audioreactive.postprocess import gaussian_filter
 from scipy.interpolate import splev, splrep
-
-from ...audioreactive.inputs import slerp
-from ...audioreactive.postprocess import gaussian_filter
 
 
 class LoopLatents(torch.nn.Module):

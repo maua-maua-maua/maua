@@ -1,5 +1,5 @@
-from ....GAN.wrappers.stylegan3 import StyleGAN3
-from . import MauaPatch
+from base import MauaPatch
+from maua.GAN.wrappers.stylegan3 import StyleGAN3
 
 
 class StyleGAN3Patch(MauaPatch):

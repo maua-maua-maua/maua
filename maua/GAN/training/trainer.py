@@ -1,8 +1,9 @@
+from collections.abc import Callable
 from copy import deepcopy
 from glob import glob
 from math import ceil
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any
 
 import torch
 import torchvision as tv
@@ -16,8 +17,8 @@ from torch.nn import Module as TorchModule
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchvision.transforms.functional import resize
 
-from ..metrics.compute import compute as compute_metrics
-from .dataset.image import ImageLoader
+from maua.GAN.metrics.compute import compute as compute_metrics
+from maua.GAN.training.dataset.image import ImageLoader
 
 
 class WeightsEMA(LightningCallback):
@@ -40,12 +41,12 @@ class WeightsEMA(LightningCallback):
           performance.
     """
 
-    def __init__(self, decay: float = 0.9999, ema_device: Optional[Union[torch.device, str]] = None, pin_memory=True):
+    def __init__(self, decay: float = 0.9999, ema_device: torch.device | str | None = None, pin_memory=True):
         super().__init__()
         self.decay = decay
         self.ema_device: str = f"{ema_device}" if ema_device else None  # perform ema on different device from the model
         self.ema_pin_memory = pin_memory if torch.cuda.is_available() else False  # Only works if CUDA is available
-        self.ema_state_dict: Dict[str, torch.Tensor] = {}
+        self.ema_state_dict: dict[str, torch.Tensor] = {}
         self.original_state_dict = {}
         self._ema_state_dict_ready = False
 
@@ -112,13 +113,13 @@ class WeightsEMA(LightningCallback):
 
     @overrides
     def on_save_checkpoint(
-        self, trainer: LightningTrainer, pl_module: LightningModule, checkpoint: Dict[str, Any]
+        self, trainer: LightningTrainer, pl_module: LightningModule, checkpoint: dict[str, Any]
     ) -> dict:
         return {"ema_state_dict": self.ema_state_dict, "_ema_state_dict_ready": self._ema_state_dict_ready}
 
     @overrides
     def on_load_checkpoint(
-        self, trainer: LightningTrainer, pl_module: LightningModule, callback_state: Dict[str, Any]
+        self, trainer: LightningTrainer, pl_module: LightningModule, callback_state: dict[str, Any]
     ) -> None:
         self._ema_state_dict_ready = callback_state["_ema_state_dict_ready"]
         self.ema_state_dict = callback_state["ema_state_dict"]
@@ -131,10 +132,10 @@ class LightningGAN(LightningModule):
         latent: TorchModule,
         generator: TorchModule,
         discriminator: TorchModule,
-        discriminator_losses: List[TorchModule],
-        generator_losses: List[TorchModule],
-        shared_losses: List[TorchModule],
-        augmentations: List[TorchModule],
+        discriminator_losses: list[TorchModule],
+        generator_losses: list[TorchModule],
+        shared_losses: list[TorchModule],
+        augmentations: list[TorchModule],
         # settings
         batch_size: int,
         lr_G: float,

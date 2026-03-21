@@ -8,15 +8,15 @@ from pathlib import Path
 import numpy as np
 import torch
 import torchvision
-
+from tqdm import trange
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/nv/")
-from .nv.networks.stylegan2 import MappingNetwork, SynthesisBlock, SynthesisNetwork
-from .wrappers import get_generator_class
-from .wrappers.stylegan2 import StyleGAN2, StyleGAN2Mapper, StyleGAN2Synthesizer
+from maua.GAN.nv.networks.stylegan2 import MappingNetwork, SynthesisBlock, SynthesisNetwork
+from maua.GAN.wrappers import get_generator_class
+from maua.GAN.wrappers.stylegan2 import StyleGAN2, StyleGAN2Mapper, StyleGAN2Synthesizer
 
 
-def get_state_dict_key_levels(generator):
+def get_state_dict_key_levels_v1(generator):
     def name_modules(module):
         def name_module(module, prefix=""):
             module.name = prefix[:-1]
@@ -72,7 +72,7 @@ def get_state_dict_key_levels(generator):
     return key_levels
 
 
-def get_blend_weights(midpoints, width, n_layers):
+def get_blend_weights_v1(midpoints, width, n_layers):
     level_idxs = torch.arange(n_layers, device=midpoints.device)
     relative_idxs = level_idxs[None, :] - midpoints[:, None]
     if width:
@@ -102,7 +102,7 @@ def soup_v1():
 
     with torch.inference_mode():
         generator = get_generator_class(architecture)(model_file=None, output_size=(1024, 1024)).cuda()
-        levels = get_state_dict_key_levels(generator)
+        levels = get_state_dict_key_levels_v1(generator)
 
         for _ in range(number):
             if sample_strategy == "random":
@@ -121,9 +121,12 @@ def soup_v1():
                             *random.choices(list(filter(lambda x: a in x, all_checkpoints)), k=num_a),
                             *random.choices(list(filter(lambda x: b in x, all_checkpoints)), k=num_b),
                         ]
+            else:
+                raise NotImplementedError(f"Sample strategy {sample_strategy} not implemented")
 
             name = "_".join([
-                re.sub("-batch[0-9]+", "", re.sub("-gpus[0-9]+", "", Path(p).stem))
+                re
+                .sub("-batch[0-9]+", "", re.sub("-gpus[0-9]+", "", Path(p).stem))
                 .replace("-1024", "")
                 .replace("-stylegan2", "")
                 .replace("network-snapshot-", "")
@@ -134,7 +137,7 @@ def soup_v1():
             if blend_strategy == "crossover":
                 mix_types = torch.randint(0, 3, (len(checkpoints),))
                 weights = [
-                    get_blend_weights(
+                    get_blend_weights_v1(
                         midpoints=torch.randint(-1, generator.n_latent + 1, (1,)),
                         width=torch.rand(1) * generator.n_latent / 2,
                         n_layers=generator.n_latent,
@@ -208,17 +211,6 @@ def soup_v1():
                 },
                 f"{out_dir}/{name}-{sample_strategy}sample-{blend_strategy}blend.pt",
             )
-
-
-import os
-import sys
-
-from tqdm import trange
-
-sys.path.append("maua/GAN/nv/")
-from maua.GAN.nv.networks.stylegan2 import MappingNetwork, SynthesisBlock, SynthesisNetwork
-from maua.GAN.wrappers import get_generator_class
-from maua.GAN.wrappers.stylegan2 import StyleGAN2, StyleGAN2Mapper, StyleGAN2Synthesizer
 
 
 def get_state_dict_key_levels(generator):
@@ -369,7 +361,8 @@ def modelsoup(ckpt_A, ckpt_B, blend_strategy, architecture="stylegan2", number=1
         checkpoints = [ckpt_A, ckpt_B]
 
         name = "_".join([
-            re.sub("-batch[0-9]+", "", re.sub("-gpus[0-9]+", "", Path(p).stem))
+            re
+            .sub("-batch[0-9]+", "", re.sub("-gpus[0-9]+", "", Path(p).stem))
             .replace("-1024", "")
             .replace("-stylegan2", "")
             .replace("network-snapshot-", "")

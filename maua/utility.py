@@ -78,9 +78,8 @@ def download(url, filename):
 
     desc = f"Downloading {filename}" + (" (Unknown total file size)" if file_size == 0 else "")
     r.raw.read = functools.partial(r.raw.read, decode_content=True)  # Decompress if needed
-    with tqdm.wrapattr(r.raw, "read", total=file_size, desc=desc) as r_raw:
-        with path.open("wb") as f:
-            shutil.copyfileobj(r_raw, f)
+    with tqdm.wrapattr(r.raw, "read", total=file_size, desc=desc) as r_raw, path.open("wb") as f:
+        shutil.copyfileobj(r_raw, f)
 
     return path
 

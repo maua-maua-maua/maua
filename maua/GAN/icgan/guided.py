@@ -322,8 +322,7 @@ def icgan_clip():
         with open("list.txt", "w") as f:
             for i in range(sample_num):
                 f.write("file output/frame_%05d.jpg\n" % i)
-            for j in range(int(freeze_secs * fps)):
-                f.write("file output/frame_%05d.jpg\n" % i)
+            f.writelines("file output/frame_%05d.jpg\n" % i for j in range(int(freeze_secs * fps)))
         # !ffmpeg -r $fps -f concat -safe 0 -i list.txt -c:v libx264 -pix_fmt yuv420p -profile:v baseline -movflags +faststart -r $fps $out -y
         with open(file_name, "rb") as f:
             data_url = "data:video/mp4;base64," + b64encode(f.read()).decode()

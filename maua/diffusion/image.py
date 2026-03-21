@@ -1,9 +1,9 @@
 import argparse
 import gc
 import traceback
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union
 from uuid import uuid4
 
 import numpy as np
@@ -14,18 +14,18 @@ from resize_right.interp_methods import lanczos3
 from torchvision.transforms.functional import to_tensor
 from tqdm import tqdm
 
-from ..grad import CLIPGrads, ColorMatchGrads, LPIPSGrads, VGGGrads
-from ..ops.image import destitch, match_histogram, restitch, sharpen
-from ..ops.io import save_image
-from ..ops.noise import create_perlin_noise
-from ..prompt import ContentPrompt, ImagePrompt, StylePrompt, TextPrompt
-from ..super.image.single import upscale_image
-from .processors.base import BaseDiffusionProcessor
-from .processors.glid3xl import GLID3XL
-from .processors.glide import GLIDE
-from .processors.guided import GuidedDiffusion
-from .processors.latent import LatentDiffusion
-from .processors.stable import StableDiffusion
+from maua.diffusion.processors.base import BaseDiffusionProcessor
+from maua.diffusion.processors.glid3xl import GLID3XL
+from maua.diffusion.processors.glide import GLIDE
+from maua.diffusion.processors.guided import GuidedDiffusion
+from maua.diffusion.processors.latent import LatentDiffusion
+from maua.diffusion.processors.stable import StableDiffusion
+from maua.grad import CLIPGrads, ColorMatchGrads, LPIPSGrads, VGGGrads
+from maua.ops.image import destitch, match_histogram, restitch, sharpen
+from maua.ops.io import save_image
+from maua.ops.noise import create_perlin_noise
+from maua.prompt import ContentPrompt, ImagePrompt, StylePrompt, TextPrompt
+from maua.super.image.single import upscale_image
 
 
 def round64(x):
@@ -76,7 +76,7 @@ def initialize_image(init, shape):
 
 
 def get_diffusion_model(
-    diffusion: Union[str, BaseDiffusionProcessor] = "guided",
+    diffusion: str | BaseDiffusionProcessor = "guided",
     timesteps: int = 50,
     sampler: str = "plms",
     guidance_speed: str = "fast",
@@ -85,7 +85,7 @@ def get_diffusion_model(
     style_scale: float = 0.0,
     color_match_scale: float = 0.0,
     cfg_scale: float = 5.0,
-    image: Optional[str] = None,
+    image: str | None = None,
 ):
     if isinstance(diffusion, BaseDiffusionProcessor):
         return diffusion
@@ -135,15 +135,15 @@ class MultiResolutionDiffusionProcessor(torch.nn.Module):
         self,
         diffusion: BaseDiffusionProcessor,
         init: str,
-        text: Optional[str] = None,
-        image: Optional[str] = None,
-        content: Optional[str] = None,
-        style: Optional[str] = None,
-        schedule: Dict[Tuple[int, int], float] = {(512, 512), 0.5},
-        pre_hook: Optional[Callable] = None,
-        post_hook: Optional[Callable] = None,
-        super_res_model: Optional[str] = None,
-        tile_size: Optional[int] = None,
+        text: str | None = None,
+        image: str | None = None,
+        content: str | None = None,
+        style: str | None = None,
+        schedule: dict[tuple[int, int], float] = {(512, 512), 0.5},
+        pre_hook: Callable | None = None,
+        post_hook: Callable | None = None,
+        super_res_model: str | None = None,
+        tile_size: int | None = None,
         stitch: bool = True,
         max_batch: int = 4,
         verbose: bool = True,
@@ -218,18 +218,18 @@ class MultiResolutionDiffusionProcessor(torch.nn.Module):
 @torch.no_grad()
 def image_sample(
     init: str = "random",
-    text: Optional[str] = None,
-    image: Optional[str] = None,
-    content: Optional[str] = None,
-    style: Optional[str] = None,
-    sizes: List[Tuple[int, int]] = [(512, 512)],
-    skips: List[float] = [0.0],
+    text: str | None = None,
+    image: str | None = None,
+    content: str | None = None,
+    style: str | None = None,
+    sizes: list[tuple[int, int]] = [(512, 512)],
+    skips: list[float] = [0.0],
     timesteps: int = 50,
     super_res: str = "SwinIR-M-DFO-GAN",
     stitch: bool = False,
-    tile_size: Optional[int] = None,
+    tile_size: int | None = None,
     max_batch: int = 4,
-    diffusion: Union[str, BaseDiffusionProcessor] = "guided",
+    diffusion: str | BaseDiffusionProcessor = "guided",
     sampler: str = "plms",
     guidance_speed: str = "fast",
     clip_scale: float = 0.0,

@@ -1,5 +1,4 @@
 from math import sqrt
-from typing import List, Optional
 
 import torch
 from torch import Tensor
@@ -25,15 +24,13 @@ def get_activation_defaults(activation: str):
         return torch.tensor(0.0), torch.tensor(sqrt(2))
     elif activation == "lrelu":
         return torch.tensor(0.2), torch.tensor(sqrt(2))
-    elif activation == "tanh":
-        return torch.tensor(0.0), torch.tensor(1.0)
-    elif activation == "sigmoid":
-        return torch.tensor(0.0), torch.tensor(1.0)
-    elif activation == "elu":
-        return torch.tensor(0.0), torch.tensor(1.0)
-    elif activation == "selu":
-        return torch.tensor(0.0), torch.tensor(1.0)
-    elif activation == "softplus":
+    elif (
+        activation == "tanh"
+        or activation == "sigmoid"
+        or activation == "elu"
+        or activation == "selu"
+        or activation == "softplus"
+    ):
         return torch.tensor(0.0), torch.tensor(1.0)
     elif activation == "swish":
         return torch.tensor(0.0), torch.tensor(sqrt(2))
@@ -64,11 +61,11 @@ def activate(x: Tensor, act: str, alpha: float):
 
 def bias_act(
     x: Tensor,
-    b: Optional[Tensor] = None,
+    b: Tensor | None = None,
     act: str = "linear",
-    alpha: Optional[Tensor] = None,
-    gain: Optional[Tensor] = None,
-    clamp: Optional[Tensor] = None,
+    alpha: Tensor | None = None,
+    gain: Tensor | None = None,
+    clamp: Tensor | None = None,
 ):
     def_alpha, def_gain = get_activation_defaults(act)
     alpha = alpha if alpha is not None else def_alpha
@@ -86,7 +83,7 @@ def bias_act(
 
 def upfirdn2d(
     x: Tensor,
-    f: Optional[Tensor],
+    f: Tensor | None,
     up: Tensor = torch.tensor(1),
     down: Tensor = torch.tensor(1),
     padding: Tensor = torch.zeros(4),
@@ -133,9 +130,9 @@ def upsample2d(
     return upfirdn2d(x, f, up=up, padding=p, gain=gain * upx * upy)
 
 
-def _get_filter_size(f: Optional[Tensor]):
+def _get_filter_size(f: Tensor | None):
     if f is None:
-        return torch.ones((2))
+        return torch.ones(2)
     return f.shape[-1], f.shape[0]
 
 
@@ -147,11 +144,11 @@ def modulated_conv2d(
     x: Tensor,  # Input tensor of shape [batch_size, in_channels, in_height, in_width].
     weight: Tensor,  # Weight tensor of shape [out_channels, in_channels, kernel_height, kernel_width].
     styles: Tensor,  # Modulation coefficients of shape [batch_size, in_channels].
-    noise: Optional[Tensor] = None,  # Optional noise tensor to add to the output activations.
+    noise: Tensor | None = None,  # Optional noise tensor to add to the output activations.
     up: Tensor = torch.tensor(1),  # Integer upsampling factor.
     down: Tensor = torch.tensor(1),  # Integer downsampling factor.
     padding: Tensor = torch.tensor(0),  # Padding with respect to the upsampled image.
-    resample_filter: Optional[Tensor] = None,  # Low-pass filter to apply when resampling activations.
+    resample_filter: Tensor | None = None,  # Low-pass filter to apply when resampling activations.
     demodulate: bool = True,  # Apply weight demodulation?
 ):
     B, xc, xh, xw = x.shape
@@ -189,7 +186,7 @@ def modulated_conv2d(
 def conv2d_resample(
     x: Tensor,
     w: Tensor,
-    f: Optional[Tensor] = None,
+    f: Tensor | None = None,
     up: Tensor = torch.tensor(1),
     down: Tensor = torch.tensor(1),
     padding: Tensor = torch.tensor(0),
@@ -234,11 +231,11 @@ def conv2d_resample(
 
 
 def setup_filter(
-    f: List[int],
+    f: list[int],
     device: torch.device = torch.device("cpu"),
     normalize: bool = True,
     gain: Tensor = torch.tensor(1),
-    separable: Optional[bool] = None,
+    separable: bool | None = None,
 ):
     if f is None:
         f = 1

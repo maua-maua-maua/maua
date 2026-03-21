@@ -3,7 +3,7 @@ from functools import wraps
 
 import joblib
 
-from ...ops.io import hash
+from maua.ops.io import hash
 
 
 def cache_to_workspace(name):
@@ -28,8 +28,8 @@ def cache_to_workspace(name):
     return decorator
 
 
-from .audio import *
-from .latent import *
-from .mir import *
-from .signal import *
-from .util import *
+from maua.audiovisual.audioreactive.audio import *
+from maua.audiovisual.audioreactive.latent import *
+from maua.audiovisual.audioreactive.mir import *
+from maua.audiovisual.audioreactive.signal import *
+from maua.audiovisual.audioreactive.util import *

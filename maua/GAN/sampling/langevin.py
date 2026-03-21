@@ -26,7 +26,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def prepare_critic(how, model_file):
     if how == "discriminator":
         try:
-            from ..nv import dnnlib, legacy
+            from maua.GAN.nv import dnnlib, legacy
 
             with dnnlib.util.open_url(model_file) as f:
                 critic = legacy.load_network_pkl(f)["D"].eval().to(device)

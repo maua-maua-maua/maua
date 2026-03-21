@@ -9,14 +9,14 @@ import decord
 decord.bridge.set_bridge("torch")
 
 import os
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 
 from decord import VideoReader
 from tqdm import tqdm
 
-from ....ops.video import VideoWriter
-from . import rife
+from maua.ops.video import VideoWriter
+from maua.super.video.framerate import rife
 
 MODEL_MODULES = {
     "RIFE-1.0": rife,

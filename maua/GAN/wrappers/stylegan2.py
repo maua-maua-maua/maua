@@ -1,19 +1,18 @@
 import warnings
-from typing import Optional, Tuple
 
 import kornia.geometry.transform as kT
 import numpy as np
 import torch
 from torch import Tensor
 
-from ..load import load_network
-from ..nv.networks import stylegan2 as stylegan2_train
-from .inference import stylegan2 as stylegan2_inference
-from .stylegan import StyleGAN, StyleGANMapper, StyleGANSynthesizer
+from maua.GAN.load import load_network
+from maua.GAN.nv.networks import stylegan2 as stylegan2_train
+from maua.GAN.wrappers.inference import stylegan2 as stylegan2_inference
+from maua.GAN.wrappers.stylegan import StyleGAN, StyleGANMapper, StyleGANSynthesizer
 
-SynthesisLayerInputType = Tuple[Tensor, Tensor, str, float]
-SynthesisBlockInputType = Tuple[Optional[Tensor], Optional[Tensor], Tensor, str]
-ToRGBInputType = Tuple[Tensor, Tensor]
+SynthesisLayerInputType = tuple[Tensor, Tensor, str, float]
+SynthesisBlockInputType = tuple[Tensor | None, Tensor | None, Tensor, str]
+ToRGBInputType = tuple[Tensor, Tensor]
 
 
 class StyleGAN2Mapper(StyleGANMapper):
@@ -25,7 +24,7 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
     __constants__ = ["w_dim", "num_ws", "layer_names"]
 
     def __init__(
-        self, model_file: str, inference: bool, output_size: Optional[Tuple[int, int]], strategy: str, layer: int
+        self, model_file: str, inference: bool, output_size: tuple[int, int] | None, strategy: str, layer: int
     ) -> None:
         super().__init__()
 
@@ -64,14 +63,14 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
     def forward(
         self,
         latents: Tensor,
-        translation: Optional[Tensor] = None,
+        translation: Tensor | None = None,
         translation_layer: int = 7,
-        zoom: Optional[Tensor] = None,
+        zoom: Tensor | None = None,
         zoom_layer: int = 7,
-        zoom_center: Optional[int] = None,
-        rotation: Optional[Tensor] = None,
+        zoom_center: int | None = None,
+        rotation: Tensor | None = None,
         rotation_layer: int = 7,
-        rotation_center: Optional[int] = None,
+        rotation_center: int | None = None,
         **noise,
     ) -> Tensor:
         if translation is not None:
@@ -103,12 +102,12 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
                             noise_l = torch.nn.functional.interpolate(
                                 noise_l, (h, w), mode="bicubic", align_corners=False
                             )
-                    setattr(c, "noise_const", noise_l)
+                    c.noise_const = noise_l
                     l += 1
 
         return self.G_synth.forward(latents, noise_mode="const")
 
-    def change_output_resolution(self, output_size: Tuple[int, int], strategy: str, layer: int):
+    def change_output_resolution(self, output_size: tuple[int, int], strategy: str, layer: int):
         self.refresh_model_hooks()
 
         if output_size != (self.G_synth.img_resolution, self.G_synth.img_resolution):
@@ -116,7 +115,7 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
 
             synth_block = self.G_synth.bs[int(block)]
             synth_layer = getattr(synth_block, conv)
-            torgb_layer = getattr(synth_block, "torgb")
+            torgb_layer = synth_block.torgb
 
             layer_size = synth_layer.resolution
             lay_mult = self.G_synth.img_resolution // layer_size
@@ -144,7 +143,7 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
                 _, b, c = self.layer_names[l].split(".")
                 noise_layer = getattr(self.G_synth.bs[int(b)], c)
 
-                def noise_adjust(mod, input: Tuple[Tensor, Tensor, str, bool, float]) -> None:
+                def noise_adjust(mod, input: tuple[Tensor, Tensor, str, bool, float]) -> None:
                     if not hasattr(mod, "noise_adjusted") or not mod.noise_adjusted:
                         _, _, h, w = input[0].shape
                         dev, dtype = mod.noise_const.device, mod.noise_const.dtype
@@ -163,8 +162,8 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
         synth_layer = getattr(self.G_synth.bs[int(block)], conv)
 
         def translate_hook(
-            module, input: Tuple[Tensor, Tensor, str, bool, float], output: Tuple[Tensor]
-        ) -> Tuple[Tensor]:
+            module, input: tuple[Tensor, Tensor, str, bool, float], output: tuple[Tensor]
+        ) -> tuple[Tensor]:
             _, _, h, w = output.shape
             output = kT.translate(
                 output, translation * torch.tensor([[h, w]], device=translation.device), padding_mode="reflection"
@@ -180,8 +179,8 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
         synth_layer = getattr(self.G_synth.bs[int(block)], conv)
 
         def rotation_hook(
-            module, input: Tuple[Tensor, Tensor, str, bool, float], output: Tuple[Tensor]
-        ) -> Tuple[Tensor]:
+            module, input: tuple[Tensor, Tensor, str, bool, float], output: tuple[Tensor]
+        ) -> tuple[Tensor]:
             output = kT.rotate(output, angle.squeeze(), center, padding_mode="reflection")
             return output
 
@@ -193,7 +192,7 @@ class StyleGAN2Synthesizer(StyleGANSynthesizer):
         _, block, conv = self.layer_names[layer].split(".")
         synth_layer = getattr(self.G_synth.bs[int(block)], conv)
 
-        def zoom_hook(module, input: Tuple[Tensor, Tensor, str, bool, float], output: Tuple[Tensor]) -> Tuple[Tensor]:
+        def zoom_hook(module, input: tuple[Tensor, Tensor, str, bool, float], output: tuple[Tensor]) -> tuple[Tensor]:
             output = kT.scale(output, zoom.squeeze(), center, padding_mode="reflection")
             return output
 
@@ -230,7 +229,7 @@ def get_hook(layer_size, target_size, strategy, add_noise=True, pre=False):
         def resize(
             x: Tensor,
             feat: bool = False,
-            target_size: Tuple[int, int] = tuple(target_size),
+            target_size: tuple[int, int] = tuple(target_size),
             noise: Tensor = noise,
             add_noise: bool = add_noise,
         ):
@@ -287,10 +286,10 @@ def get_hook(layer_size, target_size, strategy, add_noise=True, pre=False):
         def resize(
             x: Tensor,
             feat: bool = False,
-            padding: Tuple[int, int, int, int] = padding,
+            padding: tuple[int, int, int, int] = padding,
             how: str = how,
             value: float = value,
-            target_size: Tuple[int, int] = tuple(target_size),
+            target_size: tuple[int, int] = tuple(target_size),
             noise: Tensor = noise,
         ):
             x = torch.nn.functional.pad(x, padding, mode=how, value=value)
@@ -313,7 +312,7 @@ def get_hook(layer_size, target_size, strategy, add_noise=True, pre=False):
 
             return x
 
-        def inverse(x: Tensor, padding: Tuple[int, int, int, int] = padding):
+        def inverse(x: Tensor, padding: tuple[int, int, int, int] = padding):
             if padding[3] == 0:
                 if padding[1] == 0:
                     return x[..., padding[2] :, padding[0] :]
@@ -338,7 +337,7 @@ def get_hook(layer_size, target_size, strategy, add_noise=True, pre=False):
         def feat_hook(module, input: SynthesisLayerInputType, output: Tensor) -> Tensor:
             return resize(output, feat=True)
 
-    def img_hook(module, input: SynthesisBlockInputType, output: Tuple[Tensor, Tensor]) -> Tuple[Tensor, Tensor]:
+    def img_hook(module, input: SynthesisBlockInputType, output: tuple[Tensor, Tensor]) -> tuple[Tensor, Tensor]:
         return (output[0], resize(output[1], feat=False))
 
     def rgb_hook(module, input: ToRGBInputType, output: Tensor) -> Tensor:

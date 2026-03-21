@@ -1,12 +1,10 @@
-from typing import Union
-
 import torch
 from torch.nn.functional import pad
 
-from .features.audio import onsets
-from .features.processing import gaussian_filter, normalize
-from .latent import MergeDepth
-from .mir import estimate_tempo
+from maua.audiovisual.audioreactive.selfsupervised.features.audio import onsets
+from maua.audiovisual.audioreactive.selfsupervised.features.processing import gaussian_filter, normalize
+from maua.audiovisual.audioreactive.selfsupervised.latent import MergeDepth
+from maua.audiovisual.audioreactive.selfsupervised.mir import estimate_tempo
 
 
 def get_sizes(downscale_factor, aspect_ratio):
@@ -105,7 +103,7 @@ class ConstantNoise(Noise):
 
 
 class MergeNoise(torch.nn.Module):
-    def __init__(self, left, right, depth: Union[MergeDepth, slice] = MergeDepth.ALL):
+    def __init__(self, left, right, depth: MergeDepth | slice = MergeDepth.ALL):
         super().__init__()
         self.left = left
         self.right = right
@@ -124,7 +122,7 @@ class OverwriteNoise(MergeNoise):
 
 
 class AverageNoise(MergeNoise):
-    def __init__(self, left, right, depth: Union[MergeDepth, slice] = MergeDepth.ALL, left_weight: float = 0.5):
+    def __init__(self, left, right, depth: MergeDepth | slice = MergeDepth.ALL, left_weight: float = 0.5):
         super().__init__(left, right, depth)
         self.left_weight = left_weight
 
@@ -141,7 +139,7 @@ class ModulateNoise(MergeNoise):
         left,
         right,
         feature,
-        depth: Union[MergeDepth, slice] = MergeDepth.ALL,
+        depth: MergeDepth | slice = MergeDepth.ALL,
         focus: str = None,
         smooth: float = 2,
     ):

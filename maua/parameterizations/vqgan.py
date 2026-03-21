@@ -6,9 +6,9 @@ import torch
 import torch.nn.functional as F
 from omegaconf import OmegaConf
 
-from ..loss import clamp_with_grad, replace_grad
-from ..utility import download
-from . import Parameterization
+from maua.loss import clamp_with_grad, replace_grad
+from maua.parameterizations import Parameterization
+from maua.utility import download
 
 # replace checkpoint path to avoid the weird path that gets created by default as well as a bunch of prints
 for file in [
@@ -19,7 +19,8 @@ for file in [
 ]:
     with open(file, "r") as f:
         t = (
-            f.read()
+            f
+            .read()
             .replace("print", "None # print")
             .replace("None # None #", "None #")
             .replace("    self.z_shape, np.prod(self.z_shape)))", "#    self.z_shape, np.prod(self.z_shape)))")

@@ -17,7 +17,7 @@ def infiniter(loader):
             yield batch
 
 
-class Iterator(object):
+class Iterator:
     def __init__(self, loader, kimg):
         self.loader = loader
         self.kimg = kimg

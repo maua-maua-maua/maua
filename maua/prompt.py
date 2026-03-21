@@ -6,7 +6,7 @@ from PIL import Image
 from resize_right import resize
 from torchvision.transforms.functional import to_tensor
 
-from .utility import fetch
+from maua.utility import fetch
 
 
 class TextPrompt(torch.nn.Module):

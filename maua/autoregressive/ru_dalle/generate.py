@@ -2,7 +2,6 @@ import os
 import sys
 from functools import partial
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
 from uuid import uuid4
 
 import more_itertools
@@ -23,7 +22,7 @@ from rudalle.dalle.image_attention import get_col_mask, get_conv_mask, get_row_m
 from rudalle.dalle.model import DalleModel
 from rudalle.pipelines import super_resolution
 
-from . import SURREALIST_XL_DICT
+from maua.autoregressive.ru_dalle import SURREALIST_XL_DICT
 
 MODELS.update({"Surrealist_XL": SURREALIST_XL_DICT})
 
@@ -94,7 +93,7 @@ def oversample_generate_images(
                 cache = list(map(list, cache.values()))
                 for i, e in enumerate(cache):
                     for j, _ in enumerate(e):
-                        t = cache[i][j]
+                        t = e[j]
                         t = t[..., :text_seq_length, :]
                         cache[i][j] = t
                 cache = dict(zip(range(len(cache)), cache))
@@ -307,21 +306,21 @@ def sample_images(
 
 @torch.inference_mode()
 def generate(
-    model: Union[FP16Module, DalleModel],
+    model: FP16Module | DalleModel,
     model_name="rudalle",
     input_text="",
     num_outputs=8,
     batch_size=4,
     height=256,
     width=256,
-    stretched_size: Optional[Tuple[int, int]] = None,
+    stretched_size: tuple[int, int] | None = None,
     upscale=1,
     top_p=0.99,
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     output_dir="output/",
     oversample=True,
     save_intermediate=False,
-) -> List[Image.Image]:
+) -> list[Image.Image]:
     """Generate images by sampling from the RuDALL-E model.
 
     Args:

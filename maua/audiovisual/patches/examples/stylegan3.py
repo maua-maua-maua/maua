@@ -1,7 +1,7 @@
 import torch
 
-from ... import audioreactive as ar
-from ...patches.base.stylegan3 import StyleGAN3Patch
+from maua.audiovisual import audioreactive as ar
+from maua.audiovisual.patches.base.stylegan3 import StyleGAN3Patch
 
 
 class ExampleSG3Patch(StyleGAN3Patch):

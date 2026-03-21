@@ -401,7 +401,6 @@ def my_filling_sequence(
                         if guider_seq is not None:
                             for idx, mem in enumerate(guider_mems):
                                 guider_mems[idx] = mem.to(next(model.parameters()).device)
-                        pass
                     else:
                         torch.cuda.empty_cache()
                         for idx, mem_buffer in enumerate(mems_buffers):
@@ -571,7 +570,7 @@ def process_stage1(
         move_start_time = time.time()
         logging.debug("moving stage 1 model to cuda")
         model = model.cuda()
-        logging.debug("moving in model1 takes time: {:.2f}".format(time.time() - move_start_time))
+        logging.debug(f"moving in model1 takes time: {time.time() - move_start_time:.2f}")
 
     if video_raw_text is None:
         video_raw_text = seq_text
@@ -585,7 +584,7 @@ def process_stage1(
     text_len_1st = len(seq_1st) - frame_len * 1 - 1
     seq_1st = torch.cuda.LongTensor(seq_1st, device=device).unsqueeze(0)
     if image_prompt is None:
-        logging.info("[Generating First Frame with CogView2]Raw text: {:s}".format(tokenizer.decode(enc_text)))
+        logging.info(f"[Generating First Frame with CogView2]Raw text: {tokenizer.decode(enc_text):s}")
         output_list_1st = []
         for tim in range(max(batch_size // mbz, 1)):
             start_time = time.time()
@@ -607,7 +606,7 @@ def process_stage1(
                     keep_mem_buffers=keep_mem_buffers,
                 )[0]
             )
-            logging.info("[First Frame]Taken time {:.2f}\n".format(time.time() - start_time))
+            logging.info(f"[First Frame]Taken time {time.time() - start_time:.2f}\n")
         output_tokens_1st = torch.cat(output_list_1st, dim=0)
         given_tokens = output_tokens_1st[:, text_len_1st + 1 : text_len_1st + 401].unsqueeze(1)
     else:
@@ -635,9 +634,7 @@ def process_stage1(
         + [-1] * 400 * generate_frame_num
     )
     logging.info(
-        "[Stage1: Generating Subsequent Frames, Frame Rate {:.1f}]\nraw text: {:s}".format(
-            4 / duration, tokenizer.decode(enc_text_video)
-        )
+        f"[Stage1: Generating Subsequent Frames, Frame Rate {4 / duration:.1f}]\nraw text: {tokenizer.decode(enc_text_video):s}"
     )
 
     text_len = len(seq) - frame_len * generate_frame_num - 1
@@ -701,7 +698,7 @@ def process_stage1(
         logging.debug("moving stage 1 model to cpu")
         model = model.cpu()
         torch.cuda.empty_cache()
-        logging.debug("moving in model1 takes time: {:.2f}".format(time.time() - move_start_time))
+        logging.debug(f"moving in model1 takes time: {time.time() - move_start_time:.2f}")
 
     # decoding
     imgs, _sred_imgs, _txts = [], [], []
@@ -722,7 +719,7 @@ def process_stage1(
             os.system(f"gifmaker -i '{outputdir}'/frames/'{clip_i}'/0*.jpg -o '{outputdir}/{clip_i}.gif' -d 0.25")
         torch.save(save_tokens, os.path.join(outputdir, "frame_tokens.pt"))
 
-    logging.info("CogVideo Stage1 completed. Taken time {:.2f}\n".format(time.time() - process_start_time))
+    logging.info(f"CogVideo Stage1 completed. Taken time {time.time() - process_start_time:.2f}\n")
 
     return save_tokens
 
@@ -756,7 +753,7 @@ def process_stage2(
         move_start_time = time.time()
         logging.debug("moving stage-2 model to cuda")
         model = model.cuda()
-        logging.debug("moving in stage-2 model takes time: {:.2f}".format(time.time() - move_start_time))
+        logging.debug(f"moving in stage-2 model takes time: {time.time() - move_start_time:.2f}")
 
     try:
         if parent_given_tokens is None:
@@ -789,9 +786,7 @@ def process_stage2(
         text_len = len(seq) - frame_len * generate_frame_num - 1
 
         logging.info(
-            "[Stage2: Generating Frames, Frame Rate {:d}]\nraw text: {:s}".format(
-                int(4 / duration), tokenizer.decode(enc_text)
-            )
+            f"[Stage2: Generating Frames, Frame Rate {int(4 / duration):d}]\nraw text: {tokenizer.decode(enc_text):s}"
         )
 
         # generation
@@ -878,7 +873,7 @@ def process_stage2(
                     keep_mem_buffers=keep_mem_buffers,
                 )[0]
             )
-        logging.info("Duration {:.2f}, Taken time {:.2f}\n".format(duration, time.time() - start_time))
+        logging.info(f"Duration {duration:.2f}, Taken time {time.time() - start_time:.2f}\n")
 
         output_tokens = torch.cat(output_list, dim=0)
         output_tokens = output_tokens[:, text_len + 1 : text_len + 1 + (total_frames) * 400].reshape(
@@ -903,9 +898,9 @@ def process_stage2(
         logging.debug("moving stage 2 model to cpu")
         model = model.cpu()
         torch.cuda.empty_cache()
-        logging.debug("moving out model2 takes time: {:.2f}".format(time.time() - move_start_time))
+        logging.debug(f"moving out model2 takes time: {time.time() - move_start_time:.2f}")
 
-    logging.info("CogVideo Stage2 completed. Taken time {:.2f}\n".format(time.time() - stage2_starttime))
+    logging.info(f"CogVideo Stage2 completed. Taken time {time.time() - stage2_starttime:.2f}\n")
 
     # decoding
     if keep_mem_buffers:
@@ -939,7 +934,7 @@ def process_stage2(
             f"gifmaker -i '{outputdir}'/frames/'{sample_i + sample_num * gpu_rank}'/0*.jpg -o '{outputdir}/{sample_i + sample_num * gpu_rank}.gif' -d 0.125"
         )
 
-    logging.info("Direct super-resolution completed. Taken time {:.2f}\n".format(time.time() - dsr_starttime))
+    logging.info(f"Direct super-resolution completed. Taken time {time.time() - dsr_starttime:.2f}\n")
 
     return True
 

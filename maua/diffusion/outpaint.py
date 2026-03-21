@@ -4,10 +4,9 @@ from pathlib import Path
 import torch
 from kornia.filters import gaussian_blur2d
 
+from maua.diffusion.processors.stable import StableDiffusion
+from maua.prompt import ImagePrompt, TextPrompt
 from maua.submodules.k_diffusion.k_diffusion.utils import to_pil_image
-
-from ..prompt import ImagePrompt, TextPrompt
-from .processors.stable import StableDiffusion
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

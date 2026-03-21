@@ -6,13 +6,16 @@ import clip
 import torch
 from tqdm import trange
 
-from ...prompt import TextPrompt
-from ...utility import download
-from .base import BaseDiffusionProcessor
+from maua.diffusion.processors.base import BaseDiffusionProcessor
+from maua.prompt import TextPrompt
+from maua.utility import download
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/GLID3XL/")
-from ...submodules.GLID3XL.encoders.modules import BERTEmbedder
-from ...submodules.GLID3XL.guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
+from maua.submodules.GLID3XL.encoders.modules import BERTEmbedder
+from maua.submodules.GLID3XL.guided_diffusion.script_util import (
+    create_model_and_diffusion,
+    model_and_diffusion_defaults,
+)
 
 MODEL_URLS = {
     "glid3xl-bert": "https://dall-3.com/models/glid-3-xl/bert.pt",

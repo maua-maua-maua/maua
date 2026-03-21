@@ -1,7 +1,7 @@
 import torch
 
-from ....GAN.wrappers.stylegan2 import StyleGAN2
-from . import MauaPatch
+from base import MauaPatch
+from maua.GAN.wrappers.stylegan2 import StyleGAN2
 
 
 class StyleGAN2Patch(MauaPatch):

@@ -5,7 +5,7 @@ from torchcubicspline import NaturalCubicSpline, natural_cubic_spline_coeffs
 from torchtyping import TensorType
 
 # from . import cache_to_workspace
-from .signal import gaussian_filter, normalize
+from maua.audiovisual.audioreactive.signal import gaussian_filter, normalize
 
 
 # @cache_to_workspace("single_weighted")
@@ -106,10 +106,10 @@ if __name__ == "__main__":
     with torch.inference_mode():
         from tqdm import tqdm
 
-        from ...GAN.wrappers.stylegan2 import StyleGAN2Mapper, StyleGAN2Synthesizer
-        from ...ops.video import VideoWriter
-        from .audio import load_audio
-        from .mir import chroma, onsets, tempo
+        from maua.audiovisual.audioreactive.audio import load_audio
+        from maua.audiovisual.audioreactive.mir import chroma, onsets, tempo
+        from maua.GAN.wrappers.stylegan2 import StyleGAN2Mapper, StyleGAN2Synthesizer
+        from maua.ops.video import VideoWriter
 
         duration = 120
         fps = 24

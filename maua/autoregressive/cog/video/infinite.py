@@ -358,7 +358,6 @@ def sample_token_sequence(
                         if guide_seq is not None:
                             for idx, mem in enumerate(guide_mems):
                                 guide_mems[idx] = mem.to(next(model.parameters()).device)
-                        pass
                     else:
                         torch.cuda.empty_cache()
                         for idx, mem_buffer in enumerate(mems_buffers):

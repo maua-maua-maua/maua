@@ -1,16 +1,16 @@
 import librosa as rosa
 import madmom as mm
-import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
 import scipy.stats
 import sklearn.cluster
 import torch
+from matplotlib import patches
 
-from . import cache_to_workspace
-from .audio import harmonic, percussive
-from .signal import percentile_clip
+from maua.audiovisual.audioreactive import cache_to_workspace
+from maua.audiovisual.audioreactive.audio import harmonic, percussive
+from maua.audiovisual.audioreactive.signal import percentile_clip
 
 
 @cache_to_workspace("onsets")

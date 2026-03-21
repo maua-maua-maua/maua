@@ -8,9 +8,9 @@ from decord import VideoReader
 from npy_append_array import NpyAppendArray as NpyFile
 from tqdm import tqdm
 
-from ..ops.video import write_video
-from .consistency import check_consistency, check_consistency_np
-from .utils import flow_to_image
+from maua.flow.consistency import check_consistency, check_consistency_np
+from maua.flow.utils import flow_to_image
+from maua.ops.video import write_video
 
 NEUTRAL = None
 
@@ -55,7 +55,8 @@ def flow_warp_map(flow: torch.Tensor) -> torch.Tensor:
     global NEUTRAL
     if NEUTRAL is None or (NEUTRAL.shape[1], NEUTRAL.shape[2]) != (h, w):
         NEUTRAL = (
-            torch.stack(torch.meshgrid(torch.linspace(-1, 1, w), torch.linspace(-1, 1, h), indexing="xy"), axis=2)
+            torch
+            .stack(torch.meshgrid(torch.linspace(-1, 1, w), torch.linspace(-1, 1, h), indexing="xy"), axis=2)
             .unsqueeze(0)
             .to(flow)
         )

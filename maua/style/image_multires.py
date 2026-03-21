@@ -5,9 +5,9 @@ from pathlib import Path
 import torch
 from PIL import Image
 
-from ..ops.image import match_histogram, resample
-from ..ops.io import img2tensor, tensor2img
-from .image import transfer
+from maua.ops.image import match_histogram, resample
+from maua.ops.io import img2tensor, tensor2img
+from maua.style.image import transfer
 
 
 @torch.no_grad()

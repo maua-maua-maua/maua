@@ -38,7 +38,7 @@ def predict(model, im1, im2, flowh=None, floww=None):
 def get_prediction_fn(which, use_training_size=False):
     if "unflow" == which:
         del sys.argv[1:]
-        from ..submodules.unflow.run import estimate as unflow
+        from maua.submodules.unflow.run import estimate as unflow
 
         torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away
 
@@ -51,7 +51,7 @@ def get_prediction_fn(which, use_training_size=False):
 
     if "pwc" == which:
         del sys.argv[1:]
-        from ..submodules.pwc.run import estimate as pwc
+        from maua.submodules.pwc.run import estimate as pwc
 
         torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away
 
@@ -64,7 +64,7 @@ def get_prediction_fn(which, use_training_size=False):
 
     if "spynet" == which:
         del sys.argv[1:]
-        from ..submodules.spynet.run import estimate as spynet
+        from maua.submodules.spynet.run import estimate as spynet
 
         torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away
 
@@ -77,7 +77,7 @@ def get_prediction_fn(which, use_training_size=False):
 
     if "liteflownet" == which:
         del sys.argv[1:]
-        from ..submodules.liteflownet.run import estimate as liteflownet
+        from maua.submodules.liteflownet.run import estimate as liteflownet
 
         torch.set_grad_enabled(True)  # estimate run.py disables grads, so re-enable right away
 

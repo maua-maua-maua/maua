@@ -5,7 +5,7 @@ from npy_append_array import NpyAppendArray
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
-from . import Renderer
+from maua.audiovisual.render import Renderer
 
 
 class MemMap(Renderer):

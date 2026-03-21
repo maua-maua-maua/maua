@@ -7,8 +7,8 @@ import torch
 from resize_right import resize
 from tqdm import trange
 
-from ...prompt import TextPrompt
-from .base import BaseDiffusionProcessor
+from maua.diffusion.processors.base import BaseDiffusionProcessor
+from maua.prompt import TextPrompt
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/GLIDE/")
 
