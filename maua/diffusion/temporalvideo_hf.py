@@ -255,7 +255,7 @@ def stylize_video_keyframe(
     return output_video
 
 
-if __name__ == "__main__":
+def argument_parser():
     parser = argparse.ArgumentParser(usage=stylize_video.__doc__)
     parser.add_argument("-i", "--in-file", type=str, required=True)
     parser.add_argument("-p", "--prompt", type=str, required=True)
@@ -268,8 +268,10 @@ if __name__ == "__main__":
     parser.add_argument("-H", "--height", type=int, default=512)
     parser.add_argument("-W", "--width", type=int, default=512)
     parser.add_argument("-d", "--device", type=str, default="cuda")
-    args = parser.parse_args()
+    return parser
 
+
+def main(args):
     input_video, _, info = read_video(args.in_file, pts_unit="sec", output_format="TCHW")
     input_video = input_video.div(255)
 
@@ -290,3 +292,7 @@ if __name__ == "__main__":
     write_video(
         out_file, output_video.permute(0, 2, 3, 1).mul(255), fps=12, options={"crf": "17", "pix_fmt": "yuv420p"}
     )
+
+
+if __name__ == "__main__":
+    main(argument_parser().parse_args())

@@ -23,6 +23,7 @@
 # pip install -U git+https://github.com/huggingface/huggingface_hub
 # pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=xformers
 
+import argparse
 import os
 import subprocess
 import sys
@@ -415,9 +416,8 @@ def generate_animation(prompt, cond_scale, n, fps, sigma, h, gamma, alpha, tau, 
     )
 
 
-if __name__ == "__main__":
+def argument_parser():
     # fmt:off
-    import argparse
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("prompt")
     parser.add_argument("--cond_scale", type=float, default=5.0, help="The strength of the conditioning on the prompt")
@@ -430,7 +430,13 @@ if __name__ == "__main__":
     parser.add_argument("--tau", default=1.0, type=float, help="Temperature (adjustment to the amount of noise added per step)")
     parser.add_argument("--hvp_method", default="fake", choices=["forward-functorch", "reverse", "fake", "zero"], help="The HVP method. `forward-functorch` and `reverse` provide real second derivatives. Compatibility, speed, and memory usage vary by model and xformers configuration. `fake` is very fast and low memory but inaccurate. `zero` (fallback to first order KLMC) is not recommended.")
     parser.add_argument("--model_path", default=None, type=str, help="Custom model checkpoint to load instead of Stable Diffusion v1.4")
-    args = parser.parse_args()
     # fmt:on
+    return parser
 
+
+def main(args):
     generate_animation(**vars(args))
+
+
+if __name__ == "__main__":
+    main(argument_parser().parse_args())

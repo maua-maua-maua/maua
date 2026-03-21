@@ -3,26 +3,24 @@ import datetime
 import glob
 import os
 import sys
-from glob import glob
 from pathlib import Path
 
 import numpy as np
 import pytorch_lightning as pl
 import torch
 import torchvision
+from lightning_fabric.utilities.rank_zero import rank_zero_only
 from omegaconf import OmegaConf
 from PIL import Image
 from pytorch_lightning import seed_everything
 from pytorch_lightning.callbacks import Callback
-from pytorch_lightning.plugins import DDPPlugin
+from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.trainer import Trainer
-from pytorch_lightning.utilities.distributed import rank_zero_only
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms.functional import center_crop, resize, to_tensor
 from transformers import logging
 
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../submodules/stable_diffusion")
-from ..submodules.stable_diffusion.ldm.util import instantiate_from_config
+from maua.submodules.stable_diffusion.ldm.util import instantiate_from_config
 
 logging.set_verbosity_error()
 
@@ -138,7 +136,7 @@ class Text2ImageDataModule(pl.LightningDataModule):
 class Text2ImageDataset(Dataset):
     def __init__(self, path) -> None:
         super().__init__()
-        self.images = sum([glob(f"{path}/*{ext}") for ext in torchvision.datasets.folder.IMG_EXTENSIONS], [])
+        self.images = sum([glob.glob(f"{path}/*{ext}") for ext in torchvision.datasets.folder.IMG_EXTENSIONS], [])
 
     def __len__(self):
         return len(self.images)
@@ -178,27 +176,46 @@ def get_parser(**parser_kwargs):
     parser.add_argument("-ne", "--num-examples", type=int, default=8, help="number of images to sample per log step")
     parser.add_argument("-le", "--log-every", type=int, default=2500, help="number of steps per image sample log")
     parser.add_argument("-se", "--save-every", type=int, default=5000, help="number of steps per saved checkpoint")
+    parser.add_argument(
+        "--devices",
+        type=str,
+        default=None,
+        help="Trainer devices: integer (count), comma-separated GPU ids, or omit for auto (all visible GPUs).",
+    )
     return parser
 
 
-def nondefault_trainer_args(opt):
-    parser = argparse.ArgumentParser()
-    parser = Trainer.add_argparse_args(parser)
-    args = parser.parse_args([])
-    return sorted(k for k in vars(args) if getattr(opt, k) != getattr(args, k))
+def _parse_trainer_devices(devices: str | None):
+    if devices is None:
+        return "auto"
+    if "," in devices:
+        return [int(x.strip()) for x in devices.split(",") if x.strip()]
+    return int(devices)
 
 
-if __name__ == "__main__":
+def _num_gpus_for_lr(devices) -> int:
+    if not torch.cuda.is_available():
+        return 1
+    if devices == "auto":
+        return max(1, torch.cuda.device_count())
+    if isinstance(devices, int):
+        return max(1, devices)
+    if isinstance(devices, list):
+        return max(1, len(devices))
+    return 1
+
+
+def argument_parser():
+    return get_parser()
+
+
+def main(args):
     sys.path.append(os.getcwd())
 
-    parser = get_parser()
-    parser = Trainer.add_argparse_args(parser)
-    opt, unknown = parser.parse_known_args()
-
     now = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-    name = opt.name if opt.name else Path(opt.datadir).stem
-    logdir = os.path.join(opt.logdir, f"stable_{now}_{name}")
-    seed_everything(opt.seed)
+    name = args.name if args.name else Path(args.datadir).stem
+    logdir = os.path.join(args.logdir, f"stable_{now}_{name}")
+    seed_everything(args.seed)
 
     # ==================================================================================================================
     # =============================================== Trainer Setup ====================================================
@@ -209,23 +226,19 @@ if __name__ == "__main__":
         + "/../submodules/stable_diffusion/configs/stable-diffusion/v1-inference.yaml"
     )
 
-    trainer_config = OmegaConf.create({
-        "accelerator": "ddp",
-        "benchmark": True,
-        "limit_val_batches": 0,
-        "num_sanity_val_steps": 0,
-    })
-    for k in nondefault_trainer_args(opt):
-        trainer_config[k] = getattr(opt, k)
-    trainer_config.accumulate_grad_batches = opt.accumulate_batches
-    trainer_opt = argparse.Namespace(**trainer_config)
+    devices = _parse_trainer_devices(args.devices)
+    if torch.cuda.is_available():
+        accelerator = "gpu"
+        strategy = DDPStrategy(find_unused_parameters=False)
+    else:
+        accelerator = "cpu"
+        strategy = "auto"
+        devices = 1
 
-    trainer_kwargs = dict()
-    trainer_kwargs["plugins"] = DDPPlugin(find_unused_parameters=False)
     callbacks_cfg = {
         "image_logger": {
             "target": "maua.diffusion.finetune_stable.ImageLogger",
-            "params": {"batch_frequency": opt.log_every, "num_examples": opt.num_examples},
+            "params": {"batch_frequency": args.log_every, "num_examples": args.num_examples},
         },
         "learning_rate_logger": {
             "target": "pytorch_lightning.callbacks.LearningRateMonitor",
@@ -238,14 +251,24 @@ if __name__ == "__main__":
                 "filename": "{epoch:06}-{step:09}",
                 "verbose": True,
                 "save_top_k": -1,
-                "every_n_train_steps": opt.save_every,
+                "every_n_train_steps": args.save_every,
                 "save_weights_only": True,
             },
         },
     }
-    trainer_kwargs["callbacks"] = [instantiate_from_config(callbacks_cfg[k]) for k in callbacks_cfg]
+    callbacks = [instantiate_from_config(callbacks_cfg[k]) for k in callbacks_cfg]
 
-    trainer = Trainer.from_argparse_args(trainer_opt, **trainer_kwargs)
+    trainer = Trainer(
+        accelerator=accelerator,
+        devices=devices,
+        strategy=strategy,
+        benchmark=True,
+        limit_val_batches=0,
+        num_sanity_val_steps=0,
+        accumulate_grad_batches=args.accumulate_batches,
+        callbacks=callbacks,
+        default_root_dir=logdir,
+    )
     trainer.logdir = logdir
 
     # ==================================================================================================================
@@ -254,15 +277,15 @@ if __name__ == "__main__":
 
     config.model.params.first_stage_key = "image"
     config.model.params.cond_stage_key = "caption"
-    config.model.base_learning_rate = opt.learning_rate
+    config.model.base_learning_rate = args.learning_rate
 
-    if opt.resume:
-        model = load_model_from_config(config, opt.resume)
+    if args.resume:
+        model = load_model_from_config(config, args.resume)
     else:
         model = instantiate_from_config(config.model)
 
-    n_gpu = len(trainer_config.gpus.strip(",").split(","))
-    model.learning_rate = opt.accumulate_batches * n_gpu * opt.batch_size * opt.learning_rate
+    n_gpu = _num_gpus_for_lr(_parse_trainer_devices(args.devices))
+    model.learning_rate = args.accumulate_batches * n_gpu * args.batch_size * args.learning_rate
     model.logdir = logdir
 
     # ==================================================================================================================
@@ -271,7 +294,11 @@ if __name__ == "__main__":
 
     os.makedirs(logdir, exist_ok=True)
     try:
-        trainer.fit(model, Text2ImageDataModule(opt.batch_size, opt.datadir))
+        trainer.fit(model, Text2ImageDataModule(args.batch_size, args.datadir))
     except:
         trainer.save_checkpoint(os.path.join(logdir, "last.ckpt"), weights_only=True)
         raise
+
+
+if __name__ == "__main__":
+    main(argument_parser().parse_args())

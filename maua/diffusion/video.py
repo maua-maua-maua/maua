@@ -8,6 +8,7 @@ import decord
 
 decord.bridge.set_bridge("torch")
 
+import argparse
 import os
 from functools import partial, reduce
 from glob import glob
@@ -378,9 +379,8 @@ def video_sample(
     return video
 
 
-if __name__ == "__main__":
+def argument_parser():
     # fmt:off
-    import argparse
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter, allow_abbrev=True)
     parser.add_argument("--init", type=str, default="random", help='How to initialize the image "random", "perlin", or a path to an image file.')
     parser.add_argument("--text", type=str, default=None, help='A text prompt to visualize.')
@@ -413,9 +413,11 @@ if __name__ == "__main__":
     parser.add_argument("--preview", action="store_true", help='Show frames as they\'re rendered (moderately slower).')
     parser.add_argument("--fps", type=int, default=12, help='Framerate of output video.')
     parser.add_argument("--out-dir", type=str, default="output/", help='Directory to save output images to.')
-    args = parser.parse_args()
     # fmt:on
+    return parser
 
+
+def main(args):
     out_name = build_output_name(args.init, args.style, args.text, args.image)[:222]
     out_dir, fps = args.out_dir, args.fps
     del args.out_dir, args.fps
@@ -423,3 +425,7 @@ if __name__ == "__main__":
     video = video_sample(**vars(args))
 
     write_video(video, f"output/{Path(args.diffusion).stem}_{out_name}.mp4", fps=fps, value_range=(-1, 1))
+
+
+if __name__ == "__main__":
+    main(argument_parser().parse_args())

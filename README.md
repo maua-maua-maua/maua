@@ -22,12 +22,12 @@ Use --help to find the options available
 ```bash
 python -m maua --help
 python -m maua autoregressive --help
-python -m maua.diffusion.sample --help
+python -m maua diffusion --help
 ```
 
 Generate images with classifier-free guided diffusion:
 ```bash
-python -m maua.diffusion.sample --text "A street art mural of a dapper turtle with wings"
+python -m maua diffusion image --text "A street art mural of a dapper turtle with wings" --diffusion stable
 ```
 
 Generate images by finetuning RuDALL-E on a set of images:
@@ -46,10 +46,10 @@ All of the command line functions are also available for import within python.
 
 High resolution diffusion:
 ```python
-from maua.diffusion.sample import main as diffusion
+from maua.diffusion.image import image_sample
 from maua.super.image import upscale
 
-images = [diffusion(text="A street art mural of a dapper turtle with wings", timesteps=100) for i in range(5)]
+images = [image_sample(text="A street art mural of a dapper turtle with wings", timesteps=100) for i in range(5)]
 
 for pil_image in upscale(images, model_name='latent-diffusion'):
     pil_image.save(f"output/{i}.png")

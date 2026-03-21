@@ -1,3 +1,4 @@
+import argparse
 import gc
 import traceback
 from functools import partial
@@ -282,9 +283,8 @@ def image_sample(
     return imgs[0] if len(imgs) == 1 else imgs
 
 
-if __name__ == "__main__":
+def argument_parser():
     # fmt:off
-    import argparse
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter, allow_abbrev=True)
     parser.add_argument("--init", type=str, default="random", help='How to initialize the image "random", "perlin", or a path to an image file.')
     parser.add_argument("--text", type=str, default=None, help='A text prompt to visualize.')
@@ -311,12 +311,18 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, default="cuda", help='Which device to use (e.g. "cpu" or "cuda:1")')
     parser.add_argument("--number", type=int, default=1, help='How many images to render.')
     parser.add_argument("--out-dir", type=str, default="output/", help='Directory to save output images to.')
-    args = parser.parse_args()
     # fmt:on
+    return parser
 
+
+def main(args):
     out_name = build_output_name(args.init, args.style, args.text, args.image)[:222]
     out_dir = args.out_dir
     del args.out_dir
 
     for i, img in enumerate(image_sample(**vars(args))):
         save_image(img, f"{out_dir}/{Path(args.diffusion).stem}_{out_name}{i}.png")
+
+
+if __name__ == "__main__":
+    main(argument_parser().parse_args())
