@@ -2,7 +2,7 @@
 
 Maua is a Python library (and command line interface) for synthesizing images, video, and audio using deep learning.
 
-While many research groups publish code to reproduce results of their papers, it is often still time intensive to set up the environment correctly and figure out how to run the algorithms on your own data. The goal of Maua is to collect these methods in one place to make it easy to use them as creative tools. The primary design goal is composability. Combining different methods in unique ways exponentially expands the space of possible results--and so the creative freedom.
+While many research groups publish code to reproduce results of their papers, it is often still time intensive to set up the environment correctly and figure out how to run the algorithms on your own data. The goal of Maua is to collect these methods in one place to make it easy to use them as creative tools. The primary design goal is composability. Combining different methods in unique ways exponentially expands the space of possible results and so the creative freedom.
 
 ## Installation
 
@@ -10,6 +10,12 @@ Deep learning is very compute hungry, this means that a decent GPU is practicall
 
 ```bash
 uv pip install git+https://github.com/maua-maua-maua/maua.git
+```
+
+```bash
+git clone https://github.com/maua-maua-maua/maua.git
+cd maua
+uv pip install -e .
 ```
 
 Currently installation has only been tested on a Ubuntu 20.04 machine with NVIDIA GPUs. Other configurations are also possible but might be more involved. If you're running into problems, feel free to open an issue!
