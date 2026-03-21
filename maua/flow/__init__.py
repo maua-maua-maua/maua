@@ -64,6 +64,15 @@ def get_flow_model(
     return lambda im1, im2: torch.mean(torch.stack([pred(im1, im2) for pred in pred_fns]), dim=0).to(im1).float()
 
 
-from .consistency import check_consistency, check_consistency_np
-from .lib import flow_warp_map, get_consistency_map, preprocess_optical_flow
-from .utils import flow_to_image, read_flow, resample_flow, write_flow
+from .consistency import check_consistency as check_consistency, check_consistency_np as check_consistency_np
+from .lib import (
+    flow_warp_map as flow_warp_map,
+    get_consistency_map as get_consistency_map,
+    preprocess_optical_flow as preprocess_optical_flow,
+)
+from .utils import (
+    flow_to_image as flow_to_image,
+    read_flow as read_flow,
+    resample_flow as resample_flow,
+    write_flow as write_flow,
+)

@@ -47,7 +47,6 @@ def interpolate_video(
     decimate=1,
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> Generator[torch.Tensor, None, None]:
-
     module = MODEL_MODULES[model_name]
     model = module.load_model(model_name, device, fp16)
 

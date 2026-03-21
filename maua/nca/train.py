@@ -9,8 +9,6 @@ import sys
 
 import numpy as np
 import PIL.Image
-import PIL.ImageDraw
-import PIL.ImageFont
 import torch
 import torchvision.models as models
 from tqdm import tqdm

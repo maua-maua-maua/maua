@@ -74,7 +74,6 @@ class CLIPLoss(torch.nn.Module):
         return self.model.encode_image(images)
 
     def distance_with_templates(self, img: torch.Tensor, class_str: str, templates=imagenet_templates) -> torch.Tensor:
-
         text_features = self.get_text_features(class_str, templates)
         image_features = self.get_image_features(img)
 
@@ -129,7 +128,6 @@ class CLIPLoss(torch.nn.Module):
     def clip_directional_loss(
         self, src_img: torch.Tensor, source_class: str, target_img: torch.Tensor, target_class: str
     ) -> torch.Tensor:
-
         if (
             self.text_direction is None
         ):  # done here and not in init to avoid change of seed when drawing fixed latents. TODO: move before running pre-release experiments.
@@ -194,7 +192,6 @@ class CLIPLoss(torch.nn.Module):
         return patches
 
     def patch_scores(self, img: torch.Tensor, class_str: str, patch_centers, patch_size: int) -> torch.Tensor:
-
         parts = self.compose_text_with_templates(class_str, part_templates)
         tokens = clip.tokenize(parts).to(self.device)
         text_features = self.encode_text(tokens).detach()
@@ -230,7 +227,6 @@ class CLIPLoss(torch.nn.Module):
     def patch_directional_loss(
         self, src_img: torch.Tensor, source_class: str, target_img: torch.Tensor, target_class: str
     ) -> torch.Tensor:
-
         if (
             self.patch_text_directions is None
         ):  # done here and not in init to avoid change of seed when drawing fixed latents. TODO: move before running pre-release experiments.
@@ -316,7 +312,6 @@ class CLIPLoss(torch.nn.Module):
     def clip_img_directional_loss(
         self, src_img: torch.Tensor, source_class: str, target_img: torch.Tensor
     ) -> torch.Tensor:
-
         if (
             self.img_direction is None
         ):  # done here and not in init to avoid change of seed when drawing fixed latents. TODO: move before running pre-release experiments.

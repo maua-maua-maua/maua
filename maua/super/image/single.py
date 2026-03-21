@@ -44,7 +44,6 @@ MODEL_NAMES = list(MODEL_MODULES.keys())
 def upscale(
     images, model_name, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ) -> Generator[torch.Tensor, None, None]:
-
     module = MODEL_MODULES[model_name]
     model = module.load_model(
         model_name.replace("RealESRGAN-", "").replace("SwinIR-", "").replace("waifu2x", "upconv"), torch.device(device)
@@ -58,7 +57,6 @@ def upscale(
 def upscale_image(
     image, model_name, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ) -> Generator[torch.Tensor, None, None]:
-
     module = MODEL_MODULES[model_name]
     model = module.load_model(
         model_name.replace("RealESRGAN-", "").replace("SwinIR-", "").replace("waifu2x", "upconv"), torch.device(device)

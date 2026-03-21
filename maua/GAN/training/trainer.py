@@ -204,7 +204,6 @@ class LightningGAN(LightningModule):
         return torch.ones(1)
 
     def training_step(self, reals, _, optimizer_idx):
-
         if optimizer_idx == 0:  # G step
             latent = self.latent()
 

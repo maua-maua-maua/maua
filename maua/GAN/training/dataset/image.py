@@ -50,7 +50,6 @@ def ImageLoader(
     num_workers=mp.cpu_count(),
     jpeg_quality=95,
 ) -> Loader:
-
     def construct_loader():
         return Loader(
             fname=cache_path,

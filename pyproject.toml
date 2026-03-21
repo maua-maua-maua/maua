@@ -49,3 +49,13 @@ extra-build-dependencies = { "mmcv-full" = ["setuptools<82"], "youtokentome" = [
 
 [tool.ruff]
 line-length = 120
+preview = true
+
+# Third-party git submodules (see .gitmodules); do not lint or format them.
+extend-exclude = [
+    "maua/submodules",
+    "maua/audio",
+    "maua/GAN/studio",
+    "maua/GAN/nv",
+    "maua/GAN/pix2pix",
+]

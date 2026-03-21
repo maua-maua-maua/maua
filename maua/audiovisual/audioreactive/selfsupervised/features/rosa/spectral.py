@@ -294,7 +294,6 @@ def chroma_cqt(
     bins_per_octave=36,
     norm=True,
 ):
-
     # Build the CQT if we don't have one already
     C = torch.abs(
         cqt(

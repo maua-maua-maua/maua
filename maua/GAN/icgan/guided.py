@@ -54,7 +54,6 @@ def checkin(i, best_ind, total_losses, losses, regs, out, noise=None, emb=None, 
 
 
 def icgan_clip():
-
     # @title Generate images with IC-GAN + CLIP!
     # @markdown 1. For **prompt** OpenAI suggest to use the template "A photo of a X." or "A photo of a X, a type of Y." [[paper]](https://cdn.openai.com/papers/Learning_Transferable_Visual_Models_From_Natural_Language_Supervision.pdf)
     # @markdown 1. Select type of IC-GAN model with **gen_model**: "icgan" is conditioned on an instance; "cc_icgan" is conditioned on both instance and a class index.

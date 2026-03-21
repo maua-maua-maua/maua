@@ -41,7 +41,6 @@ tokenizer.add_special_tokens(["<start_of_image>", "<start_of_english>", "<start_
 
 
 def get_masks_and_position_ids_stage1(data, textlen, framelen):
-
     # Extract batch size and sequence length.
     tokens = data
     seq_length = len(data[0])

@@ -32,7 +32,6 @@ VERSIONS = [ver.replace("RIFE-", "") for ver in URLS.keys()]
 
 
 def load_model(model_name="RIFE-2.3", device="cuda", fp16=False):
-
     if fp16:
         torch.set_default_tensor_type(torch.cuda.HalfTensor)
 

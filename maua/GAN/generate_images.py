@@ -26,7 +26,6 @@ def generate_images(
     rotation: torch.Tensor,
     batch_size: int,
 ) -> PythonGenerator[torch.Tensor, None, None]:
-
     # G = torch.jit.trace(G, torch.randn((batch_size, G.z_dim), device=device))
     # G = torch.jit.optimize_for_inference(G)
 

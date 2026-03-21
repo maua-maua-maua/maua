@@ -30,7 +30,6 @@ class SG2Generator(torch.nn.Module):
         return list(self.generator.children())
 
     def get_training_layers(self, phase):
-
         if phase == "texture":
             # learned constant + first convolution + layers 3-10
             return list(self.get_all_layers())[1:3] + list(self.get_all_layers()[4][2:10])
@@ -183,7 +182,6 @@ class ZSSGAN(torch.nn.Module):
         noise=None,
         randomize_noise=True,
     ):
-
         with torch.no_grad():
             if input_is_latent:
                 w_styles = styles

@@ -126,7 +126,6 @@ def generate_interactive(
     batch_size: int = 32,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
 ):
-
     print(WELCOME)
 
     lo_res = (512, 512)

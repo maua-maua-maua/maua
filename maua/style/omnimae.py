@@ -1090,7 +1090,6 @@ class OmniMAE(nn.Module):
 
 
 def vit_base_mae_pretraining(ckpt_path=None):
-
     trunk = VisionTransformer(
         img_size=[3, 16, 224, 224],
         patch_size=[2, 16, 16],
@@ -1163,7 +1162,6 @@ def vit_base_mae_pretraining(ckpt_path=None):
 
 
 def vit_base_mae_finetune_ssv2(ckpt_path=None):
-
     trunk = VisionTransformer(
         img_size=[3, 16, 224, 224],
         patch_size=[2, 16, 16],
@@ -1228,7 +1226,6 @@ def vit_base_mae_finetune_ssv2(ckpt_path=None):
 
 
 def vit_base_mae_finetune_in1k(ckpt_path=None):
-
     trunk = VisionTransformer(
         img_size=[3, 16, 224, 224],
         patch_size=[2, 16, 16],
@@ -1364,7 +1361,6 @@ def vit_large_mae_pretraining(ckpt_path=None):
 
 
 def vit_large_mae_finetune_ssv2(ckpt_path=None):
-
     trunk = VisionTransformer(
         img_size=[3, 16, 224, 224],
         patch_size=[2, 16, 16],
@@ -1431,7 +1427,6 @@ def vit_large_mae_finetune_ssv2(ckpt_path=None):
 
 
 def vit_large_mae_finetune_in1k(ckpt_path=None):
-
     trunk = VisionTransformer(
         img_size=[3, 16, 224, 224],
         patch_size=[2, 16, 16],
@@ -1567,7 +1562,6 @@ def vit_huge_mae_pretraining(ckpt_path=None):
 
 
 def vit_huge_mae_finetune_ssv2(ckpt_path=None):
-
     trunk = VisionTransformer(
         img_size=[3, 16, 224, 224],
         patch_size=[2, 14, 14],
@@ -1634,7 +1628,6 @@ def vit_huge_mae_finetune_ssv2(ckpt_path=None):
 
 
 def vit_huge_mae_finetune_in1k(ckpt_path=None):
-
     trunk = VisionTransformer(
         img_size=[3, 16, 224, 224],
         patch_size=[2, 14, 14],

@@ -25,7 +25,6 @@ def generate_audiovisal_from_patch(
     resize_strategy: str,
     resize_layer: int,
 ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, int]]:
-
     patch = get_patch_from_file(patch_file, patch_name)(
         model_file,
         audio_file,

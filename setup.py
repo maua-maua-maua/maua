@@ -76,6 +76,7 @@ setup(
         "pillow",
         "prdc",
         "py7zr",
+        "pycuda",
         "pyglet",
         "pyopengl",
         "pyspng",

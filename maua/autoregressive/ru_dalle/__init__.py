@@ -23,4 +23,4 @@ SURREALIST_XL_DICT = dict(
 )
 
 
-from . import api, finetune, generate
+from . import api as api, finetune as finetune, generate as generate

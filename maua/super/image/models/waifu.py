@@ -15,7 +15,6 @@ from Models import CARN_V2, UpConv_7, network_to_half  # , DCSCN
 
 
 def load_model(model_name="upconv-anime-1", device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
-
     if "upconv" in model_name:
         upconv, which, noise = model_name.split("-")
         base_path = os.path.dirname(__file__) + "/../../../submodules/waifu2x/model_check_points/Upconv_7/"

@@ -59,7 +59,6 @@ class MauaGenerator(torch.nn.Module):
         batched=True,
         verbose=False,
     ) -> Generator[torch.Tensor, None, None]:
-
         dataset = TensorDataset(*(i.cpu().pin_memory(device) for i in inputs.values()))
 
         def collate_fn(batch):

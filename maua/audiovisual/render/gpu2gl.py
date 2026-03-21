@@ -89,7 +89,7 @@ def GlumpyWindow(module, start_state, w, h):
     w, h = window.get_size()
 
     import pycuda.gl
-    import pycuda.gl.autoinit
+    import pycuda.gl.autoinit  # noqa: F401
 
     tex = np.zeros((h, w, 4), np.uint8).view(gloo.Texture2D)
     tex.activate()  # force gloo to create on GPU

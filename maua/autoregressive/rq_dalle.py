@@ -125,7 +125,6 @@ def get_generated_images_by_texts(
     fast=True,
     is_tqdm=True,
 ):
-
     sample_shape = model_ar.get_block_size()
 
     text_cond = text_encoder(text_prompts).unsqueeze(0).repeat(num_samples, 1).cuda()

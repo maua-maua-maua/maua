@@ -34,7 +34,6 @@ class FFMPEG(Renderer):
         self.batch_size = batch_size
 
     def __call__(self, synthesizer, inputs, postprocess, fp16=True):
-
         dataset = TensorDataset(*(i.cpu().pin_memory(self.device) for i in inputs.values()))
 
         def collate_fn(batch):
