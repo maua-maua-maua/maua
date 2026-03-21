@@ -67,9 +67,6 @@
 [submodule "maua/GAN/pix2pix"]
 	path = maua/GAN/pix2pix
 	url = https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix
-[submodule "maua/submodules/pycuda"]
-	path = maua/submodules/pycuda
-	url = https://github.com/inducer/pycuda.git
 [submodule "maua/submodules/butterfly"]
 	path = maua/submodules/butterfly
 	url = https://github.com/JCBrouwer/butterfly
