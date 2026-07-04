@@ -49,7 +49,7 @@ def fetch_model(filename, url=None, hf_repo=HF_WEIGHTS_REPO, hf_filename=None) -
 def fetch_folder(dirname, hf_repo=HF_WEIGHTS_REPO) -> str:
     """Return a local path to a directory of weight files, downloading it from the Hub if necessary."""
     path = modelzoo_dir() / dirname
-    if not path.exists():
+    if not path.is_dir() or not any(path.iterdir()):  # missing or empty (e.g. a stale placeholder dir)
         from huggingface_hub import snapshot_download
 
         snapshot_download(repo_id=hf_repo, allow_patterns=[f"{dirname}/*"], local_dir=modelzoo_dir())

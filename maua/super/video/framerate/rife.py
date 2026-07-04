@@ -8,7 +8,7 @@ import gdown
 import torch
 from torch.nn import functional as F
 
-from maua.ops.download import fetch_folder
+from maua.ops.download import fetch_folder, modelzoo_dir
 
 URLS = {
     "RIFE-1.0": "1U2AGFY00hafsPmm94-6deeM-9feGN-qg",
@@ -36,12 +36,12 @@ def load_model(model_name="RIFE-2.3", device="cuda", fp16=False):
         torch.set_default_tensor_type(torch.cuda.HalfTensor)
 
     version = model_name.replace("RIFE-", "")
-    model_dir = f"modelzoo/RIFE_HDv{version}"
-    if not os.path.exists(model_dir):
+    model_dir = str(modelzoo_dir() / f"RIFE_HDv{version}")
+    if not os.path.isdir(model_dir) or not os.listdir(model_dir):
         if version.startswith("2"):
             model_dir = fetch_folder(f"RIFE_HDv{version}")
         else:
-            os.makedirs(model_dir)
+            os.makedirs(model_dir, exist_ok=True)
             gdown.download(id=URLS[model_name], output=f"{model_dir}.zip")
             with ZipFile(f"{model_dir}.zip", "r") as archive:
                 for info in archive.infolist():
