@@ -3,8 +3,8 @@ from math import ceil
 import numpy as np
 import torch
 import torch.nn.functional as F
-from maua.audiovisual.audioreactive.inputs import slerp
-from maua.audiovisual.audioreactive.postprocess import gaussian_filter
+from maua.audiovisual.audioreactive.latent import slerp
+from maua.audiovisual.audioreactive.signal import gaussian_filter
 from scipy.interpolate import splev, splrep
 
 

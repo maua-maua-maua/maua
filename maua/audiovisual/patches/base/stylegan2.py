@@ -1,6 +1,6 @@
 import torch
 
-from base import MauaPatch
+from maua.audiovisual.patches.base import MauaPatch
 from maua.GAN.wrappers.stylegan2 import StyleGAN2
 
 

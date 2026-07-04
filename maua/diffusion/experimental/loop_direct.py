@@ -3,7 +3,7 @@ import sys
 import decord
 import numpy as np
 import torch
-from maua.diffusion.multires import round64
+from maua.diffusion.image import round64
 from tqdm import tqdm
 
 from maua.diffusion.experimental.loop import VideoFrames, initialize_cache_files, initialize_optical_flow, warp

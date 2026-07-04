@@ -1,3 +1,4 @@
+unsloth_compiled_cache/
 lightning_logs/
 output/*
 !output/.gitkeep

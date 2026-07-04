@@ -32,12 +32,32 @@ def test_temporalvideo_controlnet(short_video):
     assert torch.is_tensor(out) and out.shape[0] == frames.shape[0]
 
 
-@pytest.mark.skip(reason="maua/diffusion/interpolate.py is script-style with no callable API; wrap in Phase B/C")
-def test_diffusion_interpolate():
-    pass
+@pytest.mark.slow
+@pytest.mark.backend_stable
+def test_diffusion_interpolate(example_image, example_image2, tmp_path, tiny, assert_video):
+    import shutil
+
+    from maua.diffusion.interpolate import interpolate_images
+
+    image_dir = tmp_path / "keyframes"
+    image_dir.mkdir()
+    shutil.copy(example_image, image_dir / "a.jpg")
+    shutil.copy(example_image2, image_dir / "b.jpg")
+
+    output = interpolate_images(
+        image_dir=str(image_dir),
+        prompt="a colorful painting",
+        output_file=str(tmp_path / "interpolated.mp4"),
+        n_frames=4,
+        fps=tiny["fps"],
+        size=tiny["size"],
+        timesteps=tiny["steps"],
+        batch_size=2,
+    )
+    assert_video(output, min_frames=3)
 
 
 @pytest.mark.slow
-@pytest.mark.skip(reason="CogVideo weights are enormous; triage in Phase B")
+@pytest.mark.skip(reason="CogVideo needs protobuf<3.20-era deps; see DEPRECATIONS.md")
 def test_cogvideo():
     pass

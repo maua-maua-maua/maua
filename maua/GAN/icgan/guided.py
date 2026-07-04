@@ -1,4 +1,4 @@
-from icgan import *
+from maua.GAN.icgan.generate import *
 
 
 def checkin(i, best_ind, total_losses, losses, regs, out, noise=None, emb=None, probs=None):

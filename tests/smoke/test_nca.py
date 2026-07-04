@@ -3,13 +3,11 @@ import pytest
 pytestmark = [pytest.mark.gpu]
 
 
-@pytest.mark.xfail(reason="nca/train.py train() reads module-level globals (style_file); repair in Phase B")
-def test_nca_train():
+def test_nca_train_and_generate(example_image, tmp_path, assert_video):
+    from maua.nca.generate import generate
     from maua.nca.train import train
 
-    train()
+    checkpoint = train(style_file=str(example_image), out_dir=str(tmp_path), n_steps=3)
 
-
-@pytest.mark.xfail(reason="nca/generate.py imports nonexistent NCA_train and undefined globals; repair in Phase B")
-def test_nca_generate():
-    import maua.nca.generate  # noqa: F401
+    output = generate(checkpoint, str(tmp_path / "nca.mp4"), num_frames=5, size=64)
+    assert_video(output, min_frames=3)

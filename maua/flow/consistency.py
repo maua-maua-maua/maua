@@ -26,7 +26,7 @@ def check_consistency_np(flow1, flow2, edges_unreliable=True):
     warp_coord_inbound = np.zeros_like(warp_coord)
     warp_coord_inbound[..., 0] = np.clip(warp_coord[..., 0], 0, h - 2)
     warp_coord_inbound[..., 1] = np.clip(warp_coord[..., 1], 0, w - 2)
-    warp_coord_floor = np.floor(warp_coord_inbound).astype(np.int)
+    warp_coord_floor = np.floor(warp_coord_inbound).astype(int)
 
     # for each pixel: bilinear interpolation of the corresponding flow2 values around the point mapped to by flow1
     alpha = warp_coord_inbound - warp_coord_floor

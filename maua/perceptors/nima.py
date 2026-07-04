@@ -23,7 +23,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def load_nima_model(checkpoint="modelzoo/nima_epoch34.pth"):
     if not os.path.exists(checkpoint):
         download("", checkpoint)  # gdown --id 1w9Ig_d6yZqUZSR63kPjZLrEjJ1n845B_
-    base_model = models.vgg16(pretrained=True)
+    base_model = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1)
     model = NIMA(base_model)
     model.load_state_dict(torch.load(checkpoint))
     model = model.to(device).eval()

@@ -8,7 +8,7 @@ from tqdm import trange
 
 from maua.diffusion.processors.base import BaseDiffusionProcessor
 from maua.prompt import TextPrompt
-from maua.utility import download
+from maua.ops.download import fetch_model
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/GLID3XL/")
 from maua.submodules.GLID3XL.encoders.modules import BERTEmbedder
@@ -33,10 +33,7 @@ def create_models(
     use_backward_guidance=False,
     diffusion_steps=1000,
 ):
-    checkpoint_path = f"modelzoo/glid3xl-{checkpoint}.pt"
-    url = MODEL_URLS[f"glid3xl-{checkpoint}"]
-    if not os.path.exists(checkpoint_path):
-        download(url, checkpoint_path)
+    checkpoint_path = fetch_model(f"glid3xl-{checkpoint}.pt", url=MODEL_URLS[f"glid3xl-{checkpoint}"])
     model_state_dict = torch.load(checkpoint_path, map_location="cpu")
 
     model_params = {
@@ -81,18 +78,15 @@ def create_models(
             param.requires_grad = value
 
     # vae
-    kl_path = "modelzoo/glid3xl-kl-f8.pt"
-    if not os.path.exists(kl_path):
-        download(MODEL_URLS["glid3xl-kl-f8"], kl_path)
-    ldm = torch.load(kl_path, map_location="cpu")
+    kl_path = fetch_model("glid3xl-kl-f8.pt", url=MODEL_URLS["glid3xl-kl-f8"])
+    # the kl-f8 checkpoint is a fully pickled AutoencoderKL module, not a state dict
+    ldm = torch.load(kl_path, map_location="cpu", weights_only=False)
     ldm.to(device)
     ldm.eval()
     ldm.requires_grad_(use_backward_guidance)
     set_requires_grad(ldm, use_backward_guidance)
 
-    bert_path = "modelzoo/glid3xl-bert.pt"
-    if not os.path.exists(bert_path):
-        download(MODEL_URLS["glid3xl-bert"], bert_path)
+    bert_path = fetch_model("glid3xl-bert.pt", url=MODEL_URLS["glid3xl-bert"])
     bert = BERTEmbedder(1280, 32)
     sd = torch.load(bert_path, map_location="cpu")
     bert.load_state_dict(sd)

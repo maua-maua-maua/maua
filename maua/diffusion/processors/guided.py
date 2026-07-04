@@ -7,7 +7,7 @@ import torch
 from tqdm import trange
 
 from maua.diffusion.processors.base import BaseDiffusionProcessor
-from maua.utility import download
+from maua.ops.download import fetch_model
 
 sys.path.insert(0, os.path.dirname(__file__) + "/../../submodules/guided_diffusion")
 from maua.submodules.guided_diffusion.guided_diffusion.script_util import (
@@ -132,20 +132,13 @@ class SecondaryDiffusionImageNet2(torch.nn.Module):
 
 def get_checkpoint(checkpoint_name):
     if checkpoint_name == "uncondImageNet512":
-        checkpoint_path = "modelzoo/512x512_diffusion_uncond_finetune_008100.pt"
-        if not os.path.exists(checkpoint_path):
-            download(
-                "https://the-eye.eu/public/AI/models/512x512_diffusion_unconditional_ImageNet/512x512_diffusion_uncond_finetune_008100.pt",
-                checkpoint_path,
-            )
+        checkpoint_path = fetch_model("512x512_diffusion_uncond_finetune_008100.pt")
         checkpoint_config = {"image_size": 512}
     elif checkpoint_name == "uncondImageNet256":
-        checkpoint_path = "modelzoo/256x256_diffusion_uncond.pt"
-        if not os.path.exists(checkpoint_path):
-            download(
-                "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt",
-                checkpoint_path,
-            )
+        checkpoint_path = fetch_model(
+            "256x256_diffusion_uncond.pt",
+            url="https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt",
+        )
         checkpoint_config = {"image_size": 256}
     return checkpoint_path, checkpoint_config
 
@@ -184,9 +177,7 @@ def create_models(
         diffusion_model.convert_to_fp16()
 
     if use_secondary:
-        checkpoint_path = "modelzoo/secondary_model_imagenet_2.pth"
-        if not os.path.exists(checkpoint_path):
-            download("https://the-eye.eu/public/AI/models/v-diffusion/secondary_model_imagenet_2.pth", checkpoint_path)
+        checkpoint_path = fetch_model("secondary_model_imagenet_2.pth")
         secondary_model = SecondaryDiffusionImageNet2()
         secondary_model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
         secondary_model.eval().requires_grad_(False)

@@ -8,7 +8,7 @@ import gdown
 import torch
 from torch.nn import functional as F
 
-from maua.utility import download
+from maua.ops.download import fetch_folder
 
 URLS = {
     "RIFE-1.0": "1U2AGFY00hafsPmm94-6deeM-9feGN-qg",
@@ -38,19 +38,17 @@ def load_model(model_name="RIFE-2.3", device="cuda", fp16=False):
     version = model_name.replace("RIFE-", "")
     model_dir = f"modelzoo/RIFE_HDv{version}"
     if not os.path.exists(model_dir):
-        os.makedirs(model_dir)
-
         if version.startswith("2"):
-            download(URLS[model_name], f"{model_dir}.zip")
+            model_dir = fetch_folder(f"RIFE_HDv{version}")
         else:
+            os.makedirs(model_dir)
             gdown.download(id=URLS[model_name], output=f"{model_dir}.zip")
-
-        with ZipFile(f"{model_dir}.zip", "r") as archive:
-            for info in archive.infolist():
-                if info.filename[-1] not in ["/", ".DS_Store", "._.DS_Store", "__pycache__"]:
-                    info.filename = os.path.basename(info.filename)
-                    archive.extract(info, model_dir)
-        os.remove(f"{model_dir}.zip")
+            with ZipFile(f"{model_dir}.zip", "r") as archive:
+                for info in archive.infolist():
+                    if info.filename[-1] not in ["/", ".DS_Store", "._.DS_Store", "__pycache__"]:
+                        info.filename = os.path.basename(info.filename)
+                        archive.extract(info, model_dir)
+            os.remove(f"{model_dir}.zip")
 
     sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/RIFE/")
     if version.startswith("1"):

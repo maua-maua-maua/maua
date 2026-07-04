@@ -30,7 +30,7 @@ class KBCPerceptor(Perceptor):
 
         self.preprocess = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
-        net = models.vgg19(pretrained=True).features
+        net = models.vgg19(weights=models.VGG19_Weights.IMAGENET1K_V1).features
         self.net = nn.Sequential(
             *list(net.children())[: max(content_layers + style_layers) + 1]  # remove unnecessary layers
         )

@@ -3,11 +3,6 @@ from functools import wraps
 
 import joblib
 
-from maua.audiovisual.audioreactive.audio import *
-from maua.audiovisual.audioreactive.latent import *
-from maua.audiovisual.audioreactive.mir import *
-from maua.audiovisual.audioreactive.signal import *
-from maua.audiovisual.audioreactive.util import *
 from maua.ops.io import hash
 
 
@@ -31,3 +26,11 @@ def cache_to_workspace(name):
         return wrapper
 
     return decorator
+
+
+# these modules use cache_to_workspace, so it must be defined before they are imported
+from maua.audiovisual.audioreactive.audio import *
+from maua.audiovisual.audioreactive.latent import *
+from maua.audiovisual.audioreactive.mir import *
+from maua.audiovisual.audioreactive.signal import *
+from maua.audiovisual.audioreactive.util import *

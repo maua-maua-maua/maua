@@ -8,14 +8,13 @@ from inspect import isfunction
 import numpy as np
 import torch
 from einops import rearrange
-from huggingface_hub import hf_hub_download
 from omegaconf import OmegaConf
 from torch import autocast, einsum
 
 from maua.diffusion.processors.base import BaseDiffusionProcessor
 from maua.diffusion.processors.latent import LatentDiffusion, load_model_from_config
 from maua.prompt import ImagePrompt, TextPrompt
-from maua.utility import download
+from maua.ops.download import fetch_model
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/k_diffusion")
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/stable_diffusion")
@@ -99,18 +98,12 @@ def get_model(checkpoint):
     )
     version = checkpoint.replace(".", "-")
     ckpt = f"modelzoo/stable-diffusion-v{version}.ckpt"
-    if checkpoint in ["1.1", "1.2", "1.3"]:
-        if not os.path.exists(ckpt):
-            hf_hub_download(
-                repo_id=f"CompVis/stable-diffusion-v-{version}-original",
-                filename=f"sd-v{version}.ckpt",
-                cache_dir="modelzoo/",
-                force_filename=f"stable-diffusion-v{version}.ckpt",
-                use_auth_token=True,
-            )
-    elif checkpoint == "1.4":
-        if not os.path.exists(ckpt):
-            download("https://bearsharktopus.b-cdn.net/drilbot_pics/sd-v1-4.ckpt", ckpt)
+    if checkpoint in ["1.1", "1.2", "1.3", "1.4"]:
+        ckpt = fetch_model(
+            f"stable-diffusion-v{version}.ckpt",
+            hf_repo=f"CompVis/stable-diffusion-v-{version}-original",
+            hf_filename=f"sd-v{version}.ckpt",
+        )
     elif checkpoint == "pinkney":
         sys.path.insert(
             0, os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/stable_diffusion_image_conditioned"
@@ -119,12 +112,11 @@ def get_model(checkpoint):
             os.path.abspath(os.path.dirname(__file__))
             + "/../../submodules/stable_diffusion_image_conditioned/configs/stable-diffusion/sd-image-condition-finetune.yaml"
         )
-        ckpt = "modelzoo/stable-diffusion-image-conditioned.ckpt"
-        if not os.path.exists(ckpt):
-            download(
-                "https://huggingface.co/lambdalabs/stable-diffusion-image-conditioned/resolve/main/sd-clip-vit-l14-img-embed_ema_only.ckpt",
-                ckpt,
-            )
+        ckpt = fetch_model(
+            "stable-diffusion-image-conditioned.ckpt",
+            hf_repo="lambdalabs/stable-diffusion-image-conditioned",
+            hf_filename="sd-clip-vit-l14-img-embed_ema_only.ckpt",
+        )
     else:
         ckpt = checkpoint
     return load_model_from_config(OmegaConf.load(config), ckpt)

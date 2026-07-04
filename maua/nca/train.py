@@ -6,6 +6,7 @@ import base64
 import io
 import os
 import sys
+from pathlib import Path
 
 import numpy as np
 import PIL.Image
@@ -14,21 +15,17 @@ from torchvision import models
 from tqdm import tqdm
 
 os.environ["FFMPEG_BINARY"] = "ffmpeg"
-from maua_utils import name
 from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
 
-torch.set_default_tensor_type("torch.cuda.FloatTensor")
 
-
-# Target image + out dir
-style_file = sys.argv[1]
-out_dir = sys.argv[2]
+def name(path):
+    return Path(path).stem
 
 
 def imread(filename, max_size=None, mode=None):
     img = PIL.Image.open(filename)
     if max_size is not None:
-        img.thumbnail((max_size, max_size), PIL.Image.ANTIALIAS)
+        img.thumbnail((max_size, max_size), PIL.Image.LANCZOS)
     if mode is not None:
         img = img.convert(mode)
     img = np.float32(img) / 255.0
@@ -112,11 +109,14 @@ class VideoWriter:
         self.close()
 
 
-# VGG16-based Style Model
-vgg16 = models.vgg16(pretrained=True).features
+# VGG16-based Style Model (loaded lazily so importing this module doesn't download weights)
+vgg16 = None
 
 
 def calc_styles(imgs):
+    global vgg16
+    if vgg16 is None:
+        vgg16 = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1).features
     style_layers = [1, 6, 11, 18, 25]
     mean = torch.tensor([0.485, 0.456, 0.406])[:, None, None]
     std = torch.tensor([0.229, 0.224, 0.225])[:, None, None]
@@ -190,7 +190,9 @@ def to_rgb(x):
     return x[..., :3, :, :]  # +0.5
 
 
-def train():
+def train(style_file, out_dir, n_steps=7500):
+    if torch.cuda.is_available():
+        torch.set_default_device("cuda")
     style_img = imread(style_file, max_size=128)
     with torch.no_grad():
         target_style = calc_styles(to_nchw(style_img[:, :, :3]))
@@ -205,7 +207,7 @@ def train():
         pool = ca.seed(1024)
 
     # training loop
-    for i in tqdm(range(7500)):
+    for i in tqdm(range(n_steps)):
         with torch.no_grad():
             batch_idx = np.random.choice(len(pool), 4, replace=False)
             x = pool[batch_idx]
@@ -247,6 +249,10 @@ def train():
                 imgs = to_rgb(x).permute([0, 2, 3, 1]).cpu()
                 imwrite(f"{out_dir}/{name(style_file)}_{len(loss_log)}.png", np.hstack(imgs))
 
+    final_checkpoint = f"{out_dir}/{name(style_file)}_final.pt"
+    torch.save(ca, final_checkpoint)
+    return final_checkpoint
+
 
 if __name__ == "__main__":
-    train()
+    train(style_file=sys.argv[1], out_dir=sys.argv[2])

@@ -34,5 +34,5 @@ def test_write_video(tmp_path, assert_video):
 
 
 def test_noise_helpers():
-    assert factors(12) == [1, 2, 3, 4, 6, 12] or set(factors(12)) == {1, 2, 3, 4, 6, 12}
-    assert round_to_closest_divisor(7, 4) in (4, 8)
+    assert set(factors(12).tolist()) == {1, 2, 3, 4, 6, 12}
+    assert round_to_closest_divisor(12, 5) in (4, 6)

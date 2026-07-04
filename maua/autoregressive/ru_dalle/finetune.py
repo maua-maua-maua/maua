@@ -17,7 +17,8 @@ from torch.nn.functional import interpolate
 from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from transformers import AdamW, AutoModelForSeq2SeqLM, MarianTokenizer
+from torch.optim import AdamW
+from transformers import AutoModelForSeq2SeqLM, MarianTokenizer
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/ru_dalle")
 sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/VQGAN")

@@ -5,7 +5,7 @@ import decord
 import easydict
 import numpy as np
 import torch
-from maua.diffusion.multires import round64
+from maua.diffusion.image import round64
 from npy_append_array import NpyAppendArray
 from torch.nn.functional import grid_sample
 from torch.utils.data import Dataset

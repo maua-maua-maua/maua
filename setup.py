@@ -80,7 +80,7 @@ setup(
         "pyglet",
         "pyopengl",
         "pyspng",
-        "pytorch-lightning",
+        "pytorch-lightning<2",  # latent-diffusion / taming submodules use PL 1.x APIs (utilities.distributed)
         "pytorch-msssim",
         "pytorch_optimizer",
         "PyYaml",
@@ -92,6 +92,7 @@ setup(
         "scipy",
         "seaborn",
         "sentencepiece",
+        "setuptools<81",  # StyleGAN custom ops (GAN/nv) and mmcv import pkg_resources (removed in 81+)
         "soundfile",
         "SwissArmyTransformer",
         "tensorboard",

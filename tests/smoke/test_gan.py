@@ -40,11 +40,14 @@ def test_stylegan2_interpolation(stylegan2_model):
 
 
 @pytest.mark.slow
-def test_projector():
-    pytest.xfail("projector.py has hardcoded /home/hans paths; repair in Phase B")
+def test_projector(stylegan2_model, example_image, tmp_path):
+    from maua.GAN.projector import project
+
+    project(model_file=str(stylegan2_model), file=str(example_image), out_dir=str(tmp_path), steps=2)
+    assert len(list(tmp_path.glob("*.jpg"))) > 0 or len(list(tmp_path.glob("*.pt"))) > 0
 
 
 @pytest.mark.slow
-@pytest.mark.skip(reason="NADA/blending/SeFa need per-method triage in Phase B")
+@pytest.mark.skip(reason="NADA needs the missing maua.GAN.pix2pix submodule; blending/SeFa untriaged")
 def test_nada_blend_sefa():
     pass

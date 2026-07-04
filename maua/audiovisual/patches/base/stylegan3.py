@@ -1,4 +1,4 @@
-from base import MauaPatch
+from maua.audiovisual.patches.base import MauaPatch
 from maua.GAN.wrappers.stylegan3 import StyleGAN3
 
 
