@@ -47,6 +47,21 @@ no-build-isolation-package = ["glumpy"]
 # youtokentome: setup imports Cython without declaring it as a build dependency.
 extra-build-dependencies = { "mmcv-full" = ["setuptools<82"], "youtokentome" = ["cython"] }
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Fast tier runs by default; GPU smoke tier: pytest -m gpu
+addopts = "-m 'not gpu'"
+markers = [
+    "gpu: needs a CUDA GPU (smoke tier)",
+    "slow: takes a long time even at tiny settings",
+    "download: downloads model weights on first run",
+    "backend_stable: stable diffusion backend",
+    "backend_guided: guided (Disco) diffusion backend",
+    "backend_latent: latent diffusion backend",
+    "backend_glide: GLIDE backend",
+    "backend_glid3xl: GLID-3-XL backend",
+]
+
 [tool.ruff]
 line-length = 120
 preview = true
