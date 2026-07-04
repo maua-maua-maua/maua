@@ -78,11 +78,27 @@ original gdrive IDs.
 | `audiovisual/audioreactive/selfsupervised/features/correlation` | `anatome` (unsatisfiable pins) |
 | `audiovisual/audioreactive/selfsupervised/features/efficient_quantile` | C++ extension; build in place via its `setup.py` |
 
-## needs-user
+## needs-dep (continued) / import-wiring
 
 | Module | Blocker |
 |---|---|
-| `GAN/ZSSGAN`, `GAN/nada` | Import `maua.GAN.pix2pix`, a git submodule whose gitlink was never committed (it's in `.gitmodules` but not the index). Re-add with:<br>`git submodule add https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix maua/GAN/pix2pix`<br>The automated permission classifier blocks me from adding an external repo you didn't name, so this one is yours to run. |
+| `GAN/ZSSGAN`, `GAN/nada` | The `maua.GAN.pix2pix` submodule is now present, but ZSSGAN's vendored code uses bare `from models import ...` / `from util import ...` that assume the pix2pix directory is on `sys.path`. Needs an import shim (add pix2pix to `sys.path`, or rewrite the imports to `maua.GAN.pix2pix.*`) before it will load. |
+
+## Fragile submodule working-tree patches
+
+Several vendored submodules only work with local working-tree edits that are **not**
+committed to this repo (the parent repo only tracks the submodule commit pointer).
+A `git submodule update` resets them and reintroduces the breakage. Known patches:
+
+| Submodule | Patch |
+|---|---|
+| `submodules/VQGAN` | `taming/models/*`, LPIPS/vqperceptual tweaks (pre-existing) |
+| `submodules/latent_diffusion` | `ldm/util.py`: a botched `print(...)` removal left a dangling f-string → `IndentationError`; repaired to a comment. Reintroduced when the submodule was reset during the pix2pix add. |
+| `submodules/{BSRGAN,liteflownet,pwc,spynet,unflow}` | pre-existing local edits |
+
+The `torch._six` shim in `maua/ops/compat.py` covers VQGAN/taming's
+`from torch._six import string_classes` so that particular breakage no longer depends
+on a working-tree patch.
 
 ## quarantine (Phase C → `maua/legacy/`)
 

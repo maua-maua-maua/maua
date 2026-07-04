@@ -91,9 +91,17 @@ def preprocess_optical_flow(video_file, flow_model, consistency="full", debug_op
     if not (os.path.exists(frf) and os.path.exists(fwf) and os.path.exists(bkf)):
         with NpyFile(frf) as frames, NpyFile(fwf) as forward, NpyFile(bkf) as backward:
             vr = VideoReader(video_file)
+
+            def read_frame(idx):
+                # decord's global bridge may be set to "torch" elsewhere, in which case
+                # indexing yields a tensor instead of an NDArray with .asnumpy().
+                frame = vr[idx]
+                frame = frame if torch.is_tensor(frame) else torch.from_numpy(frame.asnumpy())
+                return frame.div(255).permute(2, 0, 1).unsqueeze(0)
+
             for i in tqdm(range(len(vr)), desc="Estimating optical flow..."):
-                frame1 = torch.from_numpy(vr[i].asnumpy()).div(255).permute(2, 0, 1).unsqueeze(0)
-                frame2 = torch.from_numpy(vr[(i + 1) % len(vr)].asnumpy()).div(255).permute(2, 0, 1).unsqueeze(0)
+                frame1 = read_frame(i)
+                frame2 = read_frame((i + 1) % len(vr))
 
                 forward_flow = flow_model(frame1, frame2)
                 backward_flow = flow_model(frame2, frame1)

@@ -89,7 +89,7 @@ def ada2ros(state_nv):
 
 
 def load_rosinality2ada(path, blur_scale=4.0, for_inference=False):
-    state_dict = torch.load(path)
+    state_dict = torch.load(path, weights_only=False)
     state_ros = state_dict
     if "g_ema" in state_dict:
         state_ros = state_dict["g_ema"]
@@ -243,7 +243,7 @@ def load_nvidia(path, for_inference=None):
 def load_nvidia_pt(
     path, z_dim=512, c_dim=0, w_dim=512, img_resolution=1024, img_channels=3, map_layers=8, for_inference=False
 ):
-    state_dict = torch.load(path)["G_ema"]
+    state_dict = torch.load(path, weights_only=False)["G_ema"]
 
     # create new Generator class to avoid the uninformative errors from NVIDIA's persistence system
     try:

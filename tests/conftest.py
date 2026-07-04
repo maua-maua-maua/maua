@@ -89,7 +89,9 @@ def stylegan2_model(modelzoo):
     env = os.environ.get("MAUA_STYLEGAN2_PKL")
     if env:
         return Path(env)
-    existing = sorted(modelzoo.glob("*.pkl"))
+    # Only reuse a local pkl if it looks like a StyleGAN checkpoint; the model zoo also
+    # holds unrelated pickles (e.g. jax_diffusion_*.pkl) that the GAN loaders can't read.
+    existing = [p for p in sorted(modelzoo.glob("*.pkl")) if "diffusion" not in p.name.lower()]
     if existing:
         return existing[0]
     url = "https://api.ngc.nvidia.com/v2/models/nvidia/research/stylegan2/versions/1/files/stylegan2-ffhq-256x256.pkl"

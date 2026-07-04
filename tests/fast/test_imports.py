@@ -24,10 +24,10 @@ EXCLUDE = (
 XFAIL_IMPORTS: dict[str, str] = {
     # module: reason
     "maua.diffusion.flux2hd": "loads the full FLUX pipeline (multi-GB download) at import time; repair in Phase B",
-    # --- missing pix2pix submodule (gitlink was never committed; re-add with:
-    #     git submodule add https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix maua/GAN/pix2pix)
-    "maua.GAN.ZSSGAN.model.ZSSGAN": "imports maua.GAN.pix2pix, a submodule missing from the git index",
-    "maua.GAN.nada": "imports ZSSGAN, which needs the missing maua.GAN.pix2pix submodule",
+    # --- pix2pix submodule is now present, but ZSSGAN's vendored code does bare
+    #     `from models...`/`from util...` imports that expect the pix2pix dir on sys.path
+    "maua.GAN.ZSSGAN.model.ZSSGAN": "vendored ZSSGAN uses bare `from models import` expecting pix2pix on sys.path; needs import wiring",
+    "maua.GAN.nada": "imports ZSSGAN (see above)",
     # --- Colab-notebook pastes: model loads and hardcoded /home/hans paths at import time
     "maua.GAN.icgan.generate": "Colab-style script: loads SwAV/IC-GAN weights and loops over hardcoded datasets at import; legacy candidate",
     "maua.GAN.icgan.guided": "star-imports maua.GAN.icgan.generate (see above)",

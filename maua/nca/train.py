@@ -162,7 +162,7 @@ def perchannel_conv(x, filters):
 
 
 def perception(x):
-    filters = torch.stack([ident, sobel_x, sobel_x.T, lap])
+    filters = torch.stack([ident, sobel_x, sobel_x.T, lap]).to(x.device)
     return perchannel_conv(x, filters)
 
 
@@ -191,8 +191,18 @@ def to_rgb(x):
 
 
 def train(style_file, out_dir, n_steps=7500):
+    # Scope the default-device change to this call so it doesn't leak into the rest of
+    # the process (importing modules / other jobs shouldn't inherit a cuda default).
+    prev_device = torch.get_default_device()
     if torch.cuda.is_available():
         torch.set_default_device("cuda")
+    try:
+        return _train(style_file, out_dir, n_steps)
+    finally:
+        torch.set_default_device(prev_device)
+
+
+def _train(style_file, out_dir, n_steps):
     style_img = imread(style_file, max_size=128)
     with torch.no_grad():
         target_style = calc_styles(to_nchw(style_img[:, :, :3]))

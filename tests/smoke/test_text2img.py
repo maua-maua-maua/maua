@@ -28,6 +28,7 @@ def test_text2img(diffusion, tiny):
 
 
 @pytest.mark.slow
+@pytest.mark.xfail(reason="minDALL-E submodule uses mutable dataclass defaults, rejected by py>=3.12; see DEPRECATIONS.md", strict=False)
 def test_min_dalle():
     from maua.autoregressive.min_dalle.generate import generate
 

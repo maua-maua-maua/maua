@@ -34,7 +34,7 @@ class Silence:
 
 def load_model_from_config(config, ckpt):
     with Silence():
-        sd = torch.load(ckpt, map_location="cpu")["state_dict"]
+        sd = torch.load(ckpt, map_location="cpu", weights_only=False)["state_dict"]
         model = instantiate_from_config(config.model)
         model.load_state_dict(sd, strict=False)
         model.cuda()

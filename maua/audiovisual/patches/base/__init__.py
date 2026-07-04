@@ -26,12 +26,18 @@ class MauaPatch:
 
 
 def get_patch_from_file(filepath, class_name=None):
-    import importlib
+    import importlib.util
     import inspect
+    from pathlib import Path
 
-    module_name = filepath.replace(".py", "").replace("/", ".")
+    # Load the patch module directly from its file so any path (absolute or relative)
+    # works, rather than trying to turn a filesystem path into a dotted import name.
+    module_name = f"maua_patch_{Path(filepath).stem}"
+    spec = importlib.util.spec_from_file_location(module_name, filepath)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
 
-    for _, cls in inspect.getmembers(importlib.import_module(module_name), inspect.isclass):
+    for _, cls in inspect.getmembers(module, inspect.isclass):
         if (
             cls.__module__ == module_name
             and issubclass(cls, MauaPatch)
