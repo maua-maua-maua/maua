@@ -21,7 +21,7 @@ from tqdm import tqdm
 
 os.environ["SAT_HOME"] = "modelzoo/"
 cogvideo_submodule = os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/CogVideo/"
-sys.path.append(cogvideo_submodule)
+sys.path.insert(0, cogvideo_submodule)
 
 # HACK to override hardcoded cluster_label2.npy path :(
 for file in [
@@ -33,11 +33,45 @@ for file in [
     with open(file, "w") as f:
         f.write(txt)
 
-from coglm_strategy import CoglmStrategy
-from models.cogvideo_cache_model import CogVideoCacheModel
-from sr_pipeline import DirectSuperResolution
 
-tokenizer.add_special_tokens(["<start_of_image>", "<start_of_english>", "<start_of_chinese>"])
+# CogVideo is a script-style repo whose bare `from models import ...` / `import coglm_strategy` /
+# `import sr_pipeline` expect its root on sys.path. Another vendored repo (pix2pix, pulled in
+# transitively by GAN/ZSSGAN) also ships a top-level `models` package — and because pix2pix's is a
+# *regular* package (`models/__init__.py`) while CogVideo's is a namespace package, pix2pix wins the
+# name regardless of sys.path order once it has been imported anywhere in the process. Resolve these
+# imports with pix2pix's root hidden and the colliding cached bare names dropped, then restore so
+# pix2pix (held elsewhere under the absolute name `maua.GAN.pix2pix.models`) keeps working.
+def _import_cogvideo_globals():
+    hidden = [p for p in sys.path if os.path.normpath(p).endswith(os.path.join("GAN", "pix2pix"))]
+    shadowed = {
+        m: sys.modules[m]
+        for m in list(sys.modules)
+        if m == "models" or m.startswith(("models.", "coglm_strategy", "sr_pipeline"))
+    }
+    for p in hidden:
+        sys.path.remove(p)
+    for m in shadowed:
+        del sys.modules[m]
+    try:
+        from coglm_strategy import CoglmStrategy
+        from models.cogvideo_cache_model import CogVideoCacheModel
+        from sr_pipeline import DirectSuperResolution
+    finally:
+        sys.path[0:0] = hidden
+        for m, mod in shadowed.items():
+            sys.modules[m] = mod
+    return CoglmStrategy, CogVideoCacheModel, DirectSuperResolution
+
+
+CoglmStrategy, CogVideoCacheModel, DirectSuperResolution = _import_cogvideo_globals()
+
+# icetk.icetk is a process-wide singleton; if infinite.py (or another CogVideo entry point) already
+# registered these, re-adding raises "already defined". Adding them is idempotent in intent.
+try:
+    tokenizer.add_special_tokens(["<start_of_image>", "<start_of_english>", "<start_of_chinese>"])
+except RuntimeError as e:
+    if "already defined" not in str(e):
+        raise
 
 
 def get_masks_and_position_ids_stage1(data, textlen, framelen):

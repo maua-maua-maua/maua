@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from involution import Involution2d
+from maua.GAN.training.models.experimental._involution import Involution2d
 from torch.nn import GELU, LayerNorm, Module, Sequential, UpsamplingBilinear2d
 
 

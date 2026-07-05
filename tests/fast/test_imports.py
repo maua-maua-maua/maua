@@ -23,35 +23,17 @@ EXCLUDE = (
 
 XFAIL_IMPORTS: dict[str, str] = {
     # module: reason
-    "maua.diffusion.flux2hd": "loads the full FLUX pipeline (multi-GB download) at import time; repair in Phase B",
-    # --- pix2pix submodule is now present, but ZSSGAN's vendored code does bare
-    #     `from models...`/`from util...` imports that expect the pix2pix dir on sys.path
-    "maua.GAN.ZSSGAN.model.ZSSGAN": "vendored ZSSGAN uses bare `from models import` expecting pix2pix on sys.path; needs import wiring",
-    "maua.GAN.nada": "imports ZSSGAN (see above)",
-    # --- Colab-notebook pastes: model loads and hardcoded /home/hans paths at import time
-    "maua.GAN.icgan.generate": "Colab-style script: loads SwAV/IC-GAN weights and loops over hardcoded datasets at import; legacy candidate",
-    "maua.GAN.icgan.guided": "star-imports maua.GAN.icgan.generate (see above)",
-    "maua.style.omnimae": "loads modelzoo/vitl_ssv2_ft.torch at import time; legacy candidate",
-    # --- heavy/abandoned optional deps for the GAN training stack
-    "maua.GAN.training.trainer": "requires ffcv (unmaintained, compile-heavy); legacy candidate",
-    "maua.GAN.training.train_v0": "requires padl (abandoned); legacy candidate",
-    "maua.GAN.training.dataset.image": "requires ffcv (unmaintained, compile-heavy); legacy candidate",
-    "maua.GAN.training.models.experimental.deepinvolutional": "requires involution (research dep, not on PyPI)",
-    "maua.GAN.training.models.experimental.equivariant": "requires escnn (research dep with unsatisfiable pins)",
-    "maua.GAN.training.models.experimental.stylehypermixerfly": "requires torch_butterfly (research dep)",
-    # --- selfsupervised audioreactive research extras
-    "maua.audiovisual.audioreactive.selfsupervised.features.correlation": "requires anatome (unsatisfiable pins on modern torch)",
-    "maua.audiovisual.audioreactive.selfsupervised.features.efficient_quantile": "C++ extension that must be built in-place (see its setup.py)",
+    # flux2hd is untracked and still loads the full FLUX pipeline at import; it gets wrapped +
+    # moved to maua/text2img/flux.py in Phase C.
+    "maua.diffusion.flux2hd": "loads the full FLUX pipeline (multi-GB download) at import time; wrap in Phase C",
+    # --- intentionally dropped optional deps (see DEPRECATIONS.md). padl is abandoned upstream and
+    #     ffcv is unmaintained + compile-heavy; the user chose to drop both rather than vendor them.
+    #     These three training-stack modules are the only remaining legacy candidates.
+    "maua.GAN.training.trainer": "requires ffcv (intentionally dropped: unmaintained, compile-heavy); legacy candidate",
+    "maua.GAN.training.train_v0": "requires padl (intentionally dropped: abandoned upstream); legacy candidate",
+    "maua.GAN.training.dataset.image": "requires ffcv (intentionally dropped: unmaintained, compile-heavy); legacy candidate",
+    # --- not an importable module (setuptools build script for the now-absorbed efficient_quantile)
     "maua.audiovisual.audioreactive.selfsupervised.features.efficient_quantile.setup": "setuptools build script, not an importable module",
-    # --- autoregressive models broken by py3.12 / new huggingface_hub / old protobuf
-    "maua.autoregressive.min_dalle.generate": "minDALL-E submodule uses mutable dataclass defaults (rejected by python>=3.12)",
-    "maua.autoregressive.rq_dalle": "rqvae submodule uses mutable dataclass defaults (rejected by python>=3.12)",
-    "maua.autoregressive.ru_dalle": "rudalle package needs huggingface_hub.cached_download (removed)",
-    "maua.autoregressive.ru_dalle.api": "rudalle package needs huggingface_hub.cached_download (removed)",
-    "maua.autoregressive.ru_dalle.finetune": "rudalle package needs huggingface_hub.cached_download (removed)",
-    "maua.autoregressive.ru_dalle.generate": "rudalle package needs huggingface_hub.cached_download (removed)",
-    "maua.autoregressive.cog.video.generate": "CogVideo/icetk need protobuf<3.20 era APIs; legacy candidate",
-    "maua.autoregressive.cog.video.infinite": "CogVideo/icetk need protobuf<3.20 era APIs; legacy candidate",
 }
 
 # No single module should take longer than this to import; catches import-time downloads/compiles.

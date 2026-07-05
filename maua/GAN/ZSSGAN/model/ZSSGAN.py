@@ -1,6 +1,16 @@
+import os
+import sys
+
 import torch
 
 from maua.GAN.load import ada2ros
+
+# pix2pix (junyanz/pytorch-CycleGAN-and-pix2pix) is script-style and uses bare imports such as
+# `from models.base_model import BaseModel`; put its root on sys.path so those resolve.
+_PIX2PIX_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "pix2pix")
+if _PIX2PIX_ROOT not in sys.path:
+    sys.path.insert(0, _PIX2PIX_ROOT)
+
 from maua.GAN.pix2pix.models import networks as CycleGAN
 from maua.GAN.ZSSGAN.criteria.clip_loss import CLIPLoss
 from maua.GAN.ZSSGAN.model.sg2_model import Discriminator, Generator

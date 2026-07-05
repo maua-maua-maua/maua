@@ -1692,46 +1692,75 @@ from resize_right import resize
 from torchvision.transforms.functional import normalize
 from tqdm import trange
 
-with torch.no_grad():
-    style, _, info = torchvision.io.read_video("/home/hans/datasets/video/dreams.mp4")
-    fps = info["video_fps"]
-    style = style[:8].permute(0, 3, 1, 2).div(255)
-    style = resize(style, out_shape=(224, 224)).cuda()
-    style = normalize(style, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+from maua.ops.download import fetch_model
 
-    # https://dl.fbaipublicfiles.com/omnivore/omnimae_ckpts/vitl_ssv2_ft.torch
-    trunk = vit_large_mae_finetune_ssv2(ckpt_path="modelzoo/vitl_ssv2_ft.torch").trunk.eval().cuda()
 
-    style_targets = []
-    x = trunk.prepare_tokens(style, None, None)
-    for b, block in enumerate(trunk.blocks):
-        x = block(x)
-        if b % 8 == 0:
-            feat = x.flatten().unsqueeze(1)
-            feat = feat @ feat.T
-            style_targets.append(feat)
+def style_transfer(style_path, output="output/omnimaestyle.mp4", iterations=1024, ckpt_path=None, device="cuda"):
+    """Optimize a video to match the OmniMAE (ViT-L, SSv2-finetuned) Gram-matrix features of a style clip."""
+    if ckpt_path is None:
+        ckpt_path = fetch_model(
+            "vitl_ssv2_ft.torch",
+            url="https://dl.fbaipublicfiles.com/omnivore/omnimae_ckpts/vitl_ssv2_ft.torch",
+        )
 
-    pastiche = torch.rand_like(style)
-    pastiche = normalize(pastiche, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    pastiche.requires_grad_()
-    opt = torch.optim.Adam([pastiche])
+    with torch.no_grad():
+        style, _, info = torchvision.io.read_video(style_path)
+        fps = info["video_fps"]
+        style = style[:8].permute(0, 3, 1, 2).div(255)
+        style = resize(style, out_shape=(224, 224)).to(device)
+        style = normalize(style, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
-for it in trange(1024):
-    opt.zero_grad()
+        trunk = vit_large_mae_finetune_ssv2(ckpt_path=ckpt_path).trunk.eval().to(device)
 
-    features = []
-    x = trunk.prepare_tokens(pastiche, None, None)
-    for b, block in enumerate(trunk.blocks):
-        x = block(x)
-        if b % 8 == 0:
-            feat = x.flatten().unsqueeze(1)
-            feat = feat @ feat.T
-            features.append(feat)
+        style_targets = []
+        x = trunk.prepare_tokens(style, None, None)
+        for b, block in enumerate(trunk.blocks):
+            x = block(x)
+            if b % 8 == 0:
+                feat = x.flatten().unsqueeze(1)
+                feat = feat @ feat.T
+                style_targets.append(feat)
 
-    loss = sum([mse_loss(feat, targ) for feat, targ in zip(features, style_targets)])
-    loss.backward()
-    opt.step()
-    if it % 64 == 0:
-        print(loss)
-        video = pastiche.mul(255).byte().permute(0, 2, 3, 1).cpu()
-        torchvision.io.write_video("output/omnimaestyle.mp4", video, fps)
+        pastiche = torch.rand_like(style)
+        pastiche = normalize(pastiche, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        pastiche.requires_grad_()
+        opt = torch.optim.Adam([pastiche])
+
+    for it in trange(iterations):
+        opt.zero_grad()
+
+        features = []
+        x = trunk.prepare_tokens(pastiche, None, None)
+        for b, block in enumerate(trunk.blocks):
+            x = block(x)
+            if b % 8 == 0:
+                feat = x.flatten().unsqueeze(1)
+                feat = feat @ feat.T
+                features.append(feat)
+
+        loss = sum([mse_loss(feat, targ) for feat, targ in zip(features, style_targets)])
+        loss.backward()
+        opt.step()
+        if it % 64 == 0:
+            print(loss)
+            video = pastiche.mul(255).byte().permute(0, 2, 3, 1).cpu()
+            torchvision.io.write_video(output, video, fps)
+
+
+def argument_parser():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="OmniMAE video style transfer")
+    parser.add_argument("style_path", help="path to the style video clip")
+    parser.add_argument("--output", default="output/omnimaestyle.mp4")
+    parser.add_argument("--iterations", type=int, default=1024)
+    parser.add_argument("--ckpt-path", default=None, help="path to vitl_ssv2_ft.torch (auto-downloaded if unset)")
+    return parser
+
+
+def main(args):
+    style_transfer(args.style_path, output=args.output, iterations=args.iterations, ckpt_path=args.ckpt_path)
+
+
+if __name__ == "__main__":
+    main(argument_parser().parse_args())

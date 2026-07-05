@@ -2,11 +2,19 @@ import math
 
 import numpy as np
 import torch
-from anatome.distance import cca as canonical_correlation_analysis
-from anatome.distance import linear_cka_distance, orthogonal_procrustes_distance, pwcca_distance, svcca_distance
 from torch import Tensor
 from torchmetrics.functional import matthews_corrcoef
-from torchsort import soft_rank
+
+from maua.audiovisual.audioreactive.selfsupervised.features._anatome_distance import (
+    cca as canonical_correlation_analysis,
+)
+from maua.audiovisual.audioreactive.selfsupervised.features._anatome_distance import (
+    linear_cka_distance,
+    orthogonal_procrustes_distance,
+    pwcca_distance,
+    svcca_distance,
+)
+from maua.audiovisual.audioreactive.selfsupervised.features._soft_rank import soft_rank
 
 
 @torch.jit.script

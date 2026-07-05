@@ -47,9 +47,7 @@ import imageio
 import nltk
 import numpy as np
 import torch
-from nltk.corpus import wordnet as wn
 from PIL import Image as Image_PIL
-from pytorch_pretrained_biggan import utils
 from scipy.stats import truncnorm
 from torch import nn
 from torchvision import transforms
@@ -63,13 +61,11 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)) + "/../../submodules/
 
 import data_utils.utils as data_utils
 import inference.utils as inference_utils
-import realesrgan
 import sklearn.metrics
-from basicsr.archs.rrdbnet_arch import RRDBNet
+
+from maua.ops.download import fetch_model
 
 warnings.simplefilter("ignore", cma.evolution_strategy.InjectionWarning)
-nltk.download("wordnet")
-torch.manual_seed(np.random.randint(sys.maxsize))
 norm_mean = torch.Tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
 norm_std = torch.Tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
 hist = []
@@ -146,7 +142,10 @@ def load_feature_extractor(gen_model, last_feature_extractor, feature_extractor)
         if feat_ext_name == "classification":
             feat_ext_path = ""
         else:
-            feat_ext_path = "modelzoo/swav_pretrained.pth.tar"
+            feat_ext_path = fetch_model(
+                "swav_pretrained.pth.tar",
+                url="https://dl.fbaipublicfiles.com/deepcluster/swav_800ep_pretrain.pth.tar",
+            )
         last_feature_extractor = feat_ext_name
         feature_extractor = data_utils.load_pretrained_feature_extractor(feat_ext_path, feature_extractor=feat_ext_name)
         feature_extractor.eval()
@@ -178,156 +177,156 @@ last_feature_extractor = None
 model = None
 feature_extractor = None
 
-# @title Generate images with IC-GAN!
-# @markdown 1. Select type of IC-GAN model with **gen_model**: "icgan" is conditioned on an instance; "cc_icgan" is conditioned on both instance and a class index.
-# @markdown 1. Select which instance to condition on, following one of the following options:
-# @markdown     1. **input_image_instance** is the path to an input image, from either the mounted Google Drive or a manually uploaded image to "Files" (left part of the screen).
-# @markdown     1. **input_feature_index** write an integer from 0 to 1000. This will change the instance conditioning and therefore the style and semantics of the generated images. This will select one of the 1000 instance features pre-selected from ImageNet using k-means.
-# @markdown 1. For **class_index** (only valid for gen_model="cc_icgan") write an integer from 0 to 1000. This will change the ImageNet class to condition on. Consult [this link](https://gist.github.com/yrevar/942d3a0ac09ec9e5eb3a) for a correspondence between class name and indexes.
-# @markdown 1. **num_samples_ranked** (default=16) indicates the number of generated images to output in a mosaic. These generated images are the ones that scored a higher cosine similarity with the conditioning instance, out of **num_samples_total** (default=160) generated samples. Increasing "num_samples_total" will result in higher run times, but more generated images to choose the top "num_samples_ranked" from, and therefore higher chance of better image quality. Reducing "num_samples_total" too much could result in generated images with poorer visual quality. A ratio of 10:1 (num_samples_total:num_samples_ranked) is recommended.
-# @markdown 1. Vary **truncation** (default=0.7) from 0 to 1 to apply the [truncation trick](https://arxiv.org/abs/1809.11096). Truncation=1 will provide more diverse but possibly poorer quality images. Trucation values between 0.7 and 0.9 seem to empirically work well.
-# @markdown 1. **seed**=0 means no seed.
-
-gen_model = "icgan"  # @param ['icgan', 'cc_icgan']
-if gen_model == "icgan":
-    experiment_name = "icgan_biggan_imagenet_res256"
-else:
-    experiment_name = "cc_icgan_biggan_imagenet_res256"
-# last_gen_model = experiment_name
-size = "256"
-input_image_instance = "/home/hans/datasets/diffuse/select/Dystopian_metropolis_trending_on_ArtStation_2418853.png"  # @param {type:"string"}
-input_feature_index = 3  # @param {type:'integer'}
-class_index = 538  # @param {type:'integer'}
-num_samples_ranked = 8  # @param {type:'integer'}
-num_samples_total = 240  # @param {type:'integer'}
-truncation = 1.0  # @param {type:'number'}
-stochastic_truncation = True  # @param {type:'boolean'}
-download_file = False  # @param {type:'boolean'}
-seed = None
-noise_size = 128
-class_size = 1000
+# defaults referenced by get_output(); overridden in main()
+truncation = 1.0
+stochastic_truncation = True
 channels = 3
-batch_size = 4
-if gen_model == "icgan":
-    class_index = None
-if "biggan" in gen_model:
-    input_feature_index = None
-    input_image_instance = None
-
-assert num_samples_ranked <= num_samples_total
-
-state = None if not seed else np.random.RandomState(seed)
-np.random.seed(seed)
-
-feature_extractor_name = "classification" if gen_model == "cc_icgan" else "selfsupervised"
-# Load feature extractor (outlier filtering and optionally input image feature extraction)
-feature_extractor, last_feature_extractor = load_feature_extractor(gen_model, last_feature_extractor, feature_extractor)
-# Load generative model
-model, last_gen_model = load_generative_model(gen_model, last_gen_model, experiment_name, model)
-
-replace_to_inplace_relu(model)
-ind2name = {index: wn.of2ss("%08dn" % offset).lemma_names()[0] for offset, index in utils.IMAGENET.items()}
-
-eps = 1e-8
 
 
-upsampler = realesrgan.RealESRGANer(
-    scale=4,
-    model_path="modelzoo/RealESRGAN_x4plus.pth",
-    model=RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4),
-    tile=0,
-    tile_pad=10,
-    pre_pad=0,
-)
-for input_image_instance in tqdm(glob("/home/hans/datasets/diffuse/sorts/best/*")):
-    # Prepare other variables
-    name_file = "%s_%s_cls%s_inst%s" % (
-        Path(input_image_instance).stem,
-        gen_model,
-        str(class_index) if class_index is not None else "None",
-        str(input_feature_index) if input_feature_index is not None else "None",
+def main(args):
+    global model, truncation, stochastic_truncation, channels
+    global last_gen_model, last_feature_extractor, feature_extractor
+
+    nltk.download("wordnet")
+    torch.manual_seed(np.random.randint(sys.maxsize))
+
+    gen_model = args.gen_model
+    experiment_name = "icgan_biggan_imagenet_res256" if gen_model == "icgan" else "cc_icgan_biggan_imagenet_res256"
+    size = "256"
+    input_feature_index = 3
+    class_index = 538
+    num_samples_ranked = args.num_samples_ranked
+    num_samples_total = args.num_samples_total
+    truncation = args.truncation
+    stochastic_truncation = True
+    seed = args.seed
+    noise_size = 128
+    channels = 3
+    batch_size = args.batch_size
+    if gen_model == "icgan":
+        class_index = None
+
+    assert num_samples_ranked <= num_samples_total
+
+    state = None if not seed else np.random.RandomState(seed)
+    np.random.seed(seed)
+
+    feature_extractor_name = "classification" if gen_model == "cc_icgan" else "selfsupervised"
+    feature_extractor, last_feature_extractor = load_feature_extractor(
+        gen_model, last_feature_extractor, feature_extractor
     )
+    model, last_gen_model = load_generative_model(gen_model, last_gen_model, experiment_name, model)
 
-    # Load features
-    if input_image_instance not in ["None", ""]:
-        # print("Obtainin g instance features from input image!")
-        input_feature_index = None
-        input_image_tensor = preprocess_input_image(input_image_instance, int(size))
-        # print("Displaying instance conditioning:")
-        with torch.no_grad():
-            input_features, _ = feature_extractor(input_image_tensor.cuda())
-        input_features /= torch.linalg.norm(input_features, dim=-1, keepdims=True)
-    elif input_feature_index is not None:
-        # print("Selecting an instance from pre-extracted vectors!")
-        input_features = np.load(
-            "modelzoo/stored_instances/imagenet_res"
-            + str(size)
-            + "_rn50_"
-            + feature_extractor_name
-            + "_kmeans_k1000_instance_features.npy",
-            allow_pickle=True,
-        ).item()["instance_features"][input_feature_index : input_feature_index + 1]
-    else:
-        input_features = None
+    replace_to_inplace_relu(model)
 
-    # Create noise, instance and class vector
-    noise_vector = truncnorm.rvs(
-        -2 * truncation, 2 * truncation, size=(num_samples_total, noise_size), random_state=state
-    ).astype(np.float32)  # see https://github.com/tensorflow/hub/issues/214
-    noise_vector = torch.tensor(noise_vector, requires_grad=False, device="cuda")
-    if input_features is not None:
-        instance_vector = input_features.clone().detach().repeat(num_samples_total, 1)
-    else:
-        instance_vector = None
-    if class_index is not None:
-        # print("Conditioning on class: ", ind2name[class_index])
-        input_label = torch.LongTensor([class_index] * num_samples_total)
-    else:
-        input_label = None
-    # if input_feature_index is not None:
-    #     print("Conditioning on instance with index: ", input_feature_index)
-
-    size = int(size)
-    all_outs, all_dists = [], []
-    for i_bs in range(num_samples_total // batch_size + 1):
-        start = i_bs * batch_size
-        end = min(start + batch_size, num_samples_total)
-        if start == end:
-            break
-        out = get_output(
-            noise_vector[start:end],
-            input_label[start:end] if input_label is not None else None,
-            instance_vector[start:end] if instance_vector is not None else None,
+    os.makedirs(args.output_dir, exist_ok=True)
+    for input_image_instance in tqdm(sorted(glob(args.input_dir))):
+        # Prepare other variables
+        name_file = "%s_%s_cls%s_inst%s" % (
+            Path(input_image_instance).stem,
+            gen_model,
+            str(class_index) if class_index is not None else "None",
+            str(input_feature_index) if input_feature_index is not None else "None",
         )
 
-        if instance_vector is not None:
-            # Get features from generated images + feature extractor
-            out_ = preprocess_generated_image(out)
+        # Load features
+        if input_image_instance not in ["None", ""]:
+            # print("Obtainin g instance features from input image!")
+            input_feature_index = None
+            input_image_tensor = preprocess_input_image(input_image_instance, int(size))
+            # print("Displaying instance conditioning:")
             with torch.no_grad():
-                out_features, _ = feature_extractor(out_.cuda())
-            out_features /= torch.linalg.norm(out_features, dim=-1, keepdims=True)
-            dists = sklearn.metrics.pairwise_distances(
-                out_features.cpu(), instance_vector[start:end].cpu(), metric="euclidean", n_jobs=-1
+                input_features, _ = feature_extractor(input_image_tensor.cuda())
+            input_features /= torch.linalg.norm(input_features, dim=-1, keepdims=True)
+        elif input_feature_index is not None:
+            # print("Selecting an instance from pre-extracted vectors!")
+            input_features = np.load(
+                "modelzoo/stored_instances/imagenet_res"
+                + str(size)
+                + "_rn50_"
+                + feature_extractor_name
+                + "_kmeans_k1000_instance_features.npy",
+                allow_pickle=True,
+            ).item()["instance_features"][input_feature_index : input_feature_index + 1]
+        else:
+            input_features = None
+
+        # Create noise, instance and class vector
+        noise_vector = truncnorm.rvs(
+            -2 * truncation, 2 * truncation, size=(num_samples_total, noise_size), random_state=state
+        ).astype(np.float32)  # see https://github.com/tensorflow/hub/issues/214
+        noise_vector = torch.tensor(noise_vector, requires_grad=False, device="cuda")
+        if input_features is not None:
+            instance_vector = input_features.clone().detach().repeat(num_samples_total, 1)
+        else:
+            instance_vector = None
+        if class_index is not None:
+            # print("Conditioning on class: ", ind2name[class_index])
+            input_label = torch.LongTensor([class_index] * num_samples_total)
+        else:
+            input_label = None
+        # if input_feature_index is not None:
+        #     print("Conditioning on instance with index: ", input_feature_index)
+
+        size = int(size)
+        all_outs, all_dists = [], []
+        for i_bs in range(num_samples_total // batch_size + 1):
+            start = i_bs * batch_size
+            end = min(start + batch_size, num_samples_total)
+            if start == end:
+                break
+            out = get_output(
+                noise_vector[start:end],
+                input_label[start:end] if input_label is not None else None,
+                instance_vector[start:end] if instance_vector is not None else None,
             )
-            all_dists.append(np.diagonal(dists))
-            all_outs.append(out.detach().cpu())
-        del out
-    all_outs = torch.cat(all_outs)
-    all_dists = np.concatenate(all_dists)
 
-    # Order samples by distance to conditioning feature vector and select only num_samples_ranked images
-    selected_idxs = np.argsort(all_dists)[:num_samples_ranked]
+            if instance_vector is not None:
+                # Get features from generated images + feature extractor
+                out_ = preprocess_generated_image(out)
+                with torch.no_grad():
+                    out_features, _ = feature_extractor(out_.cuda())
+                out_features /= torch.linalg.norm(out_features, dim=-1, keepdims=True)
+                dists = sklearn.metrics.pairwise_distances(
+                    out_features.cpu(), instance_vector[start:end].cpu(), metric="euclidean", n_jobs=-1
+                )
+                all_dists.append(np.diagonal(dists))
+                all_outs.append(out.detach().cpu())
+            del out
+        all_outs = torch.cat(all_outs)
+        all_dists = np.concatenate(all_dists)
 
-    for o, out in enumerate(all_outs[selected_idxs]):
-        name = "/home/hans/datasets/diffuse/sorts/beic/%s_seed%i_%i.png" % (
-            name_file,
-            seed if seed is not None else -1,
-            o,
-        )
-        out = out.add(1).div(2).clamp(0, 1).mul(255).permute(1, 2, 0).cpu().numpy()
-        imageio.imwrite(name, out.astype(np.uint8))
-        # out, _ = upsampler.enhance(cv2.cvtColor(out, cv2.COLOR_RGB2BGR) * 255, outscale=4)
-        # print(out.min().item(), out.mean().item(), out.max().item(), out.shape)
-        # # print(out.min().item(), out.mean().item(), out.max().item(), out.shape)
-        # # print(out.min().item(), out.mean().item(), out.max().item(), out.shape)
-        # Image.fromarray(out.astype(np.uint8)).save(name)
+        # Order samples by distance to conditioning feature vector and select only num_samples_ranked images
+        selected_idxs = np.argsort(all_dists)[:num_samples_ranked]
+
+        for o, out in enumerate(all_outs[selected_idxs]):
+            name = os.path.join(args.output_dir, "%s_seed%i_%i.png") % (
+                name_file,
+                seed if seed is not None else -1,
+                o,
+            )
+            out = out.add(1).div(2).clamp(0, 1).mul(255).permute(1, 2, 0).cpu().numpy()
+            imageio.imwrite(name, out.astype(np.uint8))
+            # out, _ = upsampler.enhance(cv2.cvtColor(out, cv2.COLOR_RGB2BGR) * 255, outscale=4)
+            # print(out.min().item(), out.mean().item(), out.max().item(), out.shape)
+            # # print(out.min().item(), out.mean().item(), out.max().item(), out.shape)
+            # # print(out.min().item(), out.mean().item(), out.max().item(), out.shape)
+            # Image.fromarray(out.astype(np.uint8)).save(name)
+
+def argument_parser():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate images with IC-GAN, conditioned on input instances")
+    parser.add_argument("input_dir", help="glob of input conditioning images, e.g. 'inputs/*.png'")
+    parser.add_argument("--output-dir", default="output/icgan")
+    parser.add_argument("--gen-model", choices=["icgan", "cc_icgan"], default="icgan")
+    parser.add_argument("--num-samples-ranked", type=int, default=8)
+    parser.add_argument("--num-samples-total", type=int, default=240)
+    parser.add_argument("--truncation", type=float, default=1.0)
+    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--seed", type=int, default=None)
+    return parser
+
+
+if __name__ == "__main__":
+    main(argument_parser().parse_args())

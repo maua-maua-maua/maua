@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 os.environ["SAT_HOME"] = "modelzoo/"
 cogvideo_submodule = os.path.abspath(os.path.dirname(__file__)) + "/../../../submodules/CogVideo/"
-sys.path.append(cogvideo_submodule)
+sys.path.insert(0, cogvideo_submodule)
 
 # HACK to override hardcoded cluster_label2.npy path :(
 for file in [
@@ -31,11 +31,42 @@ for file in [
     with open(file, "w") as f:
         f.write(txt)
 
-from coglm_strategy import CoglmStrategy
-from models.cogvideo_cache_model import CogVideoCacheModel
-from sr_pipeline import DirectSuperResolution
 
-tokenizer.add_special_tokens(["<start_of_image>", "<start_of_english>", "<start_of_chinese>"])
+# CogVideo ships a *namespace* `models` package that loses the name to pix2pix's *regular* `models`
+# package (pulled in by GAN/ZSSGAN) once pix2pix is imported anywhere in the process, regardless of
+# sys.path order. Resolve these bare imports with pix2pix's root hidden and the colliding cached
+# names dropped, then restore. See maua/autoregressive/cog/video/generate.py for the full rationale.
+def _import_cogvideo_globals():
+    hidden = [p for p in sys.path if os.path.normpath(p).endswith(os.path.join("GAN", "pix2pix"))]
+    shadowed = {
+        m: sys.modules[m]
+        for m in list(sys.modules)
+        if m == "models" or m.startswith(("models.", "coglm_strategy", "sr_pipeline"))
+    }
+    for p in hidden:
+        sys.path.remove(p)
+    for m in shadowed:
+        del sys.modules[m]
+    try:
+        from coglm_strategy import CoglmStrategy
+        from models.cogvideo_cache_model import CogVideoCacheModel
+        from sr_pipeline import DirectSuperResolution
+    finally:
+        sys.path[0:0] = hidden
+        for m, mod in shadowed.items():
+            sys.modules[m] = mod
+    return CoglmStrategy, CogVideoCacheModel, DirectSuperResolution
+
+
+CoglmStrategy, CogVideoCacheModel, DirectSuperResolution = _import_cogvideo_globals()
+
+# icetk.icetk is a process-wide singleton; if generate.py (or another CogVideo entry point) already
+# registered these, re-adding raises "already defined". Adding them is idempotent in intent.
+try:
+    tokenizer.add_special_tokens(["<start_of_image>", "<start_of_english>", "<start_of_chinese>"])
+except RuntimeError as e:
+    if "already defined" not in str(e):
+        raise
 
 FL = FRAME_LEN = 400
 FN = FRAME_NUM = 5

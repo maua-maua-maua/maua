@@ -45,6 +45,11 @@ Stable-Diffusion 1.x and pinkney weights resolve from their upstream HF repos
 the local model zoo, so only 2.3 is re-hosted; the other versions still rely on their
 original gdrive IDs.
 
+The rescued Colab scripts also route their weights through `maua/ops/download.py`:
+IC-GAN's SwAV extractor (`swav_pretrained.pth.tar`) and OmniMAE's
+`vitl_ssv2_ft.torch` are fetched via `fetch_model(..., url=<fbaipublicfiles>)` — still
+live upstream, so they use the URL fallback rather than the HF mirror for now.
+
 ---
 
 ## Fixed
@@ -80,23 +85,73 @@ original gdrive IDs.
 | dep pins | `pkg_resources` & PL 1.x APIs | `setuptools<81`, `pytorch-lightning<2` in `setup.py` |
 | `workspace/examples/audio/*.mp3` | committed files were truncated/corrupt | replaced with clean full-length stream copies |
 
-## needs-dep (optional third-party deps unavailable on a modern stack)
+## Absorbed research dependencies (vendored into the tree)
 
-| Module | Missing dep |
+Several modules depended on research code that isn't installable on a modern stack (no
+PyPI wheel, or unsatisfiable pins). Rather than drop them, the handful of functions
+actually used were vendored into local `_name.py` modules with provenance headers and
+the imports repointed at the vendored copy. All import cleanly and are covered by the
+fast import test.
+
+| Module | Was | Now |
+|---|---|---|
+| `.../selfsupervised/features/correlation` | `from anatome.distance import ...`; `from torchsort import soft_rank` | vendored `_anatome_distance.py` (moskomule/anatome, Apache-2.0) + `_soft_rank.py` (google-research fast-soft-sort, pure torch/numpy; correctness-checked) |
+| `.../selfsupervised/features/efficient_quantile` | C++ extension built in place | reimplemented pure-torch (`torch.quantile`, `kthvalue` for large tensors) |
+| `GAN/training/models/experimental/deepinvolutional` | `from involution import Involution2d` | vendored `_involution.py` (ChristophReich1996/Involution) |
+| `GAN/training/models/experimental/stylehypermixerfly` | `from torch_butterfly import Butterfly, ...` | vendored `_torch_butterfly.py` (HazyResearch/fly, Apache-2.0; real-only subset, forward/backward-checked) |
+
+## Now pip-installable (dep resolved on the modern stack)
+
+| Module | Dep |
 |---|---|
-| `GAN/training/trainer`, `GAN/training/dataset/image` | `ffcv` (unmaintained, compile-heavy) |
-| `GAN/training/train_v0` | `padl` (abandoned) |
-| `GAN/training/models/experimental/deepinvolutional` | `involution` |
-| `GAN/training/models/experimental/equivariant` | `escnn` (unsatisfiable pins) |
-| `GAN/training/models/experimental/stylehypermixerfly` | `torch_butterfly` |
-| `audiovisual/audioreactive/selfsupervised/features/correlation` | `anatome` (unsatisfiable pins) |
-| `audiovisual/audioreactive/selfsupervised/features/efficient_quantile` | C++ extension; build in place via its `setup.py` |
+| `GAN/training/models/experimental/equivariant` | `escnn` (installs; pulls numpy 1.26 — benign tension with opencv's numpy≥2 want) |
+| `.../selfsupervised/features/correlation` | `torchmetrics` (for `matthews_corrcoef`) |
+| `autoregressive/cog/video/{generate,infinite}` | `SwissArmyTransformer` (installs as `sat` on modern PyPI; the old top-level name is aliased in `compat.py`) |
 
-## needs-dep (continued) / import-wiring
+## Colab-script rescues (module-level execution wrapped behind `main()`)
 
-| Module | Blocker |
+These were Colab-notebook pastes that loaded weights or read hardcoded `/home/hans`
+paths at import time. Each was wrapped in a callable + `argument_parser()` + `main(args)`
++ `__main__` guard (the `main(args)` convention the CLI's lazy dispatch expects), with
+weights routed through `maua/ops/download.py`. All now import cleanly.
+
+| Module | Blocked import on | Now |
+|---|---|---|
+| `GAN/nada` | `Image.open("/home/hans/...")` + hardcoded paths | `train(...)` + argparse; ZSSGAN import wired (see below) |
+| `GAN/icgan/generate` | loaded SwAV/IC-GAN weights + looped a hardcoded dataset glob | `main(args)`; SwAV via `fetch_model`; `--input-dir`/`--output-dir` |
+| `GAN/icgan/guided` | star-imports `generate` | safe now that `generate` is import-clean |
+| `style/omnimae` | loaded `vitl_ssv2_ft.torch` | `style_transfer(...)` + argparse; ckpt via `fetch_model` |
+| `autoregressive/cog/video/generate` | icetk/protobuf + SwissArmyTransformer (see compat.py) | argparse `main`; import-clean |
+
+## Import-wiring fixes
+
+| Module | Fix |
 |---|---|
-| `GAN/ZSSGAN`, `GAN/nada` | The `maua.GAN.pix2pix` submodule is now present, but ZSSGAN's vendored code uses bare `from models import ...` / `from util import ...` that assume the pix2pix directory is on `sys.path`. Needs an import shim (add pix2pix to `sys.path`, or rewrite the imports to `maua.GAN.pix2pix.*`) before it will load. |
+| `GAN/ZSSGAN`, `GAN/nada` | ZSSGAN's vendored code does bare `from models import ...` expecting the pix2pix dir on `sys.path`. `ZSSGAN.py` now prepends `maua/GAN/pix2pix` to `sys.path` before importing, and imports the vendored CycleGAN networks as `maua.GAN.pix2pix.models.networks`. |
+| `autoregressive/{min_dalle,rq_dalle,ru_dalle}` | minDALL-E/rqvae mutable-dataclass-default crash patched in the submodules (see fragile patches); `ru_dalle` uses the `huggingface_hub.cached_download` shim in `compat.py`. |
+| `autoregressive/cog/video/{generate,infinite}` | CogVideo does bare `from models import ...`, but its `models` is a *namespace* package that loses the name to pix2pix's *regular* `models` package (`models/__init__.py`) whenever pix2pix is imported anywhere in the same process (e.g. the fast import walk), regardless of `sys.path` order. `_import_cogvideo_globals()` resolves the three bare imports with pix2pix's root temporarily removed from `sys.path` and the colliding cached `models`/`coglm_strategy`/`sr_pipeline` dropped, then restores both. Also: both modules add the same special tokens to the shared `icetk.icetk` singleton, so the `add_special_tokens` call is guarded to no-op on the "already defined" re-add. |
+
+## compat.py shims added for CogVideo
+
+`maua/ops/compat.py:install_shims()` (run from `maua/__init__.py`) gained two entries so
+CogVideo imports without an environment-variable dance or a global pure-Python protobuf
+penalty:
+- **icetk stale protobuf**: icetk ships a `sentencepiece_model_pb2` generated against an
+  ancient protobuf the modern runtime rejects. The `sentencepiece` package's up-to-date,
+  API-compatible equivalent is pre-injected as `sys.modules["icetk.sentencepiece_model_pb2"]`
+  so icetk never loads its stale file (works with either protobuf backend).
+- **SwissArmyTransformer→sat**: aliased in `sys.modules` so the old top-level import name
+  resolves to the renamed `sat` package.
+
+## Intentionally dropped
+
+Per the repo owner, these optional deps are not worth vendoring; the modules that need
+them are the **only remaining `maua/legacy/` candidates** for Phase C.
+
+| Dep | Modules | Why dropped |
+|---|---|---|
+| `padl` | `GAN/training/train_v0` | abandoned upstream |
+| `ffcv` | `GAN/training/trainer`, `GAN/training/dataset/image` | unmaintained, compile-heavy |
 
 ## Fragile submodule working-tree patches
 
@@ -109,6 +164,8 @@ A `git submodule update` resets them and reintroduces the breakage. Known patche
 | `submodules/VQGAN` | `taming/models/*`, LPIPS/vqperceptual tweaks (pre-existing) |
 | `submodules/latent_diffusion` | `ldm/util.py`: a botched `print(...)` removal left a dangling f-string → `IndentationError`; repaired to a comment. Reintroduced when the submodule was reset during the pix2pix add. |
 | `submodules/{BSRGAN,liteflownet,pwc,spynet,unflow}` | pre-existing local edits |
+| `submodules/minDALLE` | `dalle/utils/config.py`: mutable dataclass default rejected by Python ≥3.12; changed to `field(default_factory=...)`. |
+| `submodules/rq_vae_transformer` | `rqvae/models/rqtransformer/configs.py`: same mutable-dataclass-default fix (`field(default_factory=...)`). |
 | `GAN/nv/torch_utils/custom_ops.py` | NVIDIA's `get_plugin` assumed `cpp_extension.load()` puts the build dir on `sys.path` and then `import_module(name)`; modern torch returns the compiled module directly, so the import failed (`bias_act_plugin` etc. `ModuleNotFoundError`). Patched to use the `load()` return value, falling back to `import_module` only if it's `None`. |
 
 The `torch._six` shim in `maua/ops/compat.py` covers VQGAN/taming's
@@ -126,11 +183,12 @@ API and need porting (quarantine candidates for Phase C). A new minimal
 
 ## quarantine (Phase C → `maua/legacy/`)
 
-| Module | Why |
-|---|---|
-| `autoregressive/min_dalle/generate` | minDALL-E submodule uses mutable dataclass defaults, rejected by Python ≥3.12 (would need forking upstream) |
-| `autoregressive/rq_dalle` | rqvae submodule, same mutable-dataclass-default problem |
-| `autoregressive/ru_dalle` (`api`, `generate`, `finetune`) | `rudalle` needs `huggingface_hub.cached_download`, removed from modern `huggingface_hub` |
-| `autoregressive/cog/video/{generate,infinite}` | CogVideo / `icetk` need protobuf<3.20-era APIs |
-| `GAN/icgan/generate`, `GAN/icgan/guided` | Colab-notebook pastes: load SwAV/IC-GAN weights and loop over hardcoded datasets at import time |
-| `style/omnimae` | loads `modelzoo/vitl_ssv2_ft.torch` at import time |
+Following the "keep everything I possibly can" rescue pass, the previous quarantine
+candidates — the DALL-E family (`min_dalle`, `rq_dalle`, `ru_dalle`), CogVideo, IC-GAN,
+and OmniMAE — were all repaired and import cleanly (see the rescue tables above). The
+**only** remaining legacy candidates are the three training-stack modules that depend on
+the intentionally-dropped `padl`/`ffcv` (listed under *Intentionally dropped*). They stay
+xfailed in `tests/fast/test_imports.py` until the Phase C `git mv` to `maua/legacy/`.
+
+`maua/diffusion/flux2hd.py` (untracked) still loads the full FLUX pipeline at import; it
+is wrapped + moved to `maua/text2img/flux.py` during Phase C rather than quarantined.

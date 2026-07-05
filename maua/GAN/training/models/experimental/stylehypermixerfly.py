@@ -2,8 +2,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn.functional import interpolate
-from torch_butterfly import Butterfly
-from torch_butterfly.multiply import butterfly_multiply
+from maua.GAN.training.models.experimental._torch_butterfly import Butterfly, butterfly_multiply
 
 
 class PixelNorm(nn.Module):
