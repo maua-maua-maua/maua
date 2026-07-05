@@ -17,7 +17,10 @@ def test_video_diffusion(short_video, tiny):
         first_skip=0.4,
         skip=0.7,
     )
-    assert torch.is_tensor(video) and video.ndim == 4 and len(video) > 1
+    # video_sample returns a FramesOnDisk lazy dataset (what write_video consumes), not a tensor
+    assert len(video) > 1
+    frames = video[list(range(len(video)))]
+    assert torch.is_tensor(frames) and frames.ndim == 4 and len(frames) == len(video)
 
 
 @pytest.mark.xfail(

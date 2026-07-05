@@ -17,6 +17,28 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(skip_gpu)
 
 
+@pytest.fixture(autouse=True)
+def _torch_global_state():
+    """Restore torch's process-global default device/dtype after every test.
+
+    Several code paths legitimately flip global torch state during a run
+    (`nca/{train,generate}.py` call `torch.set_default_device('cuda')`;
+    `super/video/framerate/rife.py` uses `set_default_tensor_type`). Their
+    "restore" sets the state back to the *value* they read, but on a fresh
+    process that installs a default-device *mode* that wasn't there before,
+    which then leaks into later tests (e.g. a cpu default-device mode made
+    `flow_warp_map`'s cached grid land on cpu and broke video_diffusion).
+    Snapshot here and hard-reset via `set_default_device(None)` so each test
+    starts from the pristine no-mode state.
+    """
+    dtype = torch.get_default_dtype()
+    try:
+        yield
+    finally:
+        torch.set_default_device(None)
+        torch.set_default_dtype(dtype)
+
+
 @pytest.fixture(scope="session")
 def device():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")

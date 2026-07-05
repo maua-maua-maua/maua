@@ -11,7 +11,11 @@ from maua.ops.video import write_video
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-@torch.inference_mode()
+# NB: no_grad rather than inference_mode. This function lazily imports the StyleGAN/NV
+# op modules on first call; under inference_mode their module-level constants (e.g.
+# bias_act._null_tensor) would be created as inference tensors and, being cached
+# globally, would later poison any autograd graph reusing them (e.g. the GAN projector).
+@torch.no_grad()
 def generate_audiovisal_from_patch(
     audio_file: str,
     model_file: str,
@@ -64,7 +68,7 @@ if __name__ == "__main__":
     parser.add_argument("--ffmpeg_preset", default="fast", type=str, help="If rendering with FFMPEG, the preset for video encoding. Slower is higher quality and smaller file size. For options see: https://trac.ffmpeg.org/wiki/Encode/H.264")
     parser.add_argument("--fps", default=24, type=float, help="Frames per second of output video")
     parser.add_argument("--out_size", default="1024,1024", type=str, help="Desired width,height of output image: e.g. 1920,1080 or 720,1280")
-    parser.add_argument("--resize_strategy", default="pad-zero", type=str, help="Strategy used to resize (in feature space) to achieve desired output resolution")
+    parser.add_argument("--resize_strategy", default="stretch", type=str, help="Strategy used to resize (in feature space) to achieve desired output resolution")
     parser.add_argument("--resize_layer", default=0, choices=list(range(18)), type=int, help="Which layer in the network to perform resizing at. Higher values are closer to resizing output pixels directly. Lower values have larger rounding increments (i.e. less flexible possible output sizes)")
     parser.add_argument("--out_dir", default="./output/", type=str, help="Directory to output video in")
     parser.add_argument("--unique", action='store_true', help="Whether to add a unique identifier to the filename")

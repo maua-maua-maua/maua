@@ -61,24 +61,26 @@ class WriteThread(Thread):
         while True:
             try:
                 item, idx = self.queue.get(timeout=1)
-                if isinstance(item, torch.Tensor):
-                    item = item.detach().cpu().numpy()
-                if len(item.shape) < 4:
-                    item = item[None]
-                shape = item.shape
-
-                if tuple(shape[:2]) == (1, 1):
-                    consistency = np.round(item.squeeze() * 255).astype(np.uint8)
-                    Image.fromarray(consistency).save(f"{self.basename}{idx}.jpg", quality=95)
-                elif shape[-1] == 2:
-                    mflo = encode_mflo(item.squeeze())
-                    Image.fromarray(mflo).save(f"{self.basename}{idx}.mflo", format="JPEG", quality=95)
-                else:
-                    img = np.clip(np.round((item.squeeze().transpose(1, 2, 0) + 1) * 127.5), 0, 255).astype(np.uint8)
-                    Image.fromarray(img).save(f"{self.basename}{idx}.jpg", quality=95)
-
             except Empty:
-                pass
+                continue
+            if item is None:  # poison pill from finalize(): queued writes drained, stop
+                break
+
+            if isinstance(item, torch.Tensor):
+                item = item.detach().cpu().numpy()
+            if len(item.shape) < 4:
+                item = item[None]
+            shape = item.shape
+
+            if tuple(shape[:2]) == (1, 1):
+                consistency = np.round(item.squeeze() * 255).astype(np.uint8)
+                Image.fromarray(consistency).save(f"{self.basename}{idx}.jpg", quality=95)
+            elif shape[-1] == 2:
+                mflo = encode_mflo(item.squeeze())
+                Image.fromarray(mflo).save(f"{self.basename}{idx}.mflo", format="JPEG", quality=95)
+            else:
+                img = np.clip(np.round((item.squeeze().transpose(1, 2, 0) + 1) * 127.5), 0, 255).astype(np.uint8)
+                Image.fromarray(img).save(f"{self.basename}{idx}.jpg", quality=95)
 
 
 class FramesOnDisk(Dataset):
@@ -114,11 +116,15 @@ class FramesOnDisk(Dataset):
         return torch.stack(tensors).to(self.device)
 
     def insert(self, item, idx=None):
-        self.write_queue.put((item, idx if idx is not None else len(self)))
-        self.length += 1
+        if idx is None:
+            idx = self.length
+        self.write_queue.put((item, idx))
+        # length tracks the highest slot written, so overwrites (explicit idx) don't inflate it
+        self.length = max(self.length, idx + 1)
 
     def finalize(self):
         self.length -= 1
+        self.write_queue.put((None, None))  # poison pill: writer drains the queue then exits
         self.write_thread.join()
         return self
 
@@ -265,7 +271,7 @@ class VideoFlowDiffusionProcessor(torch.nn.Module):
                     init_img += flow_mask * prev_warp
                     init_img /= 1 + flow_mask
 
-                if f_n / N >= 1:
+                if wrap_around > 0 and f_n / N >= 1:  # loop_fade only spans the wrap-around frames
                     init_img = loop_fade[[f_n % N]] * init_img + (1 - loop_fade[[f_n % N]]) * cache.frame[f_n % N]
 
                 if pre_hook:

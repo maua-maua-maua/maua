@@ -48,12 +48,29 @@ def decode_mflo(mflo):
     return flow
 
 
-def flow_warp_map(flow: torch.Tensor) -> torch.Tensor:
+def flow_warp_map(flow: torch.Tensor, size: tuple[int, int] | None = None) -> torch.Tensor:
+    flow = torch.as_tensor(flow).float()
+    if flow.ndim == 3:  # a single [H, W, 2] map (e.g. from farneback / an mmap slice)
+        flow = flow.unsqueeze(0)
+    b, h0, w0, two = flow.shape
+    if size is not None and (h0, w0) != tuple(size):
+        # resize the flow field to the working resolution, scaling the vectors to match
+        h, w = size
+        resized = torch.nn.functional.interpolate(
+            flow.permute(0, 3, 1, 2), size=(h, w), mode="bilinear", align_corners=False
+        )
+        resized[:, 0] *= w / w0
+        resized[:, 1] *= h / h0
+        flow = resized.permute(0, 2, 3, 1)
+    flow = flow.clone()  # avoid mutating a caller's (possibly mmap-backed) tensor in place
     b, h, w, two = flow.shape
     flow[..., 0] /= w
     flow[..., 1] /= h
     global NEUTRAL
-    if NEUTRAL is None or (NEUTRAL.shape[1], NEUTRAL.shape[2]) != (h, w):
+    # NEUTRAL is a module-level cache; also rebuild it when the device changes so a
+    # grid cached on one device (e.g. cpu under a leaked default-device mode) can't
+    # get added to a flow on another device.
+    if NEUTRAL is None or (NEUTRAL.shape[1], NEUTRAL.shape[2]) != (h, w) or NEUTRAL.device != flow.device:
         NEUTRAL = (
             torch
             .stack(torch.meshgrid(torch.linspace(-1, 1, w), torch.linspace(-1, 1, h), indexing="xy"), axis=2)
@@ -118,7 +135,12 @@ def preprocess_optical_flow(video_file, flow_model, consistency="full", debug_op
         with NpyFile(rlf) as reliable:
             for forward_flow, backward_flow in zip(forward, backward):
                 reliable_flow = get_consistency_map(forward_flow, backward_flow, consistency)
-                reliable.append(np.ascontiguousarray(reliable_flow[None].astype(np.float32)))
+                if torch.is_tensor(reliable_flow):
+                    reliable_flow = reliable_flow.detach().cpu().numpy()
+                # NpyFile stacks each append into a leading frame axis, so store a plain
+                # (H, W) map; check_consistency returns (1, H, W).
+                reliable_flow = np.asarray(reliable_flow, dtype=np.float32).squeeze()
+                reliable.append(np.ascontiguousarray(reliable_flow[None]))
 
     reliable = np.load(rlf, mmap_mode="r")
 

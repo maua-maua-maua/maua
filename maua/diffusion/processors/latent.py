@@ -111,6 +111,9 @@ class LatentDiffusion(BaseDiffusionProcessor):
             x_T = self.model.get_first_stage_encoding(self.model.encode_first_stage(img))
 
             t = torch.ones([x_T.shape[0]], device=self.device, dtype=torch.long) * self.timestep_map[start_step]
+            # timestep_map spans [0, original_num_steps]; clamp so t - 1 stays a valid
+            # gather index (0 when starting from no noise, num_steps-1 at the top).
+            t = t.clamp(1, self.original_num_steps)
             x_T = self.model.q_sample(x_T, t - 1, torch.randn_like(x_T))
 
             samples, _ = self.sample_fn(

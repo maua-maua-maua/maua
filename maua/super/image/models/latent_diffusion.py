@@ -44,7 +44,7 @@ def load_model(model_name="latent-diffusion", device=torch.device("cuda" if torc
         download("https://heibox.uni-heidelberg.de/f/578df07c8fc04ffbadf3/?dl=1", path_ckpt)
 
     model = instantiate_from_config(OmegaConf.load(path_conf).model)
-    sd = torch.load(path_ckpt, map_location="cpu")["state_dict"]
+    sd = torch.load(path_ckpt, map_location="cpu", weights_only=False)["state_dict"]
     model.load_state_dict(sd, strict=False)
     model = model.to(device).eval()
     return model, DDIMSampler, device
@@ -61,7 +61,9 @@ def upscale(images: list[Tensor | Image.Image | Path | str], model):
             image=rearrange(resize(c, size=[up_f * c.size(2), up_f * c.size(3)], antialias=True), "1 c h w -> 1 h w c"),
         )
         height, width = example["image"].shape[1:3]
-        if height >= 128 and width >= 128:
+        # Tiling folds the *latent* (image / vqf) with a 128-wide kernel, so it only
+        # yields >=1 patch once the latent reaches 128, i.e. the image reaches 128*vqf.
+        if height >= 128 * 4 and width >= 128 * 4:
             model.split_input_params = {
                 "ks": (128, 128),
                 "stride": (64, 64),

@@ -224,7 +224,7 @@ def project(model_file, file, out_dir="output", device="cuda", use_vit=False, st
             vit = torch.load(f"{out_dir}/{name}-vit-latent-encoder.pt")
 
     # %%
-    size = 1024
+    size = g_ema.synthesizer.G_synth.img_resolution  # match the target to the generator's output resolution
     lr = 0.1
     lr_rampup = 0.01
     lr_rampdown = 0.6
@@ -271,7 +271,7 @@ def project(model_file, file, out_dir="output", device="cuda", use_vit=False, st
             latent_in = vit(resize(real, 224, antialias=True)).reshape(latent_mean.shape).to(device)
         else:
             latent_in = latent_mean.unsqueeze(0).clone()
-        latent_in += 0.01 * torch.randn(size=(1, 18, 1)).to(latent_in)
+        latent_in += 0.01 * torch.randn(size=(1, latent_in.shape[1], 1)).to(latent_in)
 
     latent_in.requires_grad = True
     for noise in noises:

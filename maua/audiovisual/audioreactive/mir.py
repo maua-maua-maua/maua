@@ -71,7 +71,7 @@ def volume(audio, sr):
     Returns:
         torch.tensor, shape=(n_frames,): RMS envelope
     """
-    vol = rosa.feature.rms(audio)
+    vol = rosa.feature.rms(y=audio)
     vol -= vol.min()
     vol /= vol.max()
     return torch.from_numpy(vol.squeeze().astype(np.float32))

@@ -15,7 +15,7 @@ class StyleGAN2Patch(MauaPatch):
         offset=0,
         duration=-1,
         output_size=(1024, 1024),
-        resize_strategy="pad-zero",
+        resize_strategy="stretch",
         resize_layer=0,
         inference=False,
     ):

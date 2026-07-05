@@ -122,7 +122,7 @@ def transfer(
                 for f_n in frame_range:
                     content_frame = resample(torch.from_numpy(content[[f_n]].copy()).to(device), (h, w))
                     content_embeddings = perceptor.get_target_embeddings(contents=content_frame, styles=None)
-                    target_embeddings = torch.cat((content_embeddings, style_embeddings))
+                    target_embeddings = (*content_embeddings, *style_embeddings)
                     del content_frame, content_embeddings
 
                     curr_frame = resample(torch.from_numpy(frames[[f_n]].copy()).to(device), (h, w))

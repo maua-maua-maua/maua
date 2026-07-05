@@ -85,6 +85,13 @@ def check_consistency(flow_forward, flow_backward):
     # algorithm based on https://github.com/manuelruder/artistic-videos/blob/master/consistencyChecker/consistencyChecker.cpp
     # reimplemented in pytorch by Henry Rachootin
     # (c) Manuel Ruder, Alexey Dosovitskiy, Thomas Brox 2016
+    # Some flow backends (e.g. farneback) return a single [H, W, 2] map, and the
+    # mmap loop hands these in as numpy; coerce to a batched tensor.
+    flow_forward = torch.as_tensor(flow_forward)
+    flow_backward = torch.as_tensor(flow_backward)
+    if flow_forward.ndim == 3:
+        flow_forward = flow_forward.unsqueeze(0)
+        flow_backward = flow_backward.unsqueeze(0)
     dev = flow_forward.device
     batch, height, width, two = flow_forward.shape
     flow_forward, flow_backward = flow_forward.permute(0, 3, 1, 2), flow_backward.permute(0, 3, 1, 2)

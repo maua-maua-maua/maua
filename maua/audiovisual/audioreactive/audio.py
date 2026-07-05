@@ -4,7 +4,6 @@ from pathlib import Path
 import joblib
 import librosa as rosa
 import torch
-import torchaudio
 from openunmix.predict import separate
 from scipy import signal
 from torchaudio.functional import resample
@@ -26,7 +25,7 @@ def load_audio(audio_file, offset=0, duration=-1, cache=True):
         sr      : sample rate of audio
         duration: duration of audio in seconds
     """
-    audio_dur = rosa.get_duration(filename=audio_file)
+    audio_dur = rosa.get_duration(path=audio_file)
     if duration == -1 or audio_dur < duration:
         duration = audio_dur
         if offset != 0:
@@ -39,8 +38,11 @@ def load_audio(audio_file, offset=0, duration=-1, cache=True):
         + ".npy"
     )
     if cache and not os.path.exists(cache_file):
-        audio, sr = torchaudio.load(audio_file)
-        audio = audio[:, int(offset * sr) : int((offset + duration) * sr)].mean(0).numpy()
+        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+        # librosa (via ffmpeg) decodes mp3/wav/etc. without torchaudio's torchcodec
+        # backend, which can't load its native FFmpeg shim on this stack.
+        audio, sr = rosa.load(audio_file, sr=None, mono=True)
+        audio = audio[int(offset * sr) : int((offset + duration) * sr)]
         joblib.dump((audio, sr), cache_file)
     else:
         audio, sr = joblib.load(cache_file)
@@ -59,6 +61,17 @@ def unmix(audio, sr):
     instruments = resample(instruments, 44100, sr).squeeze().mean(0).cpu().numpy()
 
     return vocals, drums, bass, instruments
+
+
+def separate_sources(audio, sr, device=None):
+    """Split audio into (vocals, drums, bass, other) stems.
+
+    Compatibility wrapper over `unmix` for patches that pass a tensor and a `device`
+    (unmix runs the openunmix separation on CPU regardless).
+    """
+    if torch.is_tensor(audio):
+        audio = audio.cpu().numpy()
+    return unmix(audio, sr)
 
 
 def unmixed(audio, sr, stem="all"):

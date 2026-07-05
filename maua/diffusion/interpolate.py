@@ -14,16 +14,16 @@ from maua.ops.video import VideoWriter
 
 
 def slerp(a, b, t):
+    # a, b: (P, N) endpoint vectors; t: (k,) interpolation fractions -> (P, k, N)
     a = a / a.norm(dim=-1, keepdim=True)
     b = b / b.norm(dim=-1, keepdim=True)
-    d = (a * b).sum(dim=-1, keepdim=True)
-    p = t * torch.acos(d)
-    p = p.permute(2, 0, 1)[..., None]
+    d = (a * b).sum(dim=-1, keepdim=True)  # (P, 1) cosine of angle
+    p = (t * torch.acos(d.clamp(-1, 1)))[..., None]  # (P, k, 1) angle per fraction
     c = b - d * a
     c = c / c.norm(dim=-1, keepdim=True)
-    d = a[None] * torch.cos(p) + c[None] * torch.sin(p)
-    d = d / d.norm(dim=-1, keepdim=True)
-    return d
+    out = a[:, None] * torch.cos(p) + c[:, None] * torch.sin(p)  # (P, k, N)
+    out = out / out.norm(dim=-1, keepdim=True)
+    return out
 
 
 def interpolate_images(

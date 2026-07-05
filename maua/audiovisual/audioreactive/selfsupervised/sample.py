@@ -1,7 +1,7 @@
 from pathlib import Path
 
+import librosa as rosa
 import torch
-import torchaudio
 from torchaudio.functional import resample
 from tqdm import tqdm
 
@@ -12,10 +12,10 @@ from maua.ops.video import VideoWriter
 
 
 def load_audio(audio_file, offset, duration, fps):
-    audio, sr = torchaudio.load(audio_file)
-
-    # convert to mono
-    audio = audio.mean(0)
+    # librosa (via ffmpeg) avoids torchaudio's torchcodec backend, which can't load
+    # its native FFmpeg shim on this stack.
+    audio, sr = rosa.load(audio_file, sr=None, mono=True)
+    audio = torch.from_numpy(audio)
 
     # extract specified portion of audio
     if duration is not None:

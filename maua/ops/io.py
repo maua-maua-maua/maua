@@ -95,7 +95,7 @@ def hash(tensor_array_int_obj):
         byte_tensor = (array * 255).ravel().astype(np.uint8)
         hash = 0
         for ch in byte_tensor[:1024:4]:
-            hash = (hash * 281 ^ ch * 997) & 0xFFFFFFFF
+            hash = (hash * 281 ^ int(ch) * 997) & 0xFFFFFFFF
         return str(hex(hash)[2:].upper().zfill(8))
     if isinstance(tensor_array_int_obj, (float, int, str, bool)):
         return str(tensor_array_int_obj)

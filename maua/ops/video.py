@@ -77,30 +77,34 @@ class WriteWorker(Thread):
                 .run_async(pipe_stdin=True, pipe_stderr=not self.debug)
             )
 
-        poll_count = 0
-        while poll_count < 30:
+        # Keep writing until explicitly stopped. Don't self-terminate on an empty queue:
+        # a slow first frame (e.g. compiling the StyleGAN CUDA plugins on first use, which
+        # can take well over a minute) would otherwise kill the writer before any frame is
+        # written, leaving ffmpeg to finalize a video-stream-less file. stop() sets
+        # self.stopping only after __exit__ has drained the queue, so a get() that comes up
+        # Empty while stopping means there is genuinely nothing left to write.
+        while True:
             try:
                 tensor = self.Q.get(timeout=1)
-
-                # resize tensor to even height and width (otherwise some codecs complain)
-                _, _, h, w = tensor.shape
-                if h % 2 or w % 2:
-                    tensor = resample(tensor, (2 * ceil(h / 2), 2 * ceil(w / 2)))
-
-                # pass bytes to the FFMPEG processes
-                self.ffmpeg_proc.stdin.write(tensor2bytes(tensor, value_range=self.value_range))
-
-                # reset poll counter
-                poll_count = 0
             except Empty:
-                poll_count += 1
-            if self.stopping:
-                break
-        if poll_count >= 30:
-            print("Queue empty! Stopping FFMPEG thread...")
+                if self.stopping:
+                    break
+                continue
+
+            # resize tensor to even height and width (otherwise some codecs complain)
+            _, _, h, w = tensor.shape
+            if h % 2 or w % 2:
+                tensor = resample(tensor, (2 * ceil(h / 2), 2 * ceil(w / 2)))
+
+            # pass bytes to the FFMPEG processes
+            self.ffmpeg_proc.stdin.write(tensor2bytes(tensor, value_range=self.value_range))
 
     def stop(self):
         self.stopping = True
+        # Join the writer before closing stdin: __exit__ reports the queue empty the moment
+        # the worker *pops* the final frame, which is before it has finished writing it. Wait
+        # for run() to actually return so the last frame is flushed, not truncated.
+        self.join()
         self.ffmpeg_proc.stdin.close()
         self.ffmpeg_proc.wait()
 
