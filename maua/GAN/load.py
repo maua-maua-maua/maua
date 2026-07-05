@@ -88,6 +88,33 @@ def ada2ros(state_nv):
     return state_dict
 
 
+def load_nvidia_state_dict(path, device="cpu"):
+    """Flattened NVIDIA G_ema state_dict (mapping.fc*, synthesis.b*...) that ada2ros() consumes.
+
+    Accepts either an NVIDIA distribution .pkl (a raw pickle read by legacy.load_network_pkl,
+    not a torch archive) or a torch-saved training snapshot .pt.
+    """
+    if str(path).endswith(".pkl"):
+        with dnnlib.util.open_url(str(path)) as f:
+            return legacy.load_network_pkl(f)["G_ema"].state_dict()
+    obj = torch.load(path, map_location=device, weights_only=False)["G_ema"]
+    return obj.state_dict() if hasattr(obj, "state_dict") else obj
+
+
+def detect_channel_multiplier(state_nv):
+    """Recover a rosinality Generator's channel_multiplier from an NVIDIA state_dict.
+
+    Rosinality widths at res>=64 are {64:256, 128:128, 256:64} * channel_multiplier, while res<=32
+    is a flat 512 regardless. Read back the first available diverging block's out-channels to divide out
+    the base and get the multiplier (e.g. NVIDIA's half-width FFHQ-256 research pkl gives 256 -> 1).
+    """
+    for res, base in ((64, 256), (128, 128), (256, 64)):
+        key = f"synthesis.b{res}.conv1.weight"
+        if key in state_nv:
+            return max(1, state_nv[key].shape[0] // base)
+    return 2
+
+
 def load_rosinality2ada(path, blur_scale=4.0, for_inference=False):
     state_dict = torch.load(path, weights_only=False)
     state_ros = state_dict

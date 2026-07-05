@@ -48,6 +48,21 @@ def test_projector(stylegan2_model, example_image, tmp_path):
 
 
 @pytest.mark.slow
-@pytest.mark.skip(reason="NADA needs the missing maua.GAN.pix2pix submodule; blending/SeFa untriaged")
-def test_nada_blend_sefa():
-    pass
+def test_nada(stylegan2_model, tmp_path):
+    from maua.GAN.nada import train
+
+    # StyleGAN-NADA: CLIP-guided domain adaptation. Two iterations proves the ZSSGAN
+    # forward/backward loop (which depends on the rescued maua.GAN.pix2pix submodule).
+    train(
+        checkpoint_path=str(stylegan2_model),
+        source_class="photo",
+        target_class="sketch",
+        output_dir=str(tmp_path),
+        size=256,
+        batch=2,
+        n_sample=8,
+        iterations=1,
+        output_interval=1,
+        save_interval=1,
+    )
+    assert len(list(tmp_path.glob("*.jpg"))) > 0 or len(list(tmp_path.glob("*.pt"))) > 0

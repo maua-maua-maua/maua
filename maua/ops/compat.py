@@ -100,3 +100,34 @@ def install_shims():
                 sys.modules["SwissArmyTransformer"] = sat
             except ImportError:
                 pass
+
+    # transformers.top_k_top_p_filtering was a top-level sampling helper removed in transformers
+    # ~4.39; the ru_dalle submodule's sampler still calls it. Reinstate the canonical implementation.
+    try:
+        import transformers
+
+        if not hasattr(transformers, "top_k_top_p_filtering"):
+            import torch
+
+            def top_k_top_p_filtering(
+                logits, top_k=0, top_p=1.0, filter_value=-float("Inf"), min_tokens_to_keep=1
+            ):
+                if top_k > 0:
+                    top_k = min(max(top_k, min_tokens_to_keep), logits.size(-1))
+                    indices_to_remove = logits < torch.topk(logits, top_k)[0][..., -1, None]
+                    logits[indices_to_remove] = filter_value
+                if top_p < 1.0:
+                    sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+                    cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                    sorted_indices_to_remove = cumulative_probs > top_p
+                    if min_tokens_to_keep > 1:
+                        sorted_indices_to_remove[..., :min_tokens_to_keep] = 0
+                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                    sorted_indices_to_remove[..., 0] = 0
+                    indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+                    logits[indices_to_remove] = filter_value
+                return logits
+
+            transformers.top_k_top_p_filtering = top_k_top_p_filtering
+    except ImportError:
+        pass

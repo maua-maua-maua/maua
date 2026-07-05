@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -28,7 +30,6 @@ def test_text2img(diffusion, tiny):
 
 
 @pytest.mark.slow
-@pytest.mark.xfail(reason="minDALL-E submodule uses mutable dataclass defaults, rejected by py>=3.12; see DEPRECATIONS.md", strict=False)
 def test_min_dalle():
     from maua.autoregressive.min_dalle.generate import generate
 
@@ -37,17 +38,45 @@ def test_min_dalle():
 
 
 @pytest.mark.slow
-@pytest.mark.skip(reason="multi-GB weights; enable during Phase B triage")
-def test_ru_dalle():
-    pass
+def test_ru_dalle(tmp_path):
+    # importing this module puts the vendored `rudalle` submodule on sys.path, so import it first
+    from maua.autoregressive.ru_dalle.generate import generate
+
+    from rudalle import get_rudalle_model
+
+    model = get_rudalle_model("Malevich", pretrained=True, fp16=True, device="cuda", cache_dir="modelzoo/")
+    images = generate(
+        model,
+        input_text="a red square",
+        num_outputs=1,
+        batch_size=1,
+        height=256,
+        width=256,
+        top_p=0.99,
+        oversample=False,
+        output_dir=str(tmp_path),
+    )
+    assert len(images) >= 1
 
 
 @pytest.mark.slow
-@pytest.mark.skip(reason="multi-GB weights; enable during Phase B triage")
-def test_rq_dalle():
-    pass
+@pytest.mark.skipif(
+    not Path("modelzoo/rqvae_cc3m_cc12m_yfcc").exists(),
+    reason="rqvae_cc3m_cc12m_yfcc checkpoint (multi-GB) not in local modelzoo; enable when present",
+)
+def test_rq_dalle(tmp_path):
+    from maua.autoregressive.rq_dalle import main
+
+    images = main(
+        text_prompts="a red square",
+        num_samples=1,
+        sampling_ratio=1.0,
+        batch_size=1,
+        out_dir=str(tmp_path),
+    )
+    assert images is None or len(images) >= 1
 
 
 def test_flux2hd():
     # imperative xfail: importing flux2hd downloads the full FLUX pipeline and hits hardcoded /home/hans paths
-    pytest.xfail("flux2hd.py is script-style (import-time pipeline load, hardcoded paths); repair in Phase B")
+    pytest.xfail("flux2hd.py is script-style (import-time pipeline load, hardcoded paths); wrapped + moved to maua/text2img/flux.py in Phase C")

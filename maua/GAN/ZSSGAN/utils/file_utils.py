@@ -18,4 +18,7 @@ def copytree(src, dst, symlinks=False, ignore=None):
 
 
 def save_images(images, output_dir, filename, nrows):
-    utils.save_image(images, os.path.join(output_dir, f"{filename}.jpg"), nrow=nrows, normalize=True, range=(-1, 1))
+    # torchvision renamed the `range` kwarg to `value_range`
+    utils.save_image(
+        images, os.path.join(output_dir, f"{filename}.jpg"), nrow=nrows, normalize=True, value_range=(-1, 1)
+    )

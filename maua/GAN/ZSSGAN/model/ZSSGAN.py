@@ -3,7 +3,7 @@ import sys
 
 import torch
 
-from maua.GAN.load import ada2ros
+from maua.GAN.load import ada2ros, detect_channel_multiplier, load_nvidia_state_dict
 
 # pix2pix (junyanz/pytorch-CycleGAN-and-pix2pix) is script-style and uses bare imports such as
 # `from models.base_model import BaseModel`; put its root on sys.path so those resolve.
@@ -23,13 +23,17 @@ def requires_grad(model, flag=True):
 
 class SG2Generator(torch.nn.Module):
     def __init__(
-        self, checkpoint_path, latent_size=512, map_layers=8, img_size=256, channel_multiplier=2, device="cuda:0"
+        self, checkpoint_path, latent_size=512, map_layers=8, img_size=256, channel_multiplier=None, device="cuda:0"
     ):
         super().__init__()
 
+        state_nv = load_nvidia_state_dict(checkpoint_path, device)
+        if channel_multiplier is None:
+            channel_multiplier = detect_channel_multiplier(state_nv)
+
         self.generator = Generator(img_size, latent_size, map_layers, channel_multiplier=channel_multiplier).to(device)
 
-        checkpoint = ada2ros(torch.load(checkpoint_path, map_location=device)["G_ema"])
+        checkpoint = ada2ros(state_nv)
 
         self.generator.load_state_dict(checkpoint["g_ema"], strict=True)
 
@@ -109,7 +113,7 @@ class SG2Discriminator(torch.nn.Module):
 
         self.discriminator = Discriminator(img_size, channel_multiplier=channel_multiplier).to(device)
 
-        checkpoint = torch.load(checkpoint_path, map_location=device)
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
         self.discriminator.load_state_dict(checkpoint["d"], strict=True)
 
@@ -161,12 +165,9 @@ class ZSSGAN(torch.nn.Module):
         self.generator_trainable.train()
 
         # Set up cycle networks
-        self.cycle_target_to_src = CycleGAN.define_G(3, 3, 64, "unet_256", "instance", True, "normal", 0.02, [0]).to(
-            device
-        )
-        self.cycle_src_to_target = CycleGAN.define_G(3, 3, 64, "unet_256", "instance", True, "normal", 0.02, [0]).to(
-            device
-        )
+        # this pix2pix vintage's define_G takes no gpu_ids arg; .to(device) below handles placement
+        self.cycle_target_to_src = CycleGAN.define_G(3, 3, 64, "unet_256", "instance", True, "normal", 0.02).to(device)
+        self.cycle_src_to_target = CycleGAN.define_G(3, 3, 64, "unet_256", "instance", True, "normal", 0.02).to(device)
 
         # Losses
         self.clip_loss = CLIPLoss(

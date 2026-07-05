@@ -64,7 +64,14 @@ def test_diffusion_interpolate(example_image, example_image2, tmp_path, tiny, as
     assert_video(output, min_frames=3)
 
 
-@pytest.mark.slow
-@pytest.mark.skip(reason="CogVideo needs protobuf<3.20-era deps; see DEPRECATIONS.md")
-def test_cogvideo():
-    pass
+def test_cogvideo_import():
+    # Full CogVideo generation needs a torch.distributed launch + three multi-GB models,
+    # so it isn't a smoke test. But importing the module runs _import_cogvideo_globals(),
+    # which is the whole rescue: it resolves the `models` package collision with GAN/pix2pix
+    # and the icetk/protobuf shim. Assert those globals came back as real classes.
+    import inspect
+
+    from maua.autoregressive.cog.video import generate
+
+    for name in ("CoglmStrategy", "CogVideoCacheModel", "DirectSuperResolution"):
+        assert inspect.isclass(getattr(generate, name)), f"{name} did not resolve to a class"
