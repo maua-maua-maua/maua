@@ -5,6 +5,11 @@ import torch
 import torch.nn.functional as F
 from resize_right import resize
 
+# The pwc / liteflownet / unflow backends need a custom CUDA correlation kernel compiled at runtime
+# via cupy. Install a cupy build matching the CUDA toolchain (e.g. `pip install cupy-cuda12x`); keep
+# it <14 so it stays compatible with numpy 1.26. The vendored correlation.py files were migrated off
+# the removed `cupy.cuda.compile_with_cache` API to `cupy.RawModule`. spynet is pure torch (no cupy).
+
 # remove shape asserts from optical flow files
 for file in [
     os.path.dirname(__file__) + "/../submodules/unflow/run.py",
@@ -16,6 +21,23 @@ for file in [
         txt = f.read().replace("assert", "# assert").replace("# #", "#")
     with open(file, "w") as f:
         f.write(txt)
+
+# cupy removed `cupy.cuda.compile_with_cache` in v13; migrate the vendored correlation kernels to
+# `cupy.RawModule` in place (idempotent) so the neural backends keep working across submodule resets.
+for file in [
+    os.path.dirname(__file__) + "/../submodules/unflow/correlation/correlation.py",
+    os.path.dirname(__file__) + "/../submodules/pwc/correlation/correlation.py",
+    os.path.dirname(__file__) + "/../submodules/liteflownet/correlation/correlation.py",
+]:
+    with open(file, "r") as f:
+        txt = f.read()
+    patched = txt.replace(
+        "cupy.cuda.compile_with_cache(strKernel).get_function(strFunction)",
+        "cupy.RawModule(code=strKernel).get_function(strFunction)",
+    )
+    if patched != txt:
+        with open(file, "w") as f:
+            f.write(patched)
 
 
 def preprocess(im, h, w):
