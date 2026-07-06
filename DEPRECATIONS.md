@@ -50,6 +50,14 @@ IC-GAN's SwAV extractor (`swav_pretrained.pth.tar`) and OmniMAE's
 `vitl_ssv2_ft.torch` are fetched via `fetch_model(..., url=<fbaipublicfiles>)` — still
 live upstream, so they use the URL fallback rather than the HF mirror for now.
 
+Two more dead hosts surfaced while broadening the style-transfer smoke tests, both
+still hardcoded and needing a re-host: `mirror.io.community` (VQGAN imagenet_1024/16384
+`.ckpt`+`.yaml`, `parameterizations/vqgan.py`; DNS gone) and `web.eecs.umich.edu`
+(ProGamerGov `vgg19-d01eb7cb.pth` for the `pgg-*` perceptors, `perceptors/vgg_pgg.py`;
+connection times out). Until re-hosted, the vqgan parameterization and pgg perceptors
+can't fetch weights, so the style smoke tests use the `rgb` parameterization and the
+`kbc-vgg19` perceptor (whose weights resolve fine).
+
 ---
 
 ## Fixed
@@ -80,6 +88,10 @@ live upstream, so they use the URL fallback rather than the HF mirror for now.
 | `super/image/models/latent_diffusion.py` | tiling guard checked *image* size (≥128) but the fold runs on the *latent* (image/vqf) with a 128 kernel → 0 patches at 256px; torch 2.6+ `weights_only` broke the fully-pickled ckpt | threshold `128*vqf` (512px); `weights_only=False` |
 | `GAN/projector.py` | hardcoded `/home/hans` paths, script-style; hardcoded `num_ws=18` and `size=1024` mismatched smaller generators | `project(model_file, file, out_dir, ..., steps)`; `num_ws`/`size` derived from the generator |
 | `GAN/icgan/generate.py` | `sys.path` off-by-one to submodules | fixed path |
+| `flow/sniklaus.py` neural backends (pwc/liteflownet/unflow) | need a runtime-compiled CUDA correlation kernel via cupy, which was uninstalled; the vendored kernels also used `cupy.cuda.compile_with_cache`, removed in cupy 13 | install `cupy-cuda12x<14` (numpy-1.26-compatible); `sniklaus.py` idempotently rewrites the kernels to `cupy.RawModule` at import. spynet is pure-torch (no cupy). All four + farneback covered by `tests/smoke/test_flow_models.py` |
+| `diffusion/{image,video,klmc2_animation}.py` `main()` | splatted argparse's `set_defaults(func=...)` dispatch handle into the sampler → `unexpected keyword argument 'func'`; image `main` also never created `--out-dir` | drop `func` before splatting; `mkdir(parents=True)` the out-dir. Covered by `tests/smoke/test_cli_e2e.py` |
+| `GAN/blending.py` `blend_checkpoints` | called `get_state_dict_key_levels` unconditionally; its module-name parser IndexErrors on the current wrapper naming, but the levels are only used by the "crossover" strategy | compute levels lazily (crossover only), so the "random" model-soup path works |
+| `style/image_multires.py` `transfer_multires` | wrote intermediates to a `sys.argv`-derived path that crashes when called off the CLI | added a `save_intermediate` arg (None disables saving) |
 | `GAN/ZSSGAN` (StyleGAN-NADA) | five modern-stack breakages surfaced by end-to-end `test_nada`: (1) torch 2.6+ `weights_only=True` default rejected the pickled NVIDIA ckpt; (2) `torch.load` can't read an NVIDIA distribution `.pkl` (raw pickle, not a torch archive); (3) `SG2Generator` hardcoded `channel_multiplier=2`, mismatching the half-width FFHQ-256 research pkl; (4) this pix2pix vintage's `define_G` dropped the trailing `gpu_ids` arg; (5) torchvision `save_image` renamed `range=`→`value_range=` | (1) `weights_only=False`; (2) new `load.py:load_nvidia_state_dict` routes `.pkl` through NVIDIA's `legacy.load_network_pkl(...).state_dict()`; (3) new `load.py:detect_channel_multiplier` reads the multiplier back from the res-64 block width; (4) dropped the `[0]` arg; (5) `value_range=` |
 | `audiovisual/patches/**`, `audiovisual/patches/primitives/latents.py` | stale relative-ish imports after renames | absolute imports |
 | torchvision compat | `torchvision.models.utils` & `transforms.functional_tensor` removed (needed by basicsr/ic_gan/submodules) | sys.modules shims in `maua/ops/compat.py`, installed from `maua/__init__.py` |
@@ -165,7 +177,7 @@ A `git submodule update` resets them and reintroduces the breakage. Known patche
 |---|---|
 | `submodules/VQGAN` | `taming/models/*`, LPIPS/vqperceptual tweaks (pre-existing) |
 | `submodules/latent_diffusion` | `ldm/util.py`: a botched `print(...)` removal left a dangling f-string → `IndentationError`; repaired to a comment. Reintroduced when the submodule was reset during the pix2pix add. |
-| `submodules/{BSRGAN,liteflownet,pwc,spynet,unflow}` | pre-existing local edits |
+| `submodules/{BSRGAN,liteflownet,pwc,spynet,unflow}` | pre-existing local edits. Additionally, `sniklaus.py` now rewrites the `{pwc,liteflownet,unflow}/correlation/correlation.py` kernels from the removed `cupy.cuda.compile_with_cache` API to `cupy.RawModule` at **import time** — this patch is idempotent and driven from committed parent-repo code, so unlike the rows above it self-heals after a submodule reset. |
 | `submodules/minDALLE` | `dalle/utils/config.py`: mutable dataclass default rejected by Python ≥3.12; changed to `field(default_factory=...)`. |
 | `submodules/rq_vae_transformer` | `rqvae/models/rqtransformer/configs.py`: same mutable-dataclass-default fix (`field(default_factory=...)`). |
 | `GAN/nv/torch_utils/custom_ops.py` | NVIDIA's `get_plugin` assumed `cpp_extension.load()` puts the build dir on `sys.path` and then `import_module(name)`; modern torch returns the compiled module directly, so the import failed (`bias_act_plugin` etc. `ModuleNotFoundError`). Patched to use the `load()` return value, falling back to `import_module` only if it's `None`. |

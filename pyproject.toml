@@ -49,8 +49,13 @@ extra-build-dependencies = { "mmcv-full" = ["setuptools<82"], "youtokentome" = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Fast tier runs by default; GPU smoke tier: pytest -m gpu
+# Fast tier (CPU) runs by default. Other lanes:
+#   pytest -m gpu                     full smoke tier (needs a CUDA GPU; pin CUDA_VISIBLE_DEVICES)
+#   pytest -m "gpu and not slow"      quick smoke lane, skips multi-minute/large-download tests
+#   pytest -m "gpu and not download"  smoke without first-run weight fetches
 addopts = "-m 'not gpu'"
+# Safety ceiling so a hung kernel/download can't wedge a run forever; real tests finish well under this.
+timeout = 1200
 markers = [
     "gpu: needs a CUDA GPU (smoke tier)",
     "slow: takes a long time even at tiny settings",
