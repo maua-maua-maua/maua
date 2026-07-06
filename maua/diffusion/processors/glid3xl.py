@@ -244,10 +244,12 @@ class GLID3XL(BaseDiffusionProcessor):
             text_emb_clip_blank = self.clip_model.encode_text(clip.tokenize([neg] * B, truncate=True).to(self.device))
             clip_context = torch.cat([text_emb_clip, text_emb_clip_blank], dim=0)
 
+        # TODO implement inpainting: image-conditioned checkpoints expect an encoded inpaint region here
+        image_embed = torch.zeros(2 * B, 4, *img.shape[2:], device=self.device) if self.model.image_conditioned else None
         kw = {
             "context": context,
             "clip_embed": clip_context if self.model.clip_conditioned else None,
-            "image_embed": image_embed if self.model.image_conditioned else None,  # TODO implement inpainting
+            "image_embed": image_embed,
         }
 
         t = torch.tensor([start_step] * img.shape[0], device=self.device, dtype=torch.long)

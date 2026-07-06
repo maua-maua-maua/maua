@@ -142,7 +142,7 @@ class Pixel(Parameterization):
         norm_weight=0.1,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     ):
-        super().__init__(width * scale, height * scale)
+        super().__init__(height * scale, width * scale, torch.zeros(n_pallets, height, width).to(device))
         self.pallet_inertia = 2
         pallet = (
             torch
@@ -156,7 +156,6 @@ class Pixel(Parameterization):
         self.pallet_size = pallet_size
         self.n_pallets = n_pallets
         self.value = nn.Parameter(torch.zeros(height, width).to(device))
-        self.tensor = nn.Parameter(torch.zeros(n_pallets, height, width).to(device))
         self.output_axes = ("n", "s", "y", "x")
         self.latent_strength = 0.1
         self.scale = scale
@@ -215,6 +214,13 @@ class Pixel(Parameterization):
         pallet_indices = color_norms.argsort(dim=0).T
         pallet = torch.stack([pallet[i][:, j] for j, i in enumerate(pallet_indices)], dim=1)
         return pallet
+
+    @property
+    def image_shape(self):
+        return self.w, self.h
+
+    def decode(self, tensor=None):
+        return self.decode_tensor()
 
     def get_image_tensor(self):
         return torch.cat([self.value.unsqueeze(0), self.tensor])
@@ -295,7 +301,7 @@ class Pixel(Parameterization):
         colors_cont = (colors_cont * pallet_weights).sum(dim=2)
         colors_cont = F.interpolate(colors_cont.movedim(2, 0).unsqueeze(0), (height, width), mode="nearest")
 
-        tensor = named_rearrange(colors_cont, self.output_axes, ("y", "x", "s"))
+        tensor = colors_cont.squeeze(0).movedim(0, 2)  # ("n", "s", "y", "x") -> ("y", "x", "s")
         array = np.array(tensor.mul(255).clamp(0, 255).cpu().detach().numpy().astype(np.uint8))[:, :, :]
         return Image.fromarray(array)
 
@@ -322,13 +328,24 @@ class Pixel(Parameterization):
             self.value.set_(value_ref)
 
         if smart_encode:
-            mse = HSVLoss.TargetImage("HSV loss", self.image_shape, pil_image)
+            # PyTTI's DirectImageGuide/HSVLoss aren't vendored; optimize pallet+tensor directly so the
+            # decoded image matches the target in HSV space (same objective, minimal implementation).
+            target = TF.to_tensor(pil_image.resize((width, height), Image.LANCZOS)).to(device)[None]
+            target_hsv = rgb_to_hsv(target)
 
             if self.hdr_loss is not None:
                 before_weight = self.hdr_loss.weight.detach()
                 self.hdr_loss.set_weight(0.01)
-            guide = DirectImageGuide(self, None, optimizer=optim.Adam([self.pallet, self.tensor], lr=0.1))
-            guide.run_steps(201, [], [], [mse])
+            optimizer = optim.Adam([self.pallet, self.tensor], lr=0.1)
+            for _ in range(201):
+                optimizer.zero_grad()
+                decoded = self.decode_tensor()
+                loss = F.mse_loss(rgb_to_hsv(decoded.clamp(0, 1)), target_hsv)
+                if self.hdr_loss is not None:
+                    loss = loss + self.hdr_loss(self)[0]
+                loss.backward()
+                optimizer.step()
+                self.update()
             if self.hdr_loss is not None:
                 self.hdr_loss.set_weight(before_weight)
 

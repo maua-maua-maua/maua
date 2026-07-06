@@ -70,6 +70,9 @@ def main():
 
         exit(0)
 
+        start_lat = diffusion.encode(start_img)
+        start_noise = diffusion.forward(start_lat, [start_prompt], t_start=t_start, reverse=True, latent=True)
+
         end_prompt = ImagePrompt(path=sys.argv[2], size=size)
         end_img = end_prompt.img.float().cuda()
         end_lat = diffusion.encode(end_img)

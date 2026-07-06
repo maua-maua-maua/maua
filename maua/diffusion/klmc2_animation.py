@@ -100,7 +100,8 @@ def load_model_from_config(config, ckpt):
 
 def load_models(sd_model_path=None):
     sd_model_path = sd_model_path or download_from_huggingface(
-        "runwayml/stable-diffusion-v1-5", "v1-5-pruned-emaonly.ckpt"
+        # runwayml/stable-diffusion-v1-5 was delisted from the HF Hub; this is the community mirror
+        "stable-diffusion-v1-5/stable-diffusion-v1-5", "v1-5-pruned-emaonly.ckpt"
     )
     vae_840k_model_path = download_from_huggingface(
         "stabilityai/sd-vae-ft-mse-original", "vae-ft-mse-840000-ema-pruned.ckpt"

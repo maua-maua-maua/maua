@@ -438,6 +438,8 @@ class Decoder(nn.Module):
         self.return_interim_layers = return_interim_layers
         self.final_projection = None
         if final_projection is not None:
+            import hydra  # optional dep: only needed when passing omegaconf configs for these components
+
             self.final_projection = hydra.utils.instantiate(final_projection, _convert_="all", _recursive_=False)
 
     def build_pos_embedding(
@@ -704,6 +706,8 @@ class VisionTransformer(nn.Module):
         self.post_encoder = None
 
         if post_encoder_params is not None:
+            import hydra  # optional dep: only needed when passing omegaconf configs for these components
+
             self.post_encoder = hydra.utils.instantiate(
                 post_encoder_params,
                 _convert_="all",

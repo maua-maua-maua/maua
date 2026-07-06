@@ -1,6 +1,7 @@
 # %%
 import os
 import random
+from collections import OrderedDict
 from glob import glob
 from math import ceil
 from random import choice
@@ -430,6 +431,8 @@ def training_step(self, batch, batch_idx, optimizer_idx):
     # train discriminator
     if optimizer_idx == 1:
         # Measure discriminator's ability to classify real from generated samples
+        imgs = batch[0] if isinstance(batch, (tuple, list)) else batch
+        z = torch.randn(imgs.size(0), z_dim, 1, 1).type_as(imgs)
 
         # how well can it label as real?
         valid = torch.ones(imgs.size(0), 1)

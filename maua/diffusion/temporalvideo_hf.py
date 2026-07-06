@@ -85,13 +85,17 @@ def stylize_video(
         warnings.simplefilter("ignore")  # silence annoying TypedStorage warnings
 
         pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+            # runwayml/stable-diffusion-v1-5 was delisted from the HF Hub; this is the community mirror
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
             controlnet=ControlNetModel.from_pretrained("wav/TemporalNet2", torch_dtype=torch.float16),
             safety_checker=None,
             torch_dtype=torch.float16,
         ).to(device)
         pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-        pipe.enable_xformers_memory_efficient_attention()
+        try:
+            pipe.enable_xformers_memory_efficient_attention()
+        except Exception:
+            pass  # no xformers kernels for this GPU arch (e.g. sm_120); torch SDPA is used instead
         pipe._progress_bar_config = dict(disable=True)
 
     raft = raft_large(weights=Raft_Large_Weights.DEFAULT, progress=True).eval().to(device)
@@ -100,7 +104,8 @@ def stylize_video(
     input_video = torch.cat((input_video[[-1]], input_video))
 
     output_video = []
-    for i in trange(1, n_frames, batch_size, desc="Diffusing...", unit="frame", unit_scale=batch_size):
+    # frames to stylize live at indices 1..n_frames after the wrap-frame prepend
+    for i in trange(1, n_frames + 1, batch_size, desc="Diffusing...", unit="frame", unit_scale=batch_size):
         prev = resize(input_video[i - 1 : i - 1 + batch_size], (height, width), antialias=True).to(device)
         curr = resize(input_video[i : i + batch_size], (height, width), antialias=True).to(device)
         prev = prev[: curr.shape[0]]  # make sure prev and curr have the same batch size (for the last batch)

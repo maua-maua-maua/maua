@@ -3,7 +3,12 @@ import json
 import numpy as np
 import torch
 
-from maua.audiovisual.audioreactive.selfsupervised.latent import FeatureLatents, LoopLatents, SegmentationLatents
+from maua.audiovisual.audioreactive.selfsupervised.latent import (
+    FeatureLatents,
+    LoopLatents,
+    SegmentationLatents,
+    spline_loop_latents,
+)
 from maua.audiovisual.audioreactive.selfsupervised.mir import AUDIO_FEATURES, UNIT_FEATURES
 
 
@@ -145,12 +150,12 @@ class Patch(torch.nn.Module):
         ]
         latents = spline_loop_latents(latent_palette[base_selection], self.length)
         for subpatch in self.latent_patches:
-            latents = latent_patch(
+            latents = latent_patch(  # noqa: F821 -- unwritten helper; method raises NotImplementedError above
                 self.rng, latents, latent_palette, self.segmentations, self.features, self.tempo, self.fps, **subpatch
             )
 
         noise = [
-            Loop(
+            Loop(  # noqa: F821 -- unwritten helper; method raises NotImplementedError above
                 rng=self.rng,
                 length=self.length,
                 size=(round(aspect_ratio * size / downscale_factor), round(size / downscale_factor)),
@@ -160,7 +165,7 @@ class Patch(torch.nn.Module):
             for size in [4, 8, 8, 16, 16, 32, 32, 64, 64, 128, 128, 256, 256, 512, 512, 1024, 1024]
         ]
         for subpatch in self.noise_patches:
-            noise = noise_patch(self.rng, noise, self.features, self.tempo, self.fps, **subpatch)
+            noise = noise_patch(self.rng, noise, self.features, self.tempo, self.fps, **subpatch)  # noqa: F821 -- unwritten helper; method raises NotImplementedError above
 
         return latents.to(self.rng.device), [n.to(self.rng.device) for n in noise]
 

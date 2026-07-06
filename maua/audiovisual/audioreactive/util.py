@@ -34,8 +34,8 @@ def plot_signals(signals):
     plt.figure(figsize=(32, 4 * len(signals)))
     for sbplt, y in enumerate(signals):
         try:
-            signal.cpu().numpy()
-        except:
+            y = y.cpu().numpy()
+        except AttributeError:
             pass
         plt.subplot(len(signals), 1, sbplt + 1)
         plt.plot(y.squeeze())

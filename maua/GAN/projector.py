@@ -63,12 +63,15 @@ def make_image(tensor):
 
 
 class LatentImageDataset(torch.utils.data.Dataset):
+    def __init__(self, root):
+        self.root = root
+
     def __len__(self):
-        return len(os.listdir(f"{projector_set}/")) // 2
+        return len(os.listdir(f"{self.root}/")) // 2
 
     def __getitem__(self, idx):
-        w = torch.load(f"{projector_set}/{idx:05}.pt").squeeze()
-        img = to_tensor(Image.open(f"{projector_set}/{idx:05}.jpg").resize((224, 224), Image.Resampling.LANCZOS))
+        w = torch.load(f"{self.root}/{idx:05}.pt").squeeze()
+        img = to_tensor(Image.open(f"{self.root}/{idx:05}.jpg").resize((224, 224), Image.Resampling.LANCZOS))
         return w, img
 
 
@@ -182,7 +185,7 @@ def project(model_file, file, out_dir="output", device="cuda", use_vit=False, st
             epochs = 32
             batch_size = 32
             dataloader = torch.utils.data.DataLoader(
-                LatentImageDataset(), batch_size=batch_size, num_workers=24, shuffle=True
+                LatentImageDataset(projector_set), batch_size=batch_size, num_workers=24, shuffle=True
             )
 
             optimizer = torch.optim.Adam(vit.heads.parameters(), lr=1e-4)

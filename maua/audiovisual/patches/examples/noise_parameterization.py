@@ -7,6 +7,7 @@ from kornia.geometry.transform import rotate
 from scipy import signal
 
 from maua.audiovisual import audioreactive as ar
+from maua.ops.noise import perlin_noise
 from maua.audiovisual.patches.base.stylegan2 import StyleGAN2Patch
 
 
@@ -73,7 +74,7 @@ class NoiseParameterization(StyleGAN2Patch):
 
         latents = ar.gaussian_filter(latents, 2)
 
-        n_rotations = self.n_frames / random.choice([6 * fps, 6.5 * fps, 7 * fps, 8 * fps])
+        n_rotations = self.n_frames / random.choice([6 * self.fps, 6.5 * self.fps, 7 * self.fps, 8 * self.fps])
         steps_per_rev = int(self.n_frames / n_rotations)
         revolution = -torch.linspace(0, 360 * (1 - 1 / steps_per_rev), steps_per_rev)
         angles = torch.cat([revolution for _ in range(int(self.n_frames / steps_per_rev))])

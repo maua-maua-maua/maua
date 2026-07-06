@@ -13,7 +13,7 @@ from torchvision.transforms.functional import to_tensor
 from torchvision.utils import save_image
 from tqdm import tqdm
 
-from maua.super.image.models.waifu import merge, split
+from maua.super.image.models.waifu import load_model, merge, split
 
 
 class Images(Dataset):

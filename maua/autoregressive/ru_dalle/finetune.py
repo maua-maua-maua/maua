@@ -452,4 +452,6 @@ def main(args):
 
 
 if __name__ == "__main__":
+    from maua.cli.autoregressive import ru_dalle_finetune as argument_parser
+
     main(argument_parser().parse_args())

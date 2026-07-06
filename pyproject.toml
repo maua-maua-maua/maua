@@ -76,8 +76,12 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-extend-select = ["TID252"]
+extend-select = ["TID252", "F821"]
 extend-ignore = ["E402"]
+
+[tool.ruff.lint.per-file-ignores]
+# torchtyping TensorType["dim"] string annotations look like undefined names to pyflakes
+"maua/audiovisual/audioreactive/latent.py" = ["F821"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 # Prefer `from maua...` over `from .` / `from ..` (PEP 8: absolute imports).

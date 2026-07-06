@@ -14,9 +14,7 @@
 
 import os
 import sys
-from glob import glob
 from pathlib import Path
-from shutil import rmtree
 
 import clip
 import numpy as np
@@ -167,14 +165,22 @@ def main(
     make_grid=False,
     out_dir="output/",
 ):
+    checkpoint_dir = str(checkpoint_dir).rstrip("/")
     if not os.path.exists(checkpoint_dir):
-        try:
-            path = download(URLS[Path(checkpoint_dir).stem.replace("rqvae_")], checkpoint_dir)
-            file = glob(path + "*.tar.gz")[0]
-            unzip(file, checkpoint_dir)
-            rmtree(file)
-        except:
-            raise Exception("Checkpoint not found!")
+        name = Path(checkpoint_dir).name.replace("rqvae_", "")
+        if name not in URLS:
+            raise FileNotFoundError(
+                f"Checkpoint '{checkpoint_dir}' not found and no download URL known for '{name}' "
+                f"(available: {', '.join(sorted(URLS))})"
+            )
+        parent = Path(checkpoint_dir).parent
+        parent.mkdir(parents=True, exist_ok=True)
+        tarball = parent / f"{name}.tar.gz"
+        download(URLS[name], str(tarball))
+        unzip(str(tarball), str(parent))  # the tarball contains a top-level '{name}/' folder
+        os.remove(tarball)
+        if str(parent / name) != checkpoint_dir:
+            (parent / name).rename(checkpoint_dir)
     model_vqvae, _ = load_model(f"{checkpoint_dir}/stage1/model.pt")
     model_ar, config = load_model(f"{checkpoint_dir}/stage2/model.pt", ema=False, map_location="cuda")
     model_ar = model_ar.cuda().eval()

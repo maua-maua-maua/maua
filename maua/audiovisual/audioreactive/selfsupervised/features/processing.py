@@ -3,7 +3,7 @@ import torch
 from torch.nn.functional import conv1d, pad
 from torchaudio.functional import contrast, highpass_biquad, lowpass_biquad
 
-# from .efficient_quantile import quantile
+from maua.audiovisual.audioreactive.selfsupervised.features.efficient_quantile import quantile
 
 
 def gaussian_filter(x, sigma, mode: str = "circular", causal: float = 1):

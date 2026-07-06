@@ -19,6 +19,9 @@ normalize = Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.261302
 @torch.no_grad()
 def calculate_svds(G, cache_file, N=1600):
     if not os.path.exists(cache_file):
+        import clip
+
+        CLIP, _ = clip.load("ViT-B/32", jit=True, device=device)
         latents, svds = [], []
         for _ in tqdm(range(N)):
             zs = torch.randn((1, G.z_dim), device=device)
@@ -41,11 +44,11 @@ def calculate_svds(G, cache_file, N=1600):
     return torch.from_numpy(latents), torch.from_numpy(svds)
 
 
-def get_polarity_samples(zs, latents, svds, pol=0, top_k=30, seed=0):
+def get_polarity_samples(num_samples, latents, svds, pol=0, top_k=30, seed=0):
     detz = np.exp(np.log(svds[:, :top_k]).sum(1))
     proba = detz**pol
     proba = np.clip(proba, 1e-60, 1e200)
-    idx = np.RandomState(seed).choice(latents.shape[0], size=num_samples, p=proba / proba.sum(), replace=False)
+    idx = np.random.RandomState(seed).choice(latents.shape[0], size=num_samples, p=proba / proba.sum(), replace=False)
     return latents[idx, :]
 
 
@@ -58,8 +61,8 @@ def generate(G, z):
 
 def polarity_sampling(G, zs, polarity, cache_file, top_k=10):
     latents, svds = calculate_svds(G, cache_file)
-    z = get_polarity_samples(zs, latents, svds, polarity, top_k=top_k, seed=None)
-    imgs = generate(z)
+    z = get_polarity_samples(len(zs), latents, svds, polarity, top_k=top_k, seed=None)
+    imgs = generate(G, z)
     return imgs
 
 
@@ -71,7 +74,9 @@ if __name__ == "__main__":
 
     grid = []
     for pol in [-2, -1, -0.2, -0.1, 0, 0.01, 0.1, 0.2, 0.5]:
-        imgs = polarity_sampling(G=G, polarity=pol, cache_file=f"cache/{Path(checkpoint).stem}_svds.npz")
+        imgs = polarity_sampling(
+            G=G, zs=torch.randn(8, G.z_dim), polarity=pol, cache_file=f"cache/{Path(checkpoint).stem}_svds.npz"
+        )
         imgs = np.concatenate(imgs, axis=1)
         grid.append(imgs)
     grid = np.concatenate(grid, axis=2)

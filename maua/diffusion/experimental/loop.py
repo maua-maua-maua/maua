@@ -233,6 +233,7 @@ if __name__ == "__main__":
                 frame_range = np.arange(N) if direction > 0 else np.flip(np.arange(N))
                 roll = np.random.randint(1, N)
                 frame_range = np.roll(frame_range, roll)
+                out_img = None  # always assigned on the first iteration (f_i == 0 takes the diffusion branch)
                 start_idx = frame_range[0] * turbo
                 for f_i, f_n in enumerate(frame_range):
                     init_img = frames[f_n]

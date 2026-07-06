@@ -62,7 +62,7 @@ def get_flow_model(
         from thoth.deepflow2 import deepflow2
         from thoth.deepmatching import deepmatching
 
-        models.append(lambda im1, im2: deepflow2(im1, im2, deepmatching(im1, im2)))
+        pred_fns.append(lambda im1, im2: deepflow2(im1, im2, deepmatching(im1, im2)))
 
     return lambda im1, im2: torch.mean(torch.stack([pred(im1, im2) for pred in pred_fns]), dim=0).to(im1).float()
 
