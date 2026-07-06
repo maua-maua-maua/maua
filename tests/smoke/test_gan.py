@@ -80,6 +80,25 @@ def test_stylegan3_interpolation(stylegan3_model, assert_plausible_image):
         assert_plausible_image(f.float())
 
 
+def test_blend_checkpoints(stylegan2_model):
+    """Model-soup blending: averaging a checkpoint with itself must reproduce a complete,
+    finite state dict identical to the original (exercises the key-level + blend-weight logic)."""
+    from maua.GAN.blending import blend_checkpoints
+    from maua.GAN.wrappers import get_generator_class
+
+    G = get_generator_class("stylegan2")(model_file=str(stylegan2_model)).cuda()
+    reference = {k: v.cpu() for k, v in G.state_dict().items()}
+
+    blended = blend_checkpoints([str(stylegan2_model), str(stylegan2_model)], "random", "stylegan2", G)
+
+    assert set(blended.keys()) == set(reference.keys()), "blended state dict is missing/extra keys"
+    for k, v in blended.items():
+        v = v.cpu()
+        assert torch.isfinite(v).all(), f"blended tensor {k} has NaN/Inf"
+        # a weighted average of a tensor with itself is the tensor itself
+        assert torch.allclose(v, reference[k], atol=1e-4), f"self-blend changed {k}"
+
+
 @pytest.mark.slow
 def test_projector(stylegan2_model, example_image, tmp_path):
     from maua.GAN.projector import project

@@ -299,7 +299,9 @@ def generate_images(generator, file_name, batch_size=4):
 
 
 def blend_checkpoints(checkpoints, blend_strategy, architecture, generator):
-    levels = get_state_dict_key_levels(generator)
+    # per-key layer levels are only consulted by the crossover strategy; computing them requires a
+    # forward pass and module-name parsing, so only do it when that strategy is actually selected.
+    levels = get_state_dict_key_levels(generator) if blend_strategy == "crossover" else {}
 
     if blend_strategy == "crossover":
         mix_types = torch.randint(0, 3, (len(checkpoints),))
