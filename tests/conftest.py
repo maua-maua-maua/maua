@@ -122,6 +122,21 @@ def stylegan2_model(modelzoo):
     return target
 
 
+@pytest.fixture(scope="session")
+def stylegan3_model(modelzoo):
+    """A StyleGAN3 checkpoint: MAUA_STYLEGAN3_PKL, a local sg3 pkl, or NVIDIA's FFHQ-U 256."""
+    env = os.environ.get("MAUA_STYLEGAN3_PKL")
+    if env:
+        return Path(env)
+    existing = [p for p in sorted(modelzoo.glob("stylegan3*.pkl"))]
+    if existing:
+        return existing[0]
+    url = "https://api.ngc.nvidia.com/v2/models/nvidia/research/stylegan3/versions/1/files/stylegan3-r-ffhqu-256x256.pkl"
+    target = modelzoo / "stylegan3-r-ffhqu-256x256.pkl"
+    torch.hub.download_url_to_file(url, str(target))
+    return target
+
+
 @pytest.fixture
 def out_dir(tmp_path):
     return tmp_path

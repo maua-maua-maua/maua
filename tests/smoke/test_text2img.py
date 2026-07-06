@@ -30,6 +30,45 @@ def test_text2img(diffusion, tiny):
     assert torch.is_tensor(img) and img.ndim == 4 and img.shape[1] == 3
 
 
+# The k-diffusion samplers are stable-only (see the --sampler choices in diffusion/image.py).
+@pytest.mark.backend_stable
+@pytest.mark.parametrize("sampler", ["ddim", "euler", "lms", "dpm_2", "dpm_adaptive"])
+def test_text2img_samplers(sampler, tiny):
+    from maua.diffusion.image import image_sample
+
+    img = image_sample(
+        text="a colorful painting of a forest",
+        sizes=[(tiny["size"], tiny["size"])],
+        skips=[0.0],
+        timesteps=tiny["steps"],
+        diffusion="stable",
+        sampler=sampler,
+    )
+    assert torch.is_tensor(img) and img.ndim == 4 and img.shape[1] == 3
+    # only 2 timesteps, so the decode is far from converged and the value range overshoots
+    # arbitrarily; the meaningful check is that each sampler drives the ODE/SDE without blowing
+    # up (finite) and produces a structured, non-degenerate image.
+    assert torch.isfinite(img).all(), f"{sampler} produced NaN/Inf"
+    assert img.float().std() > 1e-3, f"{sampler} produced a (nearly) constant image"
+
+
+@pytest.mark.backend_stable
+def test_text2img_multistage(assert_plausible_image):
+    """Two-stage synthesis: diffuse at 64px, super-res, then diffuse again at 128px."""
+    from maua.diffusion.image import image_sample
+
+    img = image_sample(
+        text="a colorful painting of a forest",
+        sizes=[(64, 64), (128, 128)],
+        skips=[0.0, 0.5],
+        timesteps=2,
+        diffusion="stable",
+        sampler="euler",
+    )
+    assert img.shape[-2:] == (128, 128), f"final stage should be 128px, got {tuple(img.shape[-2:])}"
+    assert_plausible_image(img, lo=-3, hi=3)
+
+
 @pytest.mark.slow
 def test_min_dalle():
     from maua.autoregressive.min_dalle.generate import generate

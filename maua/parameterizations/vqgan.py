@@ -36,6 +36,8 @@ from taming.models import cond_transformer, vqgan
 
 def maybe_download_vqgan(model_dir):
     # fmt: off
+    # NOTE: the mirror.io.community host below is dead (DNS no longer resolves). The imagenet_1024/16384
+    # weights need a new mirror in the taming .ckpt+.yaml format; provide them in modelzoo/ manually for now.
     if model_dir == "imagenet_1024":
         config_path, checkpoint_path = "modelzoo/vqgan_imagenet_f16_1024.yaml", "modelzoo/vqgan_imagenet_f16_1024.ckpt"
         if not os.path.exists(checkpoint_path):

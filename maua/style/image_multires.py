@@ -29,6 +29,7 @@ def transfer_multires(
     style_weight,
     style_scale,
     device,
+    save_intermediate=None,
 ):
     if isinstance(n_iters, int):
         n_iters = [n_iters] * len(sizes)
@@ -66,7 +67,9 @@ def transfer_multires(
         gc.collect()
         torch.cuda.empty_cache()
 
-        tensor2img(img).save(f"output/{'_'.join([Path(arg).stem for arg in sys.argv[1:]])}_{size}.jpg")
+        if save_intermediate:
+            Path(save_intermediate).parent.mkdir(parents=True, exist_ok=True)
+            tensor2img(img).save(f"{save_intermediate}_{size}.jpg")
 
     return img
 
@@ -90,4 +93,5 @@ if __name__ == "__main__":
         style_weight=50000,
         style_scale=1,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+        save_intermediate=f"output/{'_'.join([Path(arg).stem for arg in sys.argv[1:]])}",
     )

@@ -42,9 +42,41 @@ def test_stylegan2_interpolation(stylegan2_model, assert_plausible_image):
 
     G = load_generator(stylegan2_model)
     frames = list(random_interpolation(G, n_frames=3, smooth=1, truncation=torch.tensor(1.0), batch_size=1))
-    n_frames = sum(len(f) for f in frames)
-    assert n_frames == 3, f"asked for 3 interpolation frames, got {n_frames}"
+    assert len(frames) == 3, f"asked for 3 interpolation frames, got {len(frames)}"
     for f in frames:
+        assert f.shape[-3] == 3, f"expected a CHW image frame, got {tuple(f.shape)}"
+        assert_plausible_image(f.float())
+
+
+def test_stylegan3_generate(stylegan3_model, assert_plausible_image):
+    from maua.GAN.generate_images import generate_images
+
+    G = load_generator(stylegan3_model, architecture="stylegan3")
+    imgs = list(
+        generate_images(
+            G=G,
+            seeds=[7],
+            class_idx=None,
+            truncation=1.0,
+            latent_sampling="standard",
+            langevin_critic=None,
+            translation=None,
+            rotation=None,
+            batch_size=1,
+        )
+    )
+    assert len(imgs) == 1 and imgs[0].shape[-3] == 3
+    assert_plausible_image(imgs[0].float())
+
+
+def test_stylegan3_interpolation(stylegan3_model, assert_plausible_image):
+    from maua.GAN.generate_interpolation import random_interpolation
+
+    G = load_generator(stylegan3_model, architecture="stylegan3")
+    frames = list(random_interpolation(G, n_frames=3, smooth=1, truncation=torch.tensor(1.0), batch_size=1))
+    assert len(frames) == 3, f"asked for 3 interpolation frames, got {len(frames)}"
+    for f in frames:
+        assert f.shape[-3] == 3, f"expected a CHW image frame, got {tuple(f.shape)}"
         assert_plausible_image(f.float())
 
 
