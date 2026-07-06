@@ -428,7 +428,8 @@ def main(args):
     out_dir, fps = args.out_dir, args.fps
     del args.out_dir, args.fps
 
-    video = video_sample(**vars(args))
+    kwargs = {k: v for k, v in vars(args).items() if k != "func"}  # drop the argparse dispatch handle
+    video = video_sample(**kwargs)
 
     write_video(video, f"output/{Path(args.diffusion).stem}_{out_name}.mp4", fps=fps, value_range=(-1, 1))
 

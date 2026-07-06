@@ -436,7 +436,8 @@ def argument_parser():
 
 
 def main(args):
-    generate_animation(**vars(args))
+    kwargs = {k: v for k, v in vars(args).items() if k != "func"}  # drop the argparse dispatch handle
+    generate_animation(**kwargs)
 
 
 if __name__ == "__main__":

@@ -319,8 +319,10 @@ def main(args):
     out_name = build_output_name(args.init, args.style, args.text, args.image)[:222]
     out_dir = args.out_dir
     del args.out_dir
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-    for i, img in enumerate(image_sample(**vars(args))):
+    kwargs = {k: v for k, v in vars(args).items() if k != "func"}  # drop the argparse dispatch handle
+    for i, img in enumerate(image_sample(**kwargs)):
         save_image(img, f"{out_dir}/{Path(args.diffusion).stem}_{out_name}{i}.png")
 
 
