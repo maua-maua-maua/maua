@@ -32,8 +32,6 @@ XFAIL_IMPORTS: dict[str, str] = {
     "maua.GAN.training.trainer": "requires ffcv (intentionally dropped: unmaintained, compile-heavy); legacy candidate",
     "maua.GAN.training.train_v0": "requires padl (intentionally dropped: abandoned upstream); legacy candidate",
     "maua.GAN.training.dataset.image": "requires ffcv (intentionally dropped: unmaintained, compile-heavy); legacy candidate",
-    # --- not an importable module (setuptools build script for the now-absorbed efficient_quantile)
-    "maua.audiovisual.audioreactive.selfsupervised.features.efficient_quantile.setup": "setuptools build script, not an importable module",
 }
 
 # No single module should take longer than this to import; catches import-time downloads/compiles.
@@ -47,8 +45,8 @@ def discover_modules():
         s = str(rel)
         if any(s == e or s.startswith(e + "/") for e in EXCLUDE) or "__pycache__" in s:
             continue
-        if f.name == "__main__.py":
-            continue  # importing a __main__ executes it
+        if f.name in ("__main__.py", "setup.py"):
+            continue  # __main__ executes on import; setup.py is a setuptools build script, not a module
         name = "maua." + ".".join(rel.with_suffix("").parts)
         name = name.removesuffix(".__init__")
         modules.append(name)

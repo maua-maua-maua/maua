@@ -141,8 +141,27 @@ def assert_image():
 
 
 @pytest.fixture(scope="session")
+def assert_plausible_image():
+    """The tensor is a real image, not degenerate garbage: finite, in a sane value range, non-constant.
+
+    Default bounds cover both [0, 1] and [-1, 1] conventions with a little sampler overshoot slack.
+    """
+
+    def _assert_plausible_image(img, lo=-1.5, hi=1.5, min_std=1e-4):
+        assert torch.is_tensor(img), f"expected a tensor, got {type(img)}"
+        img = img.float()
+        assert torch.isfinite(img).all(), "output contains NaN/Inf"
+        assert lo <= img.min() and img.max() <= hi, f"values [{img.min():.3f}, {img.max():.3f}] outside [{lo}, {hi}]"
+        assert img.std() > min_std, f"output is (nearly) constant, std={img.std():.2e}"
+
+    return _assert_plausible_image
+
+
+@pytest.fixture(scope="session")
 def assert_video():
-    def _assert_video(path, min_frames=1):
+    def _assert_video(path, min_frames=1, exact_frames=None):
+        from fractions import Fraction
+
         import ffmpeg
 
         path = Path(path)
@@ -150,8 +169,10 @@ def assert_video():
         info = ffmpeg.probe(str(path))
         stream = next(s for s in info["streams"] if s["codec_type"] == "video")
         n_frames = int(stream.get("nb_frames", 0)) or round(
-            float(info["format"]["duration"]) * eval(stream["r_frame_rate"])
+            float(info["format"]["duration"]) * Fraction(stream["r_frame_rate"])
         )
+        if exact_frames is not None:
+            assert n_frames == exact_frames, f"{path} has {n_frames} frames, expected exactly {exact_frames}"
         assert n_frames >= min_frames, f"{path} has {n_frames} frames, expected at least {min_frames}"
 
     return _assert_video

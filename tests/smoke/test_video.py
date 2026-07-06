@@ -23,20 +23,18 @@ def test_video_diffusion(short_video, tiny):
     assert torch.is_tensor(frames) and frames.ndim == 4 and len(frames) == len(video)
 
 
-@pytest.mark.xfail(
-    reason="xformers memory-efficient attention has no fp32 kernel for this GPU's compute capability (sm_120); needs an fp16/bf16 pipeline",
-    strict=False,
-)
-def test_temporalvideo_controlnet(short_video):
+def test_temporalvideo_controlnet(short_video, assert_plausible_image):
     from torchvision.io import read_video
 
     from maua.diffusion.temporalvideo_hf import stylize_video
 
+    # 128px is RAFT's minimum input size (features are downsampled 8x and need >=16px for the corr pyramid)
     frames = read_video(str(short_video), pts_unit="sec")[0][:3].permute(0, 3, 1, 2).float().div(255)
     out = stylize_video(
-        input_video=frames, prompt="an oil painting", num_steps=2, batch_size=2, height=64, width=64
+        input_video=frames, prompt="an oil painting", num_steps=2, batch_size=2, height=128, width=128
     )
     assert torch.is_tensor(out) and out.shape[0] == frames.shape[0]
+    assert_plausible_image(out)
 
 
 @pytest.mark.slow

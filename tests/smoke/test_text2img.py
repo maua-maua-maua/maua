@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -61,8 +62,9 @@ def test_ru_dalle(tmp_path):
 
 @pytest.mark.slow
 @pytest.mark.skipif(
-    not Path("modelzoo/rqvae_cc3m_cc12m_yfcc").exists(),
-    reason="rqvae_cc3m_cc12m_yfcc checkpoint (multi-GB) not in local modelzoo; enable when present",
+    not Path("modelzoo/rqvae_cc3m_cc12m_yfcc").exists() and not os.environ.get("MAUA_LARGE_DOWNLOADS"),
+    reason="rqvae_cc3m_cc12m_yfcc checkpoint not in local modelzoo; main() can self-provision it "
+    "(15 GB from kakaocdn) — set MAUA_LARGE_DOWNLOADS=1 to allow",
 )
 def test_rq_dalle(tmp_path):
     from maua.autoregressive.rq_dalle import main
