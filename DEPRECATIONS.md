@@ -184,13 +184,13 @@ penalty:
 
 ## Intentionally dropped
 
-Per the repo owner, these optional deps are not worth vendoring; the modules that need
-them are the **only remaining `maua/legacy/` candidates** for Phase C.
+These optional deps are not worth vendoring. The modules that needed them were
+**rewritten dependency-free** (no more legacy candidates from this group):
 
-| Dep | Modules | Why dropped |
-|---|---|---|
-| `padl` | `GAN/training/train_v0` | abandoned upstream |
-| `ffcv` | `GAN/training/trainer`, `GAN/training/dataset/image` | unmaintained, compile-heavy |
+| Dep | Modules | Why dropped | Resolution |
+|---|---|---|---|
+| `padl` | `GAN/training/train_v0` | abandoned upstream | rewritten as a plain-torch DCGAN script (identical architecture/training procedure), behind `main()` |
+| `ffcv` | `GAN/training/trainer`, `GAN/training/dataset/image` | unmaintained, compile-heavy | `ImageLoader` reimplemented on torch `DataLoader` with a per-image JPEG cache (old `.beton` cache paths map to a directory); `__main__.py` pipeline moved to torchvision transforms. Covered by `tests/fast/test_gan_training.py` |
 
 ## Fragile submodule working-tree patches
 
@@ -225,9 +225,8 @@ API and need porting (quarantine candidates for Phase C). A new minimal
 Following the "keep everything I possibly can" rescue pass, the previous quarantine
 candidates — the DALL-E family (`min_dalle`, `rq_dalle`, `ru_dalle`), CogVideo, IC-GAN,
 and OmniMAE — were all repaired and import cleanly (see the rescue tables above). The
-**only** remaining legacy candidates are the three training-stack modules that depend on
-the intentionally-dropped `padl`/`ffcv` (listed under *Intentionally dropped*). They stay
-xfailed in `tests/fast/test_imports.py` until the Phase C `git mv` to `maua/legacy/`.
+former padl/ffcv training-stack candidates were rewritten dependency-free (see
+*Intentionally dropped*), so **no modules remain queued for `maua/legacy/`**.
 
 `maua/diffusion/flux2hd.py` (untracked) still loads the full FLUX pipeline at import; it
 is wrapped + moved to `maua/text2img/flux.py` during Phase C rather than quarantined.
