@@ -85,7 +85,8 @@ def select_model(model_name, pooling):
     elif "vgg16" in model_name:
         model_file = "modelzoo/vgg16.pth"
         if not path.exists(model_file):
-            sd = load_url("https://web.eecs.umich.edu/~justincj/models/vgg16-00b39a1b.pth")
+            # original web.eecs.umich.edu host times out; same file mirrored on HF (AfrodreamsAI/afrodreams)
+            sd = load_url("https://huggingface.co/spaces/AfrodreamsAI/afrodreams/resolve/main/models/vgg16-00b39a1b.pth")
             map = {
                 "classifier.1.weight": "classifier.0.weight",
                 "classifier.1.bias": "classifier.0.bias",
@@ -99,7 +100,8 @@ def select_model(model_name, pooling):
     elif "vgg19" in model_name:
         model_file = "modelzoo/vgg19.pth"
         if not path.exists(model_file):
-            sd = load_url("https://web.eecs.umich.edu/~justincj/models/vgg19-d01eb7cb.pth")
+            # original web.eecs.umich.edu host times out; same file mirrored on HF (AfrodreamsAI/afrodreams)
+            sd = load_url("https://huggingface.co/spaces/AfrodreamsAI/afrodreams/resolve/main/models/vgg19-d01eb7cb.pth")
             map = {
                 "classifier.1.weight": "classifier.0.weight",
                 "classifier.1.bias": "classifier.0.bias",

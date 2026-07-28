@@ -36,18 +36,19 @@ from taming.models import cond_transformer, vqgan
 
 def maybe_download_vqgan(model_dir):
     # fmt: off
-    # NOTE: the mirror.io.community host below is dead (DNS no longer resolves). The imagenet_1024/16384
-    # weights need a new mirror in the taming .ckpt+.yaml format; provide them in modelzoo/ manually for now.
+    # NOTE: the mirror.io.community host is dead (DNS no longer resolves). imagenet_1024/16384 now
+    # resolve from the original CompVis heibox share (verified live). The wikiart mirrors are still
+    # dead (mirror.io.community + eaidata.bmk.sh both gone) — provide those in modelzoo/ manually.
     if model_dir == "imagenet_1024":
         config_path, checkpoint_path = "modelzoo/vqgan_imagenet_f16_1024.yaml", "modelzoo/vqgan_imagenet_f16_1024.ckpt"
         if not os.path.exists(checkpoint_path):
-            download("http://mirror.io.community/blob/vqgan/vqgan_imagenet_f16_1024.yaml", config_path)
-            download("http://mirror.io.community/blob/vqgan/vqgan_imagenet_f16_1024.ckpt", checkpoint_path)
+            download("https://heibox.uni-heidelberg.de/d/8088892a516d4e3baf92/files/?p=%2Fconfigs%2Fmodel.yaml&dl=1", config_path)
+            download("https://heibox.uni-heidelberg.de/d/8088892a516d4e3baf92/files/?p=%2Fckpts%2Flast.ckpt&dl=1", checkpoint_path)
     elif model_dir == "imagenet_16384":
         config_path, checkpoint_path = "modelzoo/vqgan_imagenet_f16_16384.yaml", "modelzoo/vqgan_imagenet_f16_16384.ckpt"
         if not os.path.exists(checkpoint_path):
-            download("http://mirror.io.community/blob/vqgan/vqgan_imagenet_f16_16384.yaml", config_path)
-            download("http://mirror.io.community/blob/vqgan/vqgan_imagenet_f16_16384.ckpt", checkpoint_path)
+            download("https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=%2Fconfigs%2Fmodel.yaml&dl=1", config_path)
+            download("https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=%2Fckpts%2Flast.ckpt&dl=1", checkpoint_path)
     elif model_dir == "coco":
         config_path, checkpoint_path = "modelzoo/coco.yaml", "modelzoo/coco.ckpt"
         if not os.path.exists(checkpoint_path):
