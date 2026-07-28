@@ -31,6 +31,7 @@ setup(
         "av",
         "basicsr",
         "bitsandbytes",
+        "cached-conv",  # audio/rave
         "clean-fid",
         "click",
         "cython",
@@ -44,9 +45,11 @@ setup(
         "einops",
         "ffmpeg_python",
         "filetype",
+        "fire",  # audio/jukebox CLIs
         "ftfy",
         "gdown",
         "gfpgan",
+        "gin-config",  # audio/waveshaping
         "glide_text2im @ git+https://github.com/openai/glide-text2im",
         "glumpy",
         "gputil",
@@ -65,6 +68,7 @@ setup(
         "mmcv-full",
         "mmflow",
         "more_itertools",
+        "mpi4py",  # audio/jukebox distributed setup
         "ninja",
         "npy_append_array",
         "numba",
@@ -111,6 +115,7 @@ setup(
         "torchvision",
         "tqdm",
         "transformers",
+        "udls",  # audio/rave dataset tooling
         "unidecode",
         "wandb>=0.16.0",  # older wandb pulls pathtools, whose setup uses stdlib imp (removed in 3.12)
         "youtokentome",

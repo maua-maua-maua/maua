@@ -18,7 +18,6 @@ EXCLUDE = (
     "GAN/nv",
     "GAN/studio",
     "GAN/pix2pix",
-    "audio",
 )
 
 XFAIL_IMPORTS: dict[str, str] = {
