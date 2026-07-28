@@ -18,6 +18,14 @@ Status legend:
 The living machine-readable version of this board is `XFAIL_IMPORTS` in
 `tests/fast/test_imports.py`.
 
+**Env footgun (ninja):** `~/.local/bin/ninja` is a broken stub (its `#!/usr/bin/python3`
+shebang points at a system python without the `ninja` module). If the conda env's `bin`
+is not ahead of `~/.local/bin` on PATH, torch `cpp_extension.load()` finds the broken
+stub, `verify_ninja_availability()` fails, and every StyleGAN-CUDA-op import
+(ZSSGAN/nada, GAN/nv plugins) breaks. Run tests with
+`PATH=/home/jcbgb/anaconda3/envs/maua/bin:$PATH` (ninja is pip-installed in the env and
+pinned in setup.py).
+
 ---
 
 ## Weight hosting
@@ -50,15 +58,32 @@ IC-GAN's SwAV extractor (`swav_pretrained.pth.tar`) and OmniMAE's
 `vitl_ssv2_ft.torch` are fetched via `fetch_model(..., url=<fbaipublicfiles>)` — still
 live upstream, so they use the URL fallback rather than the HF mirror for now.
 
-Two more dead hosts surfaced while broadening the style-transfer smoke tests, both
-still hardcoded and needing a re-host: `mirror.io.community` (VQGAN imagenet_1024/16384
-`.ckpt`+`.yaml`, `parameterizations/vqgan.py`; DNS gone) and `web.eecs.umich.edu`
-(ProGamerGov `vgg19-d01eb7cb.pth` for the `pgg-*` perceptors, `perceptors/vgg_pgg.py`;
-connection times out). Until re-hosted, the vqgan parameterization and pgg perceptors
-can't fetch weights, so the style smoke tests use the `rgb` parameterization and the
-`kbc-vgg19` perceptor (whose weights resolve fine).
+Two more dead hosts surfaced while broadening the style-transfer smoke tests, both now
+resolved: `mirror.io.community` VQGAN weights (imagenet_1024/16384 repointed to the
+original CompVis heibox share, verified live; wikiart_1024/16384 mirrors are still all
+dead — mirror.io.community and eaidata.bmk.sh both gone — provide those in `modelzoo/`
+manually) and `web.eecs.umich.edu` (ProGamerGov `vgg16/vgg19` for the `pgg-*`
+perceptors, repointed to the HF mirror `AfrodreamsAI/afrodreams`; the vgg19 path was
+proven end-to-end from an empty modelzoo).
 
 ---
+
+## Audio tree rescue (post-Phase-B review)
+
+`maua/audio/**` (99 modules: jukebox, RAVE, neural waveshaping, granular, selfsupervised
+sample tooling) was excluded from the fast import test wholesale during Phase B. A
+follow-up review rescued the entire tree — all 99 modules now import cleanly and are
+part of the fast import surface (the `audio` EXCLUDE entry was removed):
+
+| Module | What broke | Fix |
+|---|---|---|
+| `audio/{jukebox,waveshaping}/**`, `audio/rave/**` | vendored from repos where `jukebox`/`waveshaping`/`rave`/`prior` were top-level packages; bare intra-package imports failed | scoped `sys.path` shims in `maua/audio/__init__.py` and `maua/audio/rave/__init__.py` (same pattern as pix2pix/ZSSGAN) |
+| rave/waveshaping/jukebox deps | `cached_conv`, `udls`, `gin-config`, `fire`, `mpi4py` not installed | added to `setup.py` install_requires (all resolve on the modern stack) |
+| `audio/rave/rave/pqmf.py` | scipy ≥1.15 removed `firwin(nyq=)` and the `scipy.signal.kaiser` re-export; `fmin` explores out-of-range cutoffs that new firwin hard-errors on | `fs=2*np.pi` equivalent, dropped unused imports, penalty-guard in `loss_wc`; PQMF forward/inverse roundtrip numerically verified (err ~2.5e-3) |
+| `audio/rave/{combine_models,export_rave,export_prior,train_prior}.py` | script-style: module-level `args.parse_args()` + model loads at import | wrapped in `main()` + `__main__` guards; rave/prior imports deferred where cached_conv buffer mode must be set first |
+| `audio/jukebox/{Interacting_with_Jukebox,tests/test_sample}.py` | Colab paste executing at import; `check_sample()` ran at import (needs distributed init) | wrapped behind `main()` / `__main__` guards |
+| `audio/waveshaping/scripts/resynthesise_dataset.py` | imported `URMPDataset`, which the vendored copy never included | aliased to `GeneralDataset` (same on-disk format) |
+| `audio/waveshaping/scripts/NEWT_Timbre_Transfer.py` | `google.colab` import; module-level notebook cells | try/except colab import; cells wrapped in `main()` with colab-only cells guarded |
 
 ## Fixed
 
