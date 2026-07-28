@@ -8,7 +8,7 @@ from omegaconf import OmegaConf
 
 from maua.loss import clamp_with_grad, replace_grad
 from maua.parameterizations import Parameterization
-from maua.utility import download
+from maua.utility import download, download_github_release_asset
 
 # replace checkpoint path to avoid the weird path that gets created by default as well as a bunch of prints
 for file in [
@@ -37,8 +37,9 @@ from taming.models import cond_transformer, vqgan
 def maybe_download_vqgan(model_dir):
     # fmt: off
     # NOTE: the mirror.io.community host is dead (DNS no longer resolves). imagenet_1024/16384 now
-    # resolve from the original CompVis heibox share (verified live). The wikiart mirrors are still
-    # dead (mirror.io.community + eaidata.bmk.sh both gone) — provide those in modelzoo/ manually.
+    # resolve from the original CompVis heibox share (verified live). wikiart_1024/16384 resolve from
+    # the Eleiber/VQGAN-Mirrors GitHub release via the API asset endpoint (browser_download_url
+    # redirects to a login page, but Accept: application/octet-stream on the asset id streams fine).
     if model_dir == "imagenet_1024":
         config_path, checkpoint_path = "modelzoo/vqgan_imagenet_f16_1024.yaml", "modelzoo/vqgan_imagenet_f16_1024.ckpt"
         if not os.path.exists(checkpoint_path):
@@ -62,13 +63,13 @@ def maybe_download_vqgan(model_dir):
     elif model_dir == "wikiart_1024":
         config_path, checkpoint_path = "modelzoo/wikiart_1024.yaml", "modelzoo/wikiart_1024.ckpt"
         if not os.path.exists(checkpoint_path):
-            download("http://mirror.io.community/blob/vqgan/wikiart.yaml", config_path)
-            download("http://mirror.io.community/blob/vqgan/wikiart.ckpt", checkpoint_path)
+            download_github_release_asset("Eleiber/VQGAN-Mirrors", "wikiart_1024.yaml", config_path)
+            download_github_release_asset("Eleiber/VQGAN-Mirrors", "wikiart_1024.ckpt", checkpoint_path)
     elif model_dir == "wikiart_16384":
         config_path, checkpoint_path = "modelzoo/wikiart_16384.yaml", "modelzoo/wikiart_16384.ckpt"
         if not os.path.exists(checkpoint_path):
-            download("http://mirror.io.community/blob/vqgan/wikiart_16384.yaml", config_path)
-            download("http://mirror.io.community/blob/vqgan/wikiart_16384.ckpt", checkpoint_path)
+            download_github_release_asset("Eleiber/VQGAN-Mirrors", "wikiart_16384.yaml", config_path)
+            download_github_release_asset("Eleiber/VQGAN-Mirrors", "wikiart_16384.ckpt", checkpoint_path)
     elif model_dir == "sflckr":
         config_path, checkpoint_path = "modelzoo/sflckr.yaml", "modelzoo/sflckr.ckpt"
         if not os.path.exists(checkpoint_path):

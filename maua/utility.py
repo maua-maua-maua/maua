@@ -65,8 +65,8 @@ def name(s):
     return s.split("/")[-1].split(".")[0]
 
 
-def download(url, filename):
-    headers = {"User-Agent": "Maua", "From": "https://github.com/maua-maua-maua/maua"}
+def download(url, filename, headers=None):
+    headers = {"User-Agent": "Maua", "From": "https://github.com/maua-maua-maua/maua", **(headers or {})}
     r = requests.get(url, stream=True, allow_redirects=True, headers=headers)
     if r.status_code != 200:
         r.raise_for_status()  # Will only raise for 4xx codes, so...
@@ -82,6 +82,25 @@ def download(url, filename):
         shutil.copyfileobj(r_raw, f)
 
     return path
+
+
+def download_github_release_asset(repo, asset_name, filename):
+    """Download a GitHub release asset via the API asset endpoint.
+
+    Some release assets (e.g. Eleiber/VQGAN-Mirrors) return a login page from
+    browser_download_url, but stream fine from the API asset id with
+    Accept: application/octet-stream.
+    """
+    r = requests.get(f"https://api.github.com/repos/{repo}/releases", timeout=30)
+    r.raise_for_status()
+    assets = {a["name"]: a["id"] for rel in r.json() for a in rel.get("assets", [])}
+    if asset_name not in assets:
+        raise RuntimeError(f"Asset {asset_name} not found in releases of {repo} (have: {sorted(assets)})")
+    return download(
+        f"https://api.github.com/repos/{repo}/releases/assets/{assets[asset_name]}",
+        filename,
+        headers={"Accept": "application/octet-stream"},
+    )
 
 
 def fetch(path_or_url):
