@@ -25,12 +25,8 @@ XFAIL_IMPORTS: dict[str, str] = {
     # flux2hd is untracked and still loads the full FLUX pipeline at import; it gets wrapped +
     # moved to maua/text2img/flux.py in Phase C.
     "maua.diffusion.flux2hd": "loads the full FLUX pipeline (multi-GB download) at import time; wrap in Phase C",
-    # --- intentionally dropped optional deps (see DEPRECATIONS.md). padl is abandoned upstream and
-    #     ffcv is unmaintained + compile-heavy; the user chose to drop both rather than vendor them.
-    #     These three training-stack modules are the only remaining legacy candidates.
-    "maua.GAN.training.trainer": "requires ffcv (intentionally dropped: unmaintained, compile-heavy); legacy candidate",
-    "maua.GAN.training.train_v0": "requires padl (intentionally dropped: abandoned upstream); legacy candidate",
-    "maua.GAN.training.dataset.image": "requires ffcv (intentionally dropped: unmaintained, compile-heavy); legacy candidate",
+    # padl/ffcv were intentionally dropped (abandoned/unmaintained upstream); the training stack
+    # (trainer, dataset.image, train_v0) was rewritten on plain torch/torchvision DataLoaders.
 }
 
 # No single module should take longer than this to import; catches import-time downloads/compiles.

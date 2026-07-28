@@ -8,8 +8,6 @@ from pathlib import Path
 import numpy as np
 import torch
 import torchvision.transforms as tvt
-from ffcv.fields.decoders import RandomResizedCropRGBImageDecoder, SimpleRGBImageDecoder
-from ffcv.transforms import ToTensor, ToTorchImage
 from pytorch_lightning import Trainer as LightningTrainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, TQDMProgressBar
 
@@ -164,44 +162,46 @@ if __name__ == "__main__":
     # =========================== DATA ============================
     # =============================================================
 
-    ffcv_preprocess = tvt.Compose([
+    preprocess = tvt.Compose([
         tvt.Resize(args.preprocess_image_size, antialias=True),
         tvt.CenterCrop(args.preprocess_image_size),
     ])
 
     if args.random_crop:
-        ffcv_decoder = RandomResizedCropRGBImageDecoder(
+        decoder = tvt.RandomResizedCrop(
             (args.image_size, args.image_size),
             scale=(1 / args.random_crop_zoom, 1),
             ratio=(1 - args.random_crop_ratio, 1 + args.random_crop_ratio),
+            antialias=True,
         )
     else:
-        ffcv_decoder = SimpleRGBImageDecoder()
+        decoder = tvt.Resize((args.image_size, args.image_size), antialias=True)
 
     class ToFloat(torch.nn.Module):
         def forward(self, x):
-            return x.float().cuda()
+            return x.float().cuda() if torch.cuda.is_available() else x.float()
 
-    ffcv_pipeline = [
-        ffcv_decoder,
-        ToTensor(),
-        ToTorchImage(),
+    # PIL in -> normalized float tensor out (replaces the old ffcv decode pipeline)
+    pipeline = [
+        tvt.PILToTensor(),
+        decoder,
         ToFloat(),
         tvt.Normalize([127.5] * 3, [127.5] * 3),
     ]
     if args.hflip:
-        ffcv_pipeline.append(tvt.RandomHorizontalFlip())
+        pipeline.append(tvt.RandomHorizontalFlip())
     if args.vflip:
-        ffcv_pipeline.append(tvt.RandomVerticalFlip())
+        pipeline.append(tvt.RandomVerticalFlip())
     if args.random_rotate:
         # calculate minimum padding needed to ensure no non-padded pixels end up in image
         # no padding needed at 0, sqrt(2)*image_radius for 45 degrees or more
         padding = ceil(args.image_size * (1 - np.cos(4 * np.pi * min(args.random_rotate_degrees, 45) / 180)) / 4)
-        ffcv_pipeline += [
+        pipeline += [
             torch.nn.ReflectionPad2d((padding, padding, padding, padding)),
             tvt.RandomRotation(args.random_rotate_degrees, interpolation=tvt.InterpolationMode.BILINEAR, expand=True),
             tvt.CenterCrop(args.image_size),
         ]
+    pipeline = tvt.Compose(pipeline)
 
     # =============================================================
     # ========================== TRAIN ============================
@@ -231,8 +231,8 @@ if __name__ == "__main__":
             generator_losses=generator_losses,
             shared_losses=[],
             augmentations=augmentations,
-            ffcv_preprocess=ffcv_preprocess,
-            ffcv_pipeline=ffcv_pipeline,
+            preprocess=preprocess,
+            pipeline=pipeline,
             lr_G=args.lr_G,
             lr_D=args.lr_D,
             n_D_steps=args.n_D_steps,

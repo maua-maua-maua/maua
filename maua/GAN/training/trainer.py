@@ -114,15 +114,17 @@ class WeightsEMA(LightningCallback):
     @overrides
     def on_save_checkpoint(
         self, trainer: LightningTrainer, pl_module: LightningModule, checkpoint: dict[str, Any]
-    ) -> dict:
-        return {"ema_state_dict": self.ema_state_dict, "_ema_state_dict_ready": self._ema_state_dict_ready}
+    ) -> None:
+        # modern Lightning: mutate the checkpoint dict in place (return value is ignored/must be None)
+        checkpoint["ema_state_dict"] = self.ema_state_dict
+        checkpoint["_ema_state_dict_ready"] = self._ema_state_dict_ready
 
     @overrides
     def on_load_checkpoint(
-        self, trainer: LightningTrainer, pl_module: LightningModule, callback_state: dict[str, Any]
+        self, trainer: LightningTrainer, pl_module: LightningModule, checkpoint: dict[str, Any]
     ) -> None:
-        self._ema_state_dict_ready = callback_state["_ema_state_dict_ready"]
-        self.ema_state_dict = callback_state["ema_state_dict"]
+        self._ema_state_dict_ready = checkpoint.get("_ema_state_dict_ready", False)
+        self.ema_state_dict = checkpoint.get("ema_state_dict", {})
 
 
 class LightningGAN(LightningModule):
@@ -143,8 +145,8 @@ class LightningGAN(LightningModule):
         n_D_steps: int,
         # data
         input_dir: str,
-        ffcv_preprocess: Callable,
-        ffcv_pipeline: Callable,
+        preprocess: Callable,
+        pipeline: Callable,
         cache_dir: str,
         num_workers: int,
         jpeg_quality: int,
@@ -169,9 +171,10 @@ class LightningGAN(LightningModule):
         self.lr_D = lr_D
         self.n_D_steps = n_D_steps
 
-        self.ffcv_preprocess = ffcv_preprocess
-        self.ffcv_pipeline = ffcv_pipeline
-        self.data_cache_path = f"{cache_dir}/{Path(input_dir).stem}_ffcv.beton"
+        self.preprocess = preprocess
+        self.pipeline = pipeline
+        # old ffcv cache paths ended in _ffcv.beton; ImageLoader derives a jpeg cache dir from this
+        self.data_cache_path = f"{cache_dir}/{Path(input_dir).stem}_maua_jpeg"
         self.files = sum([glob(f"{input_dir}/*{ext}") for ext in tv.datasets.folder.IMG_EXTENSIONS], [])
         self.num_workers = num_workers
         self.jpeg_quality = jpeg_quality
@@ -184,8 +187,8 @@ class LightningGAN(LightningModule):
 
         self.dataloader = ImageLoader(
             self.files,
-            self.ffcv_preprocess,
-            self.ffcv_pipeline,
+            self.preprocess,
+            self.pipeline,
             self.data_cache_path,
             self.epoch_kimg,
             self.batch_size,

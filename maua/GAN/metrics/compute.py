@@ -110,7 +110,7 @@ def compute(
     if isinstance(real_samples, (str, Path)):
         cache_file = f"cache/{Path(real_samples).stem}_real_{extractor}_features.npz"
     else:
-        cache_file = f"cache/{Path(real_samples.path).stem}.npz".replace("ffcv", f"real_{extractor}_features")
+        cache_file = f"cache/{Path(real_samples.path).stem}_real_{extractor}_features.npz"
     use_cache = os.path.exists(cache_file) and not ignore_cache
 
     if isinstance(real_samples, (str, Path)):
