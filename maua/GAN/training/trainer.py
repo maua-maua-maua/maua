@@ -259,6 +259,13 @@ class LightningGAN(LightningModule):
             ]
             return sum(losses).mean()
 
+    def on_train_batch_end(self, *args, **kwargs):
+        # Keep the scheduler's monitored metric (e.g. "Frechet SwAV Distance") available
+        # even when validation is skipped, so ReduceLROnPlateau doesn't trip on a missing key.
+        super().on_train_batch_end(*args, **kwargs)
+        if self.monitor_metric not in self.trainer.callback_metrics:
+            self.log(self.monitor_metric, float("nan"), prog_bar=True)
+
     def validation_step(self, batch, batch_idx):
         imgs = torch.cat([self.forward() for _ in range(ceil(16 * 9 / self.batch_size))])[: 16 * 9]
         grid = tv.utils.make_grid(imgs, nrow=16, padding=0)
